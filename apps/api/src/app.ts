@@ -1,3 +1,5 @@
+import cors from '@fastify/cors'
+import rateLimit from '@fastify/rate-limit'
 import Fastify from 'fastify'
 import {
   serializerCompiler,
@@ -5,13 +7,16 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod'
 import { ApiError } from './lib/errors.ts'
+import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
 import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
   logLevel?: string
-  trustProxy?: boolean
+  trustProxyHops?: number
+  corsOrigins?: string[]
+  guestRecognitionsPerDay?: number
   recognitions?: Omit<RecognitionDeps, 'log'>
 }
 
@@ -48,7 +53,7 @@ const describe = (error: unknown, status: number): ErrorDescription => {
 
 export const buildApp = async (deps: AppDeps) => {
   const app = Fastify({
-    trustProxy: deps.trustProxy ?? false,
+    trustProxy: (_address, hop) => hop < (deps.trustProxyHops ?? 0),
     logger: { level: deps.logLevel ?? 'info' },
   }).withTypeProvider<ZodTypeProvider>()
   app.setValidatorCompiler(validatorCompiler)
@@ -58,7 +63,7 @@ export const buildApp = async (deps: AppDeps) => {
     const status = statusOf(error)
     if (status >= 500) request.log.error(error)
     else request.log.warn({ err: error, status }, 'request rejected')
-    if (status === 429) reply.header('retry-after', '60')
+    if (status === 429 && !reply.hasHeader('retry-after')) reply.header('retry-after', '60')
     return reply.status(status).send({ error: describe(error, status) })
   })
 
@@ -66,9 +71,22 @@ export const buildApp = async (deps: AppDeps) => {
     reply.status(404).send({ error: describe(undefined, 404) }),
   )
 
+  await app.register(cors, {
+    origin: deps.corsOrigins ?? false,
+    credentials: true,
+    allowedHeaders: ['content-type', 'authorization'],
+    exposedHeaders: ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'],
+  })
+  await app.register(rateLimit, { global: false })
+
   await app.register(healthRoutes(deps))
   if (deps.recognitions) {
-    await app.register(recognitionRoutes({ ...deps.recognitions, log: app.log }))
+    await app.register(
+      recognitionRoutes(
+        { ...deps.recognitions, log: app.log },
+        deps.guestRecognitionsPerDay ?? defaultGuestRecognitionsPerDay,
+      ),
+    )
   }
   return app
 }
