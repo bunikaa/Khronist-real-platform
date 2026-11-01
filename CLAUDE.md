@@ -18,7 +18,9 @@
 - TypeScript strict, без `any`; Zod на межах. Python 3.12 з типами, ruff, Pydantic на межах.
 - Нічого не вигадувати: ні фактів про архіви, ні джерел, ні назв моделей чи версій пакетів. Невідоме — перевірити в документації або npm/PyPI, або спитати й позначити `TODO(перевірити)`.
 - Чесні стани в UI: якщо функції немає — немає й кнопки; невпевненість моделі показується, а не ховається; координати `estimated` малюються смугою, а не рамкою.
-- Перед кожним комітом: `pnpm lint typecheck test build` (або `uv run ruff check && uv run pytest` у services) — зелені.
+- Перед кожним комітом: `pnpm lint && pnpm typecheck && pnpm test` (і `pnpm build`, коли в пакетах з'являться збірки; у `services` — `uv run ruff check && uv run pytest`) — зелені.
+- Пакети workspace (`@khronist/contracts`) віддають сирий `.ts`: Node запускає його напряму лише через symlink workspace. На хостингу ставити залежності всього монорепо (`pnpm install --frozen-lockfile`) і запускати `pnpm --filter @khronist/api start`; `pnpm deploy` і копіювання `node_modules` ламають запуск. У `.ts` лише синтаксис, який стирається (без `enum`, `namespace`, параметрів-властивостей): це перевіряє `erasableSyntaxOnly`.
+- Відповіді API з полями дат: колонки Drizzle повертають `Date`, а контракти вимагають рядок ISO. Перед серіалізацією перетворювати `date.toISOString()`.
 - Коміти невеликі, `feat:`/`fix:`/`chore:` англійською, без згадок моделей чи асистентів у повідомленнях, коді й документації.
 - Не чіпати чужу зону без потреби: зміни в `services/*` і `packages/prompts` робить ML-команда, в `apps/*` — Владислав. Якщо треба змінити щось у чужій зоні — опиши в PR, не роби мовчки.
 - Секрети лише через env; `.env.example` оновлюється разом із новою змінною.
@@ -26,4 +28,4 @@
 - Репозиторій приватний до 13 листопада 2026.
 
 ## Команди
-`pnpm dev` · `pnpm db:migrate` · `pnpm db:seed` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python scripts/ingest.py`, `uv run python eval/run_qa.py`, `uv run python eval/run_htr_eval.py`
+`pnpm dev` · `pnpm db:generate` · `pnpm db:migrate` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python scripts/ingest.py`, `uv run python eval/run_qa.py`, `uv run python eval/run_htr_eval.py`

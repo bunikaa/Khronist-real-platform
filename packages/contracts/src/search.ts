@@ -21,7 +21,7 @@ export const searchResponseSchema = z.object({
       year: z.number().int().optional(),
       snippet: z.string(),
       status: transcriptionStatusSchema,
-      portalUrl: z.url().optional(),
+      portalUrl: z.httpUrl().optional(),
     }),
   ),
   nextCursor: z.string().optional(),
