@@ -4,6 +4,7 @@ import {
   hasValidAnswer,
   htrVisionOutputSchema,
   searchQuerySchema,
+  shelfmarkBaseSchema,
   shelfmarkSchema,
   visionToLines,
 } from '../src/index.ts'
@@ -52,6 +53,16 @@ describe('shelfmarkSchema', () => {
 
   it('rejects a shelfmark with neither folio nor image', () => {
     expect(shelfmarkSchema.safeParse(base).success).toBe(false)
+  })
+
+  it('allows picking fields from the base schema', () => {
+    const picked = shelfmarkBaseSchema.pick({ fond: true, opys: true })
+    expect(picked.parse({ fond: '127', opys: '1078' })).toEqual({ fond: '127', opys: '1078' })
+  })
+
+  it('rejects non-http portal links', () => {
+    const result = shelfmarkSchema.safeParse({ ...base, image: 1, portalUrl: 'javascript:alert(1)' })
+    expect(result.success).toBe(false)
   })
 
   it('rejects the retired searcharchives portal value', () => {

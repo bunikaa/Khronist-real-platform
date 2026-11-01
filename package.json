@@ -12,7 +12,9 @@
     "lint": "oxlint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @khronist/api db:generate",
+    "db:migrate": "pnpm --filter @khronist/api db:migrate"
   },
   "devDependencies": {
     "oxlint": "^1.90.0",

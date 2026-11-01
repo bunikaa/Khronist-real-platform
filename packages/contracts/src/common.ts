@@ -1,20 +1,20 @@
 import { z } from 'zod'
 
-export const shelfmarkSchema = z
-  .object({
-    archive: z.string().min(1),
-    fond: z.string().min(1),
-    opys: z.string().min(1),
-    sprava: z.string().min(1),
-    folio: z.string().min(1).optional(),
-    image: z.number().int().min(1).optional(),
-    portal: z.enum(['archium', 'own']).optional(),
-    portalUrl: z.url().optional(),
-  })
-  .refine((s) => s.folio !== undefined || s.image !== undefined, {
-    message: 'folio or image is required',
-    path: ['folio'],
-  })
+export const shelfmarkBaseSchema = z.object({
+  archive: z.string().min(1),
+  fond: z.string().min(1),
+  opys: z.string().min(1),
+  sprava: z.string().min(1),
+  folio: z.string().min(1).optional(),
+  image: z.number().int().min(1).optional(),
+  portal: z.enum(['archium', 'own']).optional(),
+  portalUrl: z.httpUrl().optional(),
+})
+
+export const shelfmarkSchema = shelfmarkBaseSchema.refine(
+  (s) => s.folio !== undefined || s.image !== undefined,
+  { message: 'folio or image is required', path: ['folio'] },
+)
 export type Shelfmark = z.infer<typeof shelfmarkSchema>
 
 const fraction = z.number().min(0).max(1)
@@ -59,7 +59,7 @@ export const citationSchema = z.object({
   chunkId: z.uuid(),
   sourceId: z.uuid(),
   title: z.string(),
-  url: z.url().optional(),
+  url: z.httpUrl().optional(),
   quote: z.string(),
 })
 export type Citation = z.infer<typeof citationSchema>

@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE DATABASE khronist_test;
+SELECT 'CREATE DATABASE khronist_test'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'khronist_test')\gexec
 \c khronist_test
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
