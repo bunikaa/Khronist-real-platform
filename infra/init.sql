@@ -1,0 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE DATABASE khronist_test;
+\c khronist_test
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
