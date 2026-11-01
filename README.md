@@ -1,0 +1,65 @@
+# Хроніст
+
+AI-компаньйон для дослідників українських архівів: розширення Chrome читає рукописні скани на архівних порталах, пояснює терміни й дати з джерелами, а підтверджені людьми транскрипції потрапляють у відкритий шар Commons (CC BY 4.0).
+
+Зараз у репозиторії працює лише API. Розширення, вебзастосунок, MCP-сервер і `services/*` ще не створені.
+
+## Що потрібно встановити
+
+| Інструмент       | Версія                                  | Для чого                                    |
+| ---------------- | --------------------------------------- | ------------------------------------------- |
+| Node.js          | 24 або новіша                           | увесь TypeScript-код                        |
+| pnpm             | 12.16.1 (`npm install -g pnpm@12.16.1`) | залежності й команди                        |
+| Docker Desktop   | будь-яка актуальна                      | локальний PostgreSQL 16                     |
+| uv і Python 3.12 | актуальний uv                           | лише для `services/*`, коли вони з'являться |
+| GitHub CLI       | необов'язково                           | PR із термінала                             |
+
+У Windows uv і GitHub CLI ставляться так: `winget install astral-sh.uv` і `winget install GitHub.cli`. Після цього треба перезапустити термінал і редактор, інакше команд не буде в `PATH`.
+
+## Перший запуск
+
+Docker Desktop має бути запущений. Команди виконуються в корені репозиторію.
+
+```sh
+pnpm install
+cp .env.example .env
+docker compose -f infra/docker-compose.yml up -d
+pnpm db:migrate
+pnpm dev
+```
+
+У PowerShell замість `cp` працює `Copy-Item .env.example .env`.
+
+Перевірка: `GET http://localhost:3000/health` повертає `{"ok":true,"db":"ok","llm":"degraded","htr":"fixture"}`.
+
+- `htr: "fixture"`: читання фікстурне, бо в `.env.example` стоїть `LLM_FIXTURES=1`. Будь-яке зображення дає той самий демонстраційний текст, а гроші не витрачаються.
+- `llm: "degraded"`: немає ключа API. Для роботи з фікстурами це нормально.
+
+Для справжнього читання задайте `ANTHROPIC_API_KEY` і приберіть `LLM_FIXTURES=1`. Спершу зітріть локальну базу (`docker compose -f infra/docker-compose.yml down -v`, потім знову `up -d` і `pnpm db:migrate`), бо кеш віддає фікстурні транскрипції як справжні.
+
+## Команди
+
+| Команда            | Що робить                             |
+| ------------------ | ------------------------------------- |
+| `pnpm dev`         | запускає застосунки в режимі розробки |
+| `pnpm lint`        | перевіряє код через oxlint            |
+| `pnpm typecheck`   | перевіряє типи                        |
+| `pnpm test`        | запускає тести, Docker не потрібен    |
+| `pnpm format`      | форматує код через Prettier           |
+| `pnpm db:generate` | створює міграцію зі змін у схемі      |
+| `pnpm db:migrate`  | застосовує міграції                   |
+
+## Структура
+
+| Тека                 | Що там                                                    | Власник                |
+| -------------------- | --------------------------------------------------------- | ---------------------- |
+| `apps/api`           | API на Fastify 5 і Drizzle ([README](apps/api/README.md)) | Владислав              |
+| `packages/contracts` | Zod-схеми й типи                                          | Владислав і ML-команда |
+| `packages/prompts`   | промпти                                                   | ML-команда             |
+| `packages/config`    | спільні налаштування                                      | Владислав              |
+| `infra`              | локальний PostgreSQL                                      | Владислав              |
+| `docs`               | план, контекст, рішення                                   | уся команда            |
+
+## Як долучитися
+
+Правила роботи з гілками, комітами й PR, а також типові проблеми описані в [CONTRIBUTING.md](CONTRIBUTING.md). Контекст проєкту: [docs/project-context.md](docs/project-context.md), план: [docs/plan/README.md](docs/plan/README.md), контракти: [docs/plan/07-contracts.md](docs/plan/07-contracts.md), рішення: [docs/decisions.md](docs/decisions.md).
