@@ -1,31 +1,41 @@
-import { lineSchema, type Hints, type Line, type RecognitionFailureCode } from '@khronist/contracts'
+import {
+  lineSchema,
+  recognitionFailureCodeSchema,
+  type Hints,
+  type Line,
+  type RecognitionEvent,
+  type RecognitionFailureCode,
+} from '@khronist/contracts'
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import type { Database } from '../db/client.ts'
-import {
-  entities,
-  lineWords,
-  recognitions,
-  transcriptionLines,
-  transcriptions,
-} from '../db/schema.ts'
+import { activeRecognitionStatuses, recognitions } from '../db/schema.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { HtrReader } from '../services/htr/index.ts'
 import type { Normalized, Normalizer } from '../services/normalize.ts'
+import { insertTranscriptionVersion } from '../services/transcriptions.ts'
 import type { EventHub } from './events.ts'
 
-export const activeStatuses = ['queued', 'reading', 'normalizing'] as const
-
-const insertChunk = 2000
-
-export const failureMessages: Record<RecognitionFailureCode, string> = {
+const failureMessages: Record<RecognitionFailureCode, string> = {
   read_failed: 'Не вдалося прочитати фрагмент',
   normalize_failed: 'Не вдалося обробити прочитаний текст',
   save_failed: 'Не вдалося зберегти результат',
   restarted: 'Сервер було перезапущено, спробуйте ще раз',
   bad_image: 'Не вдалося обробити зображення',
   too_large: 'Зображення завелике',
+}
+
+export const failureEvent = (code: RecognitionFailureCode): RecognitionEvent => ({
+  event: 'failed',
+  data: { code, message: failureMessages[code] },
+})
+
+type StoredFailure = { errorCode: string | null; errorMessage: string | null }
+
+export const failureOf = (row: StoredFailure) => {
+  const parsed = recognitionFailureCodeSchema.safeParse(row.errorCode)
+  const code = parsed.success ? parsed.data : 'read_failed'
+  return { code, message: row.errorMessage ?? failureMessages[code] }
 }
 
 export type JobLogger = {
@@ -64,7 +74,7 @@ class JobCancelledError extends Error {
 }
 
 const isActive = (id: string) =>
-  and(eq(recognitions.id, id), inArray(recognitions.status, [...activeStatuses]))
+  and(eq(recognitions.id, id), inArray(recognitions.status, [...activeRecognitionStatuses]))
 
 const setStatus = async (db: Database, id: string, status: 'reading' | 'normalizing') => {
   const rows = await db
@@ -79,8 +89,12 @@ const setStatus = async (db: Database, id: string, status: 'reading' | 'normaliz
   if (rows.length === 0) throw new JobCancelledError()
 }
 
-const markFailed = async (db: Database, id: string, code: RecognitionFailureCode) => {
-  await db
+export const markFailed = async (
+  db: Database,
+  id: string,
+  code: RecognitionFailureCode,
+): Promise<boolean> => {
+  const rows = await db
     .update(recognitions)
     .set({
       status: 'failed',
@@ -89,12 +103,8 @@ const markFailed = async (db: Database, id: string, code: RecognitionFailureCode
       finishedAt: new Date(),
     })
     .where(isActive(id))
-}
-
-const chunked = <T>(rows: T[], size: number): T[][] => {
-  const parts: T[][] = []
-  for (let i = 0; i < rows.length; i += size) parts.push(rows.slice(i, i + size))
-  return parts
+    .returning({ id: recognitions.id })
+  return rows.length > 0
 }
 
 const readSchema = z.array(lineSchema)
@@ -121,7 +131,7 @@ const checkNormalized = (normalized: Normalized): Normalized => {
 const saveTranscription = async (
   db: Database,
   recognitionId: string,
-  readerName: string,
+  reader: string,
   lines: Line[],
   normalized: Normalized,
 ): Promise<string> =>
@@ -133,66 +143,18 @@ const saveTranscription = async (
       .limit(1)
     if (!recognition) throw new Error(`recognition ${recognitionId} disappeared`)
 
-    const [latest] = await tx
-      .select({ version: sql<number>`coalesce(max(${transcriptions.version}), 0)` })
-      .from(transcriptions)
-      .where(eq(transcriptions.regionId, recognition.regionId))
-
-    const [transcription] = await tx
-      .insert(transcriptions)
-      .values({
-        regionId: recognition.regionId,
-        version: (latest?.version ?? 0) + 1,
-        rawText: lines.map((line) => line.text).join('\n'),
-        normalizedText: normalized.normalizedText,
-        reader: readerName,
-      })
-      .returning({ id: transcriptions.id })
-    if (!transcription) throw new Error('transcription was not inserted')
-
-    const entries = lines.map((line) => ({ line, id: uuidv7() }))
-    await tx.insert(transcriptionLines).values(
-      entries.map(({ line, id }) => ({
-        id,
-        transcriptionId: transcription.id,
-        idx: line.idx,
-        text: line.text,
-        x: line.box.x,
-        y: line.box.y,
-        w: line.box.w,
-        h: line.box.h,
-        boxSource: line.boxSource,
-      })),
-    )
-
-    const wordRows = entries.flatMap(({ line, id }) =>
-      line.words.map((word, wordIndex) => ({
-        lineId: id,
-        idx: wordIndex,
-        text: word.text,
-        uncertain: word.uncertain,
-        confidence: word.confidence ?? null,
-      })),
-    )
-    for (const part of chunked(wordRows, insertChunk)) await tx.insert(lineWords).values(part)
-
-    const entityRows = normalized.entities.map((entity) => ({
-      transcriptionId: transcription.id,
-      type: entity.type,
-      text: entity.text,
-      normalized: entity.normalized ?? null,
-      wikidataId: entity.wikidataId ?? null,
-      startPos: entity.start,
-      endPos: entity.end,
-      extra: entity.extra ?? null,
-    }))
-    for (const part of chunked(entityRows, insertChunk)) await tx.insert(entities).values(part)
+    const transcriptionId = await insertTranscriptionVersion(tx, {
+      regionId: recognition.regionId,
+      reader,
+      lines,
+      normalized,
+    })
 
     const closed = await tx
       .update(recognitions)
       .set({
         status: 'done',
-        transcriptionId: transcription.id,
+        transcriptionId,
         errorCode: null,
         errorMessage: null,
         finishedAt: new Date(),
@@ -200,8 +162,17 @@ const saveTranscription = async (
       .where(isActive(recognitionId))
       .returning({ id: recognitions.id })
     if (closed.length === 0) throw new JobCancelledError()
-    return transcription.id
+    return transcriptionId
   })
+
+const storedFailureEvent = async (db: Database, id: string): Promise<RecognitionEvent> => {
+  const [row] = await db
+    .select({ errorCode: recognitions.errorCode, errorMessage: recognitions.errorMessage })
+    .from(recognitions)
+    .where(eq(recognitions.id, id))
+    .limit(1)
+  return { event: 'failed', data: failureOf(row ?? { errorCode: 'restarted', errorMessage: null }) }
+}
 
 export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promise<void> => {
   const { db, reader, normalizer, hub, log } = deps
@@ -212,13 +183,12 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     await setStatus(db, recognitionId, 'reading')
     hub.publish(recognitionId, { event: 'progress', data: { status: 'reading' } })
 
-    const lines = checkLines(
-      await runWithTimeout(
-        (signal) => reader.read({ image: job.image, hints: job.hints, signal }),
-        deps.readTimeoutMs ?? 30_000,
-        'reading',
-      ),
+    const read = await runWithTimeout(
+      (signal) => reader.read({ image: job.image, hints: job.hints, signal }),
+      deps.readTimeoutMs ?? 30_000,
+      'reading',
     )
+    const lines = checkLines(read.lines)
     for (const line of lines) hub.publish(recognitionId, { event: 'line', data: { line } })
 
     stage = 'normalize'
@@ -233,22 +203,23 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     )
 
     stage = 'save'
-    transcriptionId = await saveTranscription(db, recognitionId, reader.name, lines, normalized)
+    transcriptionId = await saveTranscription(db, recognitionId, read.reader, lines, normalized)
   } catch (error) {
-    if (error instanceof JobCancelledError) {
-      log.error({ err: error, recognitionId }, 'recognition cancelled')
-      hub.publish(recognitionId, {
-        event: 'failed',
-        data: { code: 'restarted', message: failureMessages.restarted },
-      })
-      return
-    }
     const code = failureCodeFor[stage]
-    log.error({ err: error, recognitionId, stage }, 'recognition failed')
-    await markFailed(db, recognitionId, code).catch((markError: unknown) =>
-      log.error({ err: markError, recognitionId }, 'could not record the failure'),
+    const closedElsewhere =
+      error instanceof JobCancelledError ||
+      !(await markFailed(db, recognitionId, code).catch((markError: unknown) => {
+        log.error({ err: markError, recognitionId }, 'could not record the failure')
+        return true
+      }))
+    log.error(
+      { err: error, recognitionId, stage },
+      closedElsewhere ? 'recognition cancelled' : 'recognition failed',
     )
-    hub.publish(recognitionId, { event: 'failed', data: { code, message: failureMessages[code] } })
+    const event = closedElsewhere
+      ? await storedFailureEvent(db, recognitionId).catch(() => failureEvent('restarted'))
+      : failureEvent(code)
+    hub.publish(recognitionId, event)
     return
   }
   hub.publish(recognitionId, { event: 'done', data: { transcriptionId } })
@@ -263,7 +234,7 @@ export const recoverInterruptedRecognitions = async (db: Database): Promise<numb
       errorMessage: failureMessages.restarted,
       finishedAt: new Date(),
     })
-    .where(inArray(recognitions.status, [...activeStatuses]))
+    .where(inArray(recognitions.status, [...activeRecognitionStatuses]))
     .returning({ id: recognitions.id })
   return rows.length
 }
@@ -284,7 +255,7 @@ export const failStaleRecognitions = async (
     .where(
       and(
         eq(recognitions.regionId, regionId),
-        inArray(recognitions.status, [...activeStatuses]),
+        inArray(recognitions.status, [...activeRecognitionStatuses]),
         lt(recognitions.createdAt, new Date(Date.now() - staleAfterMs)),
       ),
     )

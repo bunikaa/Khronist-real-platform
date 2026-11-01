@@ -1,6 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
-import type { Line } from '@khronist/contracts'
 import { createHash } from 'node:crypto'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
@@ -35,7 +34,7 @@ export const makePng = (width: number, height: number): Buffer => {
   return Buffer.concat([header, pngEnd])
 }
 
-export const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
 export const recognitionBody = (png: Buffer, extra: Record<string, unknown> = {}) => ({
   image: { base64Png: png.toString('base64') },
@@ -75,7 +74,6 @@ export const createRecordingReader = (options: { gated?: boolean } = {}): Record
 
 export const failingReader = (message: string): HtrReader => ({
   kind: 'fixture',
-  name: 'failing',
   read: async () => {
     throw new Error(message)
   },
@@ -83,8 +81,7 @@ export const failingReader = (message: string): HtrReader => ({
 
 export const emptyReader: HtrReader = {
   kind: 'fixture',
-  name: 'empty',
-  read: async (): Promise<Line[]> => [],
+  read: async () => ({ lines: [], reader: 'empty' }),
 }
 
 export type TestAppOptions = {
@@ -105,15 +102,13 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
   const hub = createEventHub()
   const queue = createJobQueue(2, () => {})
   const reader = 'reader' in options ? options.reader : createFixtureReader()
-  const optional = <K extends keyof TestAppOptions>(key: K) =>
-    options[key] !== undefined ? { [key]: options[key] } : {}
   const app = await buildApp({
     logLevel: 'silent',
     providers: { llm: 'ok', htr: 'fixture' },
     checkDb: async () => true,
-    ...optional('trustProxyHops'),
-    ...optional('corsOrigins'),
-    ...optional('guestRecognitionsPerDay'),
+    trustProxyHops: options.trustProxyHops,
+    corsOrigins: options.corsOrigins,
+    guestRecognitionsPerDay: options.guestRecognitionsPerDay,
     recognitions: {
       db: database.db,
       reader,
@@ -121,11 +116,11 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
       hub,
       queue,
       heartbeatMs: options.heartbeatMs ?? 20,
-      ...optional('readTimeoutMs'),
-      ...optional('normalizeTimeoutMs'),
-      ...optional('maxBacklog'),
-      ...optional('staleAfterMs'),
-      ...optional('maxStreamMs'),
+      readTimeoutMs: options.readTimeoutMs,
+      normalizeTimeoutMs: options.normalizeTimeoutMs,
+      maxBacklog: options.maxBacklog,
+      staleAfterMs: options.staleAfterMs,
+      maxStreamMs: options.maxStreamMs,
     },
   })
   return { app, hub, queue }
@@ -138,8 +133,16 @@ export const parseSse = (body: string): { event: string; data: unknown }[] =>
     .filter((chunk) => chunk.startsWith('event:'))
     .map((chunk) => {
       const lines = chunk.split('\n')
-      const event = lines.find((l) => l.startsWith('event:'))?.slice(6).trim() ?? ''
-      const data = lines.find((l) => l.startsWith('data:'))?.slice(5).trim() ?? 'null'
+      const event =
+        lines
+          .find((l) => l.startsWith('event:'))
+          ?.slice(6)
+          .trim() ?? ''
+      const data =
+        lines
+          .find((l) => l.startsWith('data:'))
+          ?.slice(5)
+          .trim() ?? 'null'
       return { event, data: JSON.parse(data) as unknown }
     })
 

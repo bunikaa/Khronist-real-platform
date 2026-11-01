@@ -1,10 +1,5 @@
-import { PGlite } from '@electric-sql/pglite'
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/pglite'
-import { migrate } from 'drizzle-orm/pglite/migrator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { migrationsFolder } from '../src/db/migrate.ts'
 import {
   chunks,
   documents,
@@ -15,6 +10,8 @@ import {
   sources,
   transcriptions,
 } from '../src/db/schema.ts'
+import { findPgViolation } from '../src/lib/errors.ts'
+import { createTestDatabase, type TestDatabase } from './helpers.ts'
 
 let hashCounter = 0
 const uniqueHash = () => {
@@ -22,52 +19,46 @@ const uniqueHash = () => {
   return hashCounter.toString(16).padStart(64, '0')
 }
 
-type PgViolation = { code: string; constraint: string | undefined }
-
-const findViolation = (error: unknown): PgViolation | undefined => {
-  let current: unknown = error
-  while (current instanceof Error) {
-    if ('code' in current && typeof current.code === 'string' && /^[0-9A-Z]{5}$/.test(current.code)) {
-      const constraint =
-        'constraint' in current && typeof current.constraint === 'string'
-          ? current.constraint
-          : undefined
-      return { code: current.code, constraint }
-    }
-    current = current.cause
-  }
-  return undefined
-}
-
-const expectViolation = async (promise: PromiseLike<unknown>, code: string, constraint?: string) => {
+const expectViolation = async (
+  promise: PromiseLike<unknown>,
+  code: string,
+  constraint?: string,
+) => {
   const error = await Promise.resolve(promise).then(
     () => undefined,
     (e: unknown) => e ?? new Error('rejected without a reason'),
   )
   expect(error, 'statement should have been rejected').toBeDefined()
-  const violation = findViolation(error)
+  const violation = findPgViolation(error)
   expect(violation?.code).toBe(code)
   if (constraint) expect(violation?.constraint).toBe(constraint)
 }
 
 describe('database schema', () => {
-  const client = new PGlite({ extensions: { pg_trgm } })
-  const db = drizzle(client)
+  let database: TestDatabase
+  let db: TestDatabase['db']
   let counter = 0
 
   beforeAll(async () => {
-    await migrate(db, { migrationsFolder })
+    database = await createTestDatabase()
+    db = database.db
   })
 
   afterAll(async () => {
-    await client.close()
+    await database.client.close()
   })
 
   const makeDocument = async () => {
     counter += 1
     const [doc] = await db
       .insert(documents)
-      .values({ archive: 'ЦДІАК', fond: '127', opys: '1078', sprava: String(counter), portal: 'archium' })
+      .values({
+        archive: 'ЦДІАК',
+        fond: '127',
+        opys: '1078',
+        sprava: String(counter),
+        portal: 'archium',
+      })
       .returning()
     if (!doc) throw new Error('document not inserted')
     return doc
@@ -103,7 +94,11 @@ describe('database schema', () => {
 
     it('rejects a page with neither folio nor image number', async () => {
       const doc = await makeDocument()
-      await expectViolation(db.insert(pages).values({ documentId: doc.id }), '23514', 'pages_folio_or_image')
+      await expectViolation(
+        db.insert(pages).values({ documentId: doc.id }),
+        '23514',
+        'pages_folio_or_image',
+      )
     })
 
     it('rejects a duplicate image number inside one document', async () => {
@@ -127,7 +122,6 @@ describe('database schema', () => {
   })
 
   describe('regions', () => {
-
     it('rejects a box outside the image', async () => {
       await expectViolation(
         db.insert(regions).values({ imageHash: uniqueHash(), x: 0.8, y: 0, w: 0.5, h: 0.5 }),
@@ -174,13 +168,18 @@ describe('database schema', () => {
         .returning()
       if (!t) throw new Error('transcription not inserted')
       await db.insert(edits).values({ transcriptionId: t.id, lineIdx: 0, before: 'a', after: 'b' })
-      await expectViolation(db.delete(transcriptions).where(sql`${transcriptions.id} = ${t.id}`), '23001')
+      await expectViolation(
+        db.delete(transcriptions).where(sql`${transcriptions.id} = ${t.id}`),
+        '23001',
+      )
     })
 
     it('rejects a verified transcription without a verification time', async () => {
       const { region } = await makeRegion()
       await expectViolation(
-        db.insert(transcriptions).values({ regionId: region.id, rawText: 'x', reader: 'test', status: 'verified' }),
+        db
+          .insert(transcriptions)
+          .values({ regionId: region.id, rawText: 'x', reader: 'test', status: 'verified' }),
         '23514',
         'transcriptions_verified_has_time',
       )
@@ -210,7 +209,9 @@ describe('database schema', () => {
 
     it('allows a new recognition once the previous one has finished', async () => {
       const { region } = await makeRegion()
-      await db.insert(recognitions).values({ regionId: region.id, source: 'extension', status: 'failed' })
+      await db
+        .insert(recognitions)
+        .values({ regionId: region.id, source: 'extension', status: 'failed' })
       await db.insert(recognitions).values({ regionId: region.id, source: 'extension' })
     })
   })
@@ -237,7 +238,11 @@ describe('database schema', () => {
       })
       await db.insert(chunks).values(row(first.id))
       await db.insert(chunks).values(row(second.id))
-      await expectViolation(db.insert(chunks).values(row(first.id)), '23505', 'chunks_source_hash_unique')
+      await expectViolation(
+        db.insert(chunks).values(row(first.id)),
+        '23505',
+        'chunks_source_hash_unique',
+      )
     })
 
     it('requires a search vector', async () => {

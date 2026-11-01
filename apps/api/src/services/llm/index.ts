@@ -1,7 +1,7 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 
-export type LlmImage = { type: 'image'; mediaType: 'image/png'; base64: string }
-export type LlmText = { type: 'text'; text: string }
+type LlmImage = { type: 'image'; mediaType: 'image/png'; base64: string }
+type LlmText = { type: 'text'; text: string }
 
 export type LlmRequest<T> = {
   system: string
@@ -13,7 +13,7 @@ export type LlmRequest<T> = {
 
 export type LlmUsage = { inputTokens: number; outputTokens: number }
 
-export type LlmResult<T> = { value: T; model: string; usage: LlmUsage }
+type LlmResult<T> = { value: T; model: string; usage: LlmUsage }
 
 export type LlmProvider = {
   name: string
@@ -25,6 +25,11 @@ export class LlmOutputError extends Error {
     super(message, options)
     this.name = 'LlmOutputError'
   }
+}
+
+export const toJsonSchema = <T>(schema: z.ZodType<T>) => {
+  const { $schema: _, ...rest } = z.toJSONSchema(schema, { io: 'output' })
+  return rest
 }
 
 export const parseOutput = <T>(text: string, schema: z.ZodType<T>): T => {
@@ -57,15 +62,26 @@ const retryInvalidOutput = async <T>(
   }
 }
 
+const defaultPrimaryLimitMs = 20_000
+
+const limitedBy = (signal: AbortSignal | undefined, ms: number): AbortSignal => {
+  const limit = AbortSignal.timeout(ms)
+  return signal ? AbortSignal.any([signal, limit]) : limit
+}
+
 export const withFallback = (
   primary: LlmProvider,
   fallback: LlmProvider | undefined,
   onFailure: LlmFailureLog,
+  primaryLimitMs = defaultPrimaryLimitMs,
 ): LlmProvider => ({
   name: primary.name,
   complete: async (request) => {
+    const primaryRequest = fallback
+      ? { ...request, signal: limitedBy(request.signal, primaryLimitMs) }
+      : request
     try {
-      return await retryInvalidOutput(primary, request, onFailure)
+      return await retryInvalidOutput(primary, primaryRequest, onFailure)
     } catch (error) {
       if (!fallback || request.signal?.aborted) throw error
       onFailure({ provider: primary.name, err: error }, 'primary model failed, using the fallback')

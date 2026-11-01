@@ -5,6 +5,16 @@ import type { HtrReader } from './index.ts'
 
 const maxOutputTokens = 8000
 
+const collapseSpaces = (text: string) => text.trim().replace(/\s+/g, ' ')
+
+const visionOutput = htrVisionOutputSchema.refine(
+  ({ lines }) =>
+    lines.every(
+      (line) => line.words.map((word) => word.text).join(' ') === collapseSpaces(line.text),
+    ),
+  { message: 'the words of a line must add up to its text' },
+)
+
 export type VisionReadLog = {
   model: string
   usage: LlmUsage
@@ -26,7 +36,6 @@ export const createVisionReader = (
   const prompt = loadPrompt('htr_vision')
   return {
     kind: 'vision',
-    name: llm.name,
     read: async ({ image, hints, signal }) => {
       const startedAt = Date.now()
       const { value, model, usage } = await llm.complete({
@@ -35,7 +44,7 @@ export const createVisionReader = (
           { type: 'image', mediaType: 'image/png', base64: image.toString('base64') },
           { type: 'text', text: renderPrompt(prompt.user, promptValues(hints)) },
         ],
-        schema: htrVisionOutputSchema,
+        schema: visionOutput,
         maxTokens: maxOutputTokens,
         signal,
       })
@@ -46,7 +55,7 @@ export const createVisionReader = (
         lines: value.lines.length,
         warnings: value.warnings,
       })
-      return visionToLines(value)
+      return { lines: visionToLines(value), reader: model }
     },
   }
 }

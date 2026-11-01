@@ -1,20 +1,19 @@
 import {
   createRecognitionRequestSchema,
   createRecognitionResponseSchema,
-  recognitionFailureCodeSchema,
   recognitionStateSchema,
   type RecognitionEvent,
 } from '@khronist/contracts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { failureMessages } from '../jobs/recognize.ts'
+import { failureEvent } from '../jobs/recognize.ts'
 import { ApiError } from '../lib/errors.ts'
 import { maxBodyBytes } from '../lib/limits.ts'
 import {
   createRecognition,
   findRecognition,
   getRecognitionState,
-  loadTranscription,
+  replayEvents,
   type RecognitionDeps,
 } from '../services/recognitions.ts'
 
@@ -42,7 +41,11 @@ export const recognitionRoutes =
             max: guestPerDay,
             timeWindow: '1 day',
             errorResponseBuilder: () =>
-              new ApiError(429, 'too_many_requests', 'Денний ліміт розпізнавань вичерпано, спробуйте завтра'),
+              new ApiError(
+                429,
+                'too_many_requests',
+                'Денний ліміт розпізнавань вичерпано, спробуйте завтра',
+              ),
           },
         },
         schema: {
@@ -63,90 +66,80 @@ export const recognitionRoutes =
       },
     )
 
-    app.get('/v1/recognitions/:id/events', { schema: { params: idParams } }, async (request, reply) => {
-      const { id } = request.params
-      const record = await findRecognition(deps.db, id)
-      if (!record) throw new ApiError(404, 'not_found', 'Розпізнавання не знайдено')
+    app.get(
+      '/v1/recognitions/:id/events',
+      { schema: { params: idParams } },
+      async (request, reply) => {
+        const { id } = request.params
+        const record = await findRecognition(deps.db, id)
+        if (!record) throw new ApiError(404, 'not_found', 'Розпізнавання не знайдено')
 
-      reply.hijack()
-      const raw = reply.raw
-      if (raw.destroyed || request.raw.destroyed) return
+        reply.hijack()
+        const raw = reply.raw
+        if (raw.destroyed || request.raw.destroyed) return
 
-      for (const [name, value] of Object.entries(reply.getHeaders())) {
-        if (value !== undefined) raw.setHeader(name, value)
-      }
-      raw.writeHead(200, {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache, no-transform',
-        connection: 'close',
-        'x-accel-buffering': 'no',
-      })
-      raw.write('retry: 3000\n\n')
-
-      let closed = false
-      let unsubscribe: (() => void) | undefined
-
-      const finish = () => {
-        if (closed) return
-        closed = true
-        clearInterval(heartbeat)
-        clearTimeout(lifetime)
-        openStreams.delete(finish)
-        unsubscribe?.()
-        raw.end()
-      }
-      const heartbeat = setInterval(() => {
-        if (closed) return
-        if (raw.writableLength > maxPendingBytes) {
-          raw.destroy()
-          finish()
-          return
+        for (const [name, value] of Object.entries(reply.getHeaders())) {
+          if (value !== undefined) raw.setHeader(name, value)
         }
-        raw.write(': ping\n\n')
-      }, deps.heartbeatMs ?? 15_000)
-      heartbeat.unref()
-      const lifetime = setTimeout(finish, deps.maxStreamMs ?? 5 * 60_000)
-      lifetime.unref()
+        raw.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache, no-transform',
+          connection: 'close',
+          'x-accel-buffering': 'no',
+        })
+        raw.write('retry: 3000\n\n')
 
-      openStreams.add(finish)
-      raw.once('close', finish)
-      request.raw.once('close', finish)
+        let closed = false
+        let unsubscribe: (() => void) | undefined
 
-      const send = (event: RecognitionEvent) => {
-        if (closed) return
-        raw.write(encode(event))
-        if (event.event === 'done' || event.event === 'failed') finish()
-      }
+        const finish = () => {
+          if (closed) return
+          closed = true
+          clearInterval(heartbeat)
+          clearTimeout(lifetime)
+          openStreams.delete(finish)
+          unsubscribe?.()
+          raw.end()
+        }
+        const heartbeat = setInterval(() => {
+          if (closed) return
+          if (raw.writableLength > maxPendingBytes) {
+            raw.destroy()
+            finish()
+            return
+          }
+          raw.write(': ping\n\n')
+        }, deps.heartbeatMs ?? 15_000)
+        heartbeat.unref()
+        const lifetime = setTimeout(finish, deps.maxStreamMs ?? 5 * 60_000)
+        lifetime.unref()
 
-      try {
-        const finished = record.status === 'done' || record.status === 'failed'
-        if (!finished || deps.hub.hasHistory(id)) {
+        openStreams.add(finish)
+        raw.once('close', finish)
+        request.raw.once('close', finish)
+
+        const send = (event: RecognitionEvent) => {
+          if (closed) return
+          raw.write(encode(event))
+          if (event.event === 'done' || event.event === 'failed') finish()
+        }
+
+        try {
+          const hasHistory = deps.hub.hasHistory(id)
+          const finished = record.status === 'done' || record.status === 'failed'
+          if (finished && !hasHistory) {
+            for (const event of await replayEvents(deps.db, record)) send(event)
+            return
+          }
+          if (!hasHistory) send({ event: 'progress', data: { status: record.status } })
           const stop = deps.hub.subscribe(id, send)
           unsubscribe = stop
           if (closed) stop()
-          return
+        } catch (error) {
+          request.log.error(error)
+          send(failureEvent('save_failed'))
+          finish()
         }
-
-        if (record.status === 'failed') {
-          const parsed = recognitionFailureCodeSchema.safeParse(record.errorCode)
-          const code = parsed.success ? parsed.data : 'read_failed'
-          send({ event: 'failed', data: { code, message: record.errorMessage ?? failureMessages[code] } })
-          return
-        }
-
-        const transcription = record.transcriptionId
-          ? await loadTranscription(deps.db, record.transcriptionId)
-          : undefined
-        if (!transcription) {
-          send({ event: 'failed', data: { code: 'save_failed', message: failureMessages.save_failed } })
-          return
-        }
-        for (const line of transcription.lines) send({ event: 'line', data: { line } })
-        send({ event: 'done', data: { transcriptionId: transcription.id } })
-      } catch (error) {
-        request.log.error(error)
-        send({ event: 'failed', data: { code: 'save_failed', message: failureMessages.save_failed } })
-        finish()
-      }
-    })
+      },
+    )
   }

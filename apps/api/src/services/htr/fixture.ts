@@ -38,6 +38,5 @@ const demonstration = htrVisionOutputSchema.parse({
 
 export const createFixtureReader = (): HtrReader => ({
   kind: 'fixture',
-  name: 'fixture',
-  read: async () => visionToLines(demonstration),
+  read: async () => ({ lines: visionToLines(demonstration), reader: 'fixture' }),
 })

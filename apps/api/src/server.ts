@@ -9,7 +9,7 @@ import { selectHtrReader } from './services/htr/index.ts'
 import { passthroughNormalizer } from './services/normalize.ts'
 
 const drainTimeoutMs = 10_000
-const exitTimeoutMs = 15_000
+const exitTimeoutMs = 20_000
 
 const readConfig = (): Config => {
   try {
@@ -65,8 +65,12 @@ const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down')
   setTimeout(() => process.exit(1), exitTimeoutMs).unref()
   try {
+    queue.stop()
     await app.close()
-    await Promise.race([queue.onIdle(), new Promise((resolve) => setTimeout(resolve, drainTimeoutMs))])
+    await Promise.race([
+      queue.onIdle(),
+      new Promise((resolve) => setTimeout(resolve, drainTimeoutMs)),
+    ])
     await client.end({ timeout: 5 })
     process.exit(0)
   } catch (error) {

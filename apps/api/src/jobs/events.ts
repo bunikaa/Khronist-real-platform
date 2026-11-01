@@ -1,6 +1,6 @@
 import type { RecognitionEvent } from '@khronist/contracts'
 
-export type EventListener = (event: RecognitionEvent) => void
+type EventListener = (event: RecognitionEvent) => void
 
 export type EventHub = {
   publish: (recognitionId: string, event: RecognitionEvent) => void

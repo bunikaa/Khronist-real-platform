@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { llmStatus, loadConfig } from '../src/config.ts'
+import { llmStatus, loadConfig, loadDatabaseUrl } from '../src/config.ts'
 
 const base = { DATABASE_URL: 'postgres://u:p@localhost:5432/db' }
 
@@ -27,6 +27,21 @@ describe('loadConfig', () => {
   })
 })
 
+describe('loadDatabaseUrl', () => {
+  it('needs only the database url, so a migration does not depend on model settings', () => {
+    expect(loadDatabaseUrl({ ...base, HTR_MODEL_FALLBACK: 'gemini-x' })).toBe(base.DATABASE_URL)
+    expect(() => loadDatabaseUrl({})).toThrow(/DATABASE_URL/)
+  })
+})
+
+describe('remote reader', () => {
+  it('refuses HTR_URL until the remote reader exists, so it cannot look switched on', () => {
+    expect(() => loadConfig({ ...base, HTR_URL: 'https://htr.example/recognize' })).toThrow(
+      /HTR_URL/,
+    )
+  })
+})
+
 describe('llmStatus', () => {
   it('is ok when the API key is set', () => {
     expect(llmStatus(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }))).toBe('ok')
@@ -34,6 +49,12 @@ describe('llmStatus', () => {
 
   it('is degraded without a key', () => {
     expect(llmStatus(loadConfig(base))).toBe('degraded')
+  })
+
+  it('looks at the key of the primary model, not always at the same provider', () => {
+    const gemini = { ...base, HTR_MODEL_PRIMARY: 'gemini-x' }
+    expect(llmStatus(loadConfig({ ...gemini, GOOGLE_API_KEY: 'g' }))).toBe('ok')
+    expect(llmStatus(loadConfig({ ...gemini, ANTHROPIC_API_KEY: 'a' }))).toBe('degraded')
   })
 })
 
@@ -56,11 +77,15 @@ describe('job settings', () => {
 
 describe('production safety', () => {
   it('refuses fixtures in production', () => {
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', LLM_FIXTURES: '1' })).toThrow(/LLM_FIXTURES/)
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', LLM_FIXTURES: '1' })).toThrow(
+      /LLM_FIXTURES/,
+    )
   })
 
   it('allows fixtures outside production and production without them', () => {
-    expect(loadConfig({ ...base, NODE_ENV: 'development', LLM_FIXTURES: '1' }).LLM_FIXTURES).toBe(true)
+    expect(loadConfig({ ...base, NODE_ENV: 'development', LLM_FIXTURES: '1' }).LLM_FIXTURES).toBe(
+      true,
+    )
     expect(loadConfig({ ...base, NODE_ENV: 'production' }).LLM_FIXTURES).toBe(false)
   })
 

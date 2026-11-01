@@ -24,7 +24,7 @@ git switch -c feat/short-name
 | ------------- | ------------------------------------------ | -------------------------------- |
 | перед комітом | `pnpm lint`, `pnpm typecheck`, `pnpm test` | локально, `.githooks/pre-commit` |
 | перед пушем   | заборона прямого пушу в `main`             | локально, `.githooks/pre-push`   |
-| на кожному PR | `pnpm lint`, `pnpm typecheck`, `pnpm test` | GitHub Actions, задача `check`   |
+| на кожному PR | те саме й `pnpm format:check`; міграції та запуск на справжньому PostgreSQL | GitHub Actions, задачі `check` і `runtime` |
 
 Хуки вмикає `pnpm install`. Перевірка: `git config core.hooksPath` має вивести `.githooks`.
 
@@ -55,8 +55,7 @@ git switch -c feat/short-name
 | порт 5432 зайнятий, контейнер не стартує                  | працює інший PostgreSQL                              | зупинити його                                                                 |
 | `/health` повертає 503 і `db: "down"`                     | база не запущена або неправильний `DATABASE_URL`     | `docker compose -f infra/docker-compose.yml up -d`, перевірити `.env`         |
 | помилка про відсутню таблицю                              | не застосовані міграції                              | `pnpm db:migrate`                                                             |
-| помилка про `pg_trgm` на наявній базі                     | `infra/init.sql` виконується лише на порожньому томі | `docker compose -f infra/docker-compose.yml down -v`, це стирає локальні дані |
-| нові фрагменти дають 503, `htr: "down"`                   | немає ні `LLM_FIXTURES=1`, ні `ANTHROPIC_API_KEY`    | задати одне з двох у `.env`                                                   |
+| нові фрагменти дають 503, `htr: "down"` | немає `LLM_FIXTURES=1` і ключа моделі | задати `LLM_FIXTURES=1` або ключ у `.env` |
 | коміт проходить без перевірок                             | хуки не ввімкнені                                    | `pnpm install`, перевірити `git config core.hooksPath`                        |
 | `uv` або `gh` не знайдено одразу після встановлення       | термінал не бачить новий `PATH`                      | перезапустити термінал і редактор                                             |
 | `gh` пише `The token in GITHUB_TOKEN is invalid`          | у системі задано застарілий токен                    | видалити змінну `GITHUB_TOKEN`, виконати `gh auth login`                      |

@@ -1,15 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { z } from 'zod'
-import { LlmOutputError, parseOutput, type LlmProvider, type LlmRequest } from './index.ts'
-
-export type LlmEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+import type { Config } from '../../config.ts'
+import { parseOutput, toJsonSchema, type LlmProvider, type LlmRequest } from './index.ts'
 
 export type AnthropicMessages = Pick<Anthropic['beta']['messages'], 'create'>
 
-export type AnthropicOptions = {
+type AnthropicOptions = {
   messages: AnthropicMessages
   model: string
-  effort: LlmEffort
+  effort: Config['HTR_EFFORT']
 }
 
 export const createAnthropicMessages = (apiKey: string): AnthropicMessages =>
@@ -25,10 +23,21 @@ const toContent = <T>(request: LlmRequest<T>): Anthropic.Beta.BetaContentBlockPa
       : { type: 'text', text: part.text },
   )
 
+const answerText = (content: Anthropic.Beta.BetaContentBlock[]): string => {
+  const handover = content.findLastIndex((block) => block.type === 'fallback')
+  return content
+    .slice(handover + 1)
+    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('')
+}
+
+const servedBy = (message: Anthropic.Beta.BetaMessage): string =>
+  message.usage.iterations?.findLast((step) => step.type === 'fallback_message')?.model ??
+  message.model
+
 export const createAnthropicProvider = (options: AnthropicOptions): LlmProvider => ({
   name: options.model,
   complete: async (request) => {
-    const { $schema: _, ...schema } = z.toJSONSchema(request.schema, { io: 'output' })
     const message = await options.messages.create(
       {
         model: options.model,
@@ -38,20 +47,18 @@ export const createAnthropicProvider = (options: AnthropicOptions): LlmProvider 
         fallbacks: 'default',
         output_config: {
           effort: options.effort,
-          format: { type: 'json_schema', schema },
+          format: { type: 'json_schema', schema: toJsonSchema(request.schema) },
         },
         messages: [{ role: 'user', content: toContent(request) }],
       },
       { signal: request.signal },
     )
-    if (message.stop_reason === 'refusal') throw new Error(`the model declined: ${options.model}`)
     if (message.stop_reason !== 'end_turn') {
-      throw new LlmOutputError(`the model stopped early: ${message.stop_reason}`)
+      throw new Error(`the model stopped early: ${message.stop_reason}`)
     }
-    const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
     return {
-      value: parseOutput(text, request.schema),
-      model: message.model,
+      value: parseOutput(answerText(message.content), request.schema),
+      model: servedBy(message),
       usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens },
     }
   },

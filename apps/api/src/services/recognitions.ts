@@ -1,30 +1,26 @@
-import {
-  recognitionFailureCodeSchema,
-  type Box,
-  type CreateRecognitionRequest,
-  type CreateRecognitionResponse,
-  type RecognitionState,
-  type Shelfmark,
-  type Transcription,
+import type {
+  Box,
+  CreateRecognitionRequest,
+  CreateRecognitionResponse,
+  RecognitionEvent,
+  RecognitionState,
+  Shelfmark,
 } from '@khronist/contracts'
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
-import { z } from 'zod'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { Database } from '../db/client.ts'
 import {
+  activeRecognitionStatuses,
   documents,
-  entities,
-  lineWords,
   pages,
   recognitions,
   regions,
-  transcriptionLines,
   transcriptions,
-  user,
 } from '../db/schema.ts'
 import {
-  activeStatuses,
   failStaleRecognitions,
-  failureMessages,
+  failureEvent,
+  failureOf,
+  markFailed,
   runRecognition,
   type JobLogger,
 } from '../jobs/recognize.ts'
@@ -34,6 +30,7 @@ import { ApiError, isUniqueViolation } from '../lib/errors.ts'
 import { decodePng } from '../lib/image.ts'
 import type { HtrReader } from './htr/index.ts'
 import type { Normalizer } from './normalize.ts'
+import { loadTranscription } from './transcriptions.ts'
 
 export type RecognitionDeps = {
   db: Database
@@ -148,7 +145,12 @@ const findActiveRecognition = async (db: Database, regionId: string) => {
   const [active] = await db
     .select({ id: recognitions.id })
     .from(recognitions)
-    .where(and(eq(recognitions.regionId, regionId), inArray(recognitions.status, [...activeStatuses])))
+    .where(
+      and(
+        eq(recognitions.regionId, regionId),
+        inArray(recognitions.status, [...activeRecognitionStatuses]),
+      ),
+    )
     .limit(1)
   return active
 }
@@ -223,134 +225,31 @@ export const createRecognition = async (
     throw error
   }
 
-  const finishedMeanwhile = await findLatestTranscription(db, region.id)
-  if (finishedMeanwhile) {
+  try {
+    const finishedMeanwhile = await findLatestTranscription(db, region.id)
+    if (finishedMeanwhile) {
+      await db
+        .update(recognitions)
+        .set({ status: 'done', transcriptionId: finishedMeanwhile.id, finishedAt: new Date() })
+        .where(and(eq(recognitions.id, recognitionId), eq(recognitions.status, 'queued')))
+      queue.release()
+      return { recognitionId, status: 'cached', transcriptionId: finishedMeanwhile.id }
+    }
+  } catch (error) {
     queue.release()
-    await db
-      .update(recognitions)
-      .set({ status: 'done', transcriptionId: finishedMeanwhile.id, finishedAt: new Date() })
-      .where(and(eq(recognitions.id, recognitionId), eq(recognitions.status, 'queued')))
-    return { recognitionId, status: 'cached', transcriptionId: finishedMeanwhile.id }
+    await markFailed(db, recognitionId, 'read_failed').catch((markError: unknown) =>
+      deps.log.error({ err: markError, recognitionId }, 'could not record the failure'),
+    )
+    throw error
   }
 
-  const job = { recognitionId, image: image.bytes, hints: request.hints }
   queue.add(() =>
     runRecognition(
-      {
-        db,
-        reader,
-        normalizer: deps.normalizer,
-        hub: deps.hub,
-        log: deps.log,
-        ...(deps.readTimeoutMs !== undefined && { readTimeoutMs: deps.readTimeoutMs }),
-        ...(deps.normalizeTimeoutMs !== undefined && { normalizeTimeoutMs: deps.normalizeTimeoutMs }),
-      },
-      job,
+      { ...deps, reader },
+      { recognitionId, image: image.bytes, hints: request.hints },
     ),
   )
   return { recognitionId, status: 'queued' }
-}
-
-export const loadTranscription = async (
-  db: Database,
-  transcriptionId: string,
-): Promise<Transcription | undefined> => {
-  const [t] = await db.select().from(transcriptions).where(eq(transcriptions.id, transcriptionId)).limit(1)
-  if (!t) return undefined
-
-  const [region] = await db.select().from(regions).where(eq(regions.id, t.regionId)).limit(1)
-  if (!region) return undefined
-
-  const lineRows = await db
-    .select()
-    .from(transcriptionLines)
-    .where(eq(transcriptionLines.transcriptionId, t.id))
-    .orderBy(asc(transcriptionLines.idx))
-  const wordRows =
-    lineRows.length === 0
-      ? []
-      : await db
-          .select()
-          .from(lineWords)
-          .where(inArray(lineWords.lineId, lineRows.map((line) => line.id)))
-          .orderBy(asc(lineWords.idx))
-  const entityRows = await db.select().from(entities).where(eq(entities.transcriptionId, t.id))
-
-  let shelfmark: Shelfmark | undefined
-  if (region.pageId) {
-    const [row] = await db
-      .select({ page: pages, document: documents })
-      .from(pages)
-      .innerJoin(documents, eq(pages.documentId, documents.id))
-      .where(eq(pages.id, region.pageId))
-      .limit(1)
-    if (row) {
-      shelfmark = {
-        archive: row.document.archive,
-        fond: row.document.fond,
-        opys: row.document.opys,
-        sprava: row.document.sprava,
-        ...(row.page.folio !== null && { folio: row.page.folio }),
-        ...(row.page.imageNo !== null && { image: row.page.imageNo }),
-        ...(row.document.portal !== null && { portal: row.document.portal }),
-        ...(row.page.sourceUrl !== null && { portalUrl: row.page.sourceUrl }),
-      }
-    }
-  }
-
-  const nameOf = async (userId: string | null) => {
-    if (!userId) return undefined
-    const [row] = await db.select({ name: user.name }).from(user).where(eq(user.id, userId)).limit(1)
-    return row ? { name: row.name } : undefined
-  }
-  const author = await nameOf(t.authorId)
-  const verifiedBy = await nameOf(t.verifiedBy)
-
-  const extraSchema = z.record(z.string(), z.unknown())
-
-  return {
-    id: t.id,
-    regionId: t.regionId,
-    ...(shelfmark && { shelfmark }),
-    box: { x: region.x, y: region.y, w: region.w, h: region.h },
-    version: t.version,
-    status: t.status,
-    lines: lineRows.map((line) => {
-      const words = wordRows
-        .filter((word) => word.lineId === line.id)
-        .map((word) => ({
-          text: word.text,
-          uncertain: word.uncertain,
-          ...(word.confidence !== null && { confidence: word.confidence }),
-        }))
-      return {
-        idx: line.idx,
-        text: line.text,
-        box: { x: line.x, y: line.y, w: line.w, h: line.h },
-        boxSource: line.boxSource,
-        uncertain: words.some((word) => word.uncertain),
-        words,
-      }
-    }),
-    normalizedText: t.normalizedText,
-    entities: entityRows.map((entity) => {
-      const extra = extraSchema.safeParse(entity.extra)
-      return {
-        type: entity.type,
-        text: entity.text,
-        start: entity.startPos,
-        end: entity.endPos,
-        ...(entity.normalized !== null && { normalized: entity.normalized }),
-        ...(entity.wikidataId !== null && { wikidataId: entity.wikidataId }),
-        ...(extra.success && { extra: extra.data }),
-      }
-    }),
-    reader: t.reader,
-    ...(author && { author }),
-    ...(verifiedBy && { verifiedBy }),
-    ...(t.verifiedAt && { verifiedAt: t.verifiedAt.toISOString() }),
-    createdAt: t.createdAt.toISOString(),
-  }
 }
 
 export const findRecognition = async (db: Database, id: string) => {
@@ -364,15 +263,30 @@ export const getRecognitionState = async (
 ): Promise<RecognitionState | undefined> => {
   const row = await findRecognition(db, id)
   if (!row) return undefined
-  const transcription = row.transcriptionId ? await loadTranscription(db, row.transcriptionId) : undefined
-  const parsedCode = recognitionFailureCodeSchema.safeParse(row.errorCode)
-  const code = parsedCode.success ? parsedCode.data : 'read_failed'
+  const transcription = row.transcriptionId
+    ? await loadTranscription(db, row.transcriptionId)
+    : undefined
   return {
     recognitionId: row.id,
     status: row.status,
     ...(transcription && { transcription }),
-    ...(row.status === 'failed' && {
-      error: { code, message: row.errorMessage ?? failureMessages[code] },
-    }),
+    ...(row.status === 'failed' && { error: failureOf(row) }),
   }
+}
+
+type RecognitionRow = NonNullable<Awaited<ReturnType<typeof findRecognition>>>
+
+export const replayEvents = async (
+  db: Database,
+  row: RecognitionRow,
+): Promise<RecognitionEvent[]> => {
+  if (row.status === 'failed') return [{ event: 'failed', data: failureOf(row) }]
+  const transcription = row.transcriptionId
+    ? await loadTranscription(db, row.transcriptionId)
+    : undefined
+  if (!transcription) return [failureEvent('save_failed')]
+  return [
+    ...transcription.lines.map((line): RecognitionEvent => ({ event: 'line', data: { line } })),
+    { event: 'done', data: { transcriptionId: transcription.id } },
+  ]
 }

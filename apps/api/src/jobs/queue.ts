@@ -6,9 +6,13 @@ export type JobQueue = {
   add: (job: () => Promise<void>) => void
   onIdle: () => Promise<void>
   backlog: () => number
+  stop: () => void
 }
 
-export const createJobQueue = (concurrency: number, onError: (error: unknown) => void): JobQueue => {
+export const createJobQueue = (
+  concurrency: number,
+  onError: (error: unknown) => void,
+): JobQueue => {
   const queue = new PQueue({ concurrency })
   let held = 0
   const release = () => {
@@ -34,5 +38,9 @@ export const createJobQueue = (concurrency: number, onError: (error: unknown) =>
     },
     onIdle: () => queue.onIdle(),
     backlog: () => held,
+    stop: () => {
+      queue.pause()
+      queue.clear()
+    },
   }
 }

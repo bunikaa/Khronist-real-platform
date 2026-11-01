@@ -1,7 +1,7 @@
 import { healthResponseSchema } from '@khronist/contracts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { ProviderStatus } from '../config.ts'
-import { withTimeout } from '../lib/timeout.ts'
+import { runWithTimeout } from '../lib/timeout.ts'
 
 export type HealthDeps = {
   checkDb: () => Promise<boolean>
@@ -16,10 +16,11 @@ export const healthRoutes =
       '/health',
       { schema: { response: { 200: healthResponseSchema, 503: healthResponseSchema } } },
       async (_request, reply) => {
-        const dbUp = await withTimeout(deps.checkDb(), deps.dbTimeoutMs ?? 2000, 'database check').then(
-          (ok) => ok,
-          () => false,
-        )
+        const dbUp = await runWithTimeout(
+          deps.checkDb,
+          deps.dbTimeoutMs ?? 2000,
+          'database check',
+        ).catch(() => false)
         if (!dbUp) reply.code(503)
         return {
           ok: dbUp,

@@ -31,7 +31,11 @@ const id = () =>
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 
-const activeStatuses = sql`('queued', 'reading', 'normalizing')`
+export const activeRecognitionStatuses = ['queued', 'reading', 'normalizing'] as const
+
+const activeStatuses = sql.raw(
+  `(${activeRecognitionStatuses.map((status) => `'${status}'`).join(', ')})`,
+)
 
 export const portalEnum = pgEnum('portal', ['archium', 'own'])
 export const recognitionStatusEnum = pgEnum('recognition_status', [
@@ -132,9 +136,7 @@ export const documents = pgTable(
     fond: text('fond').notNull(),
     opys: text('opys').notNull(),
     sprava: text('sprava').notNull(),
-    title: text('title'),
     portal: portalEnum('portal'),
-    portalUrl: text('portal_url'),
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
@@ -151,9 +153,6 @@ export const pages = pgTable(
     folio: text('folio'),
     imageNo: integer('image_no'),
     sourceUrl: text('source_url'),
-    imageHash: text('image_hash'),
-    width: integer('width'),
-    height: integer('height'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -235,7 +234,9 @@ export const recognitions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index('recognitions_active_status_idx').on(t.status).where(sql`${t.status} in ${activeStatuses}`),
+    index('recognitions_active_status_idx')
+      .on(t.status)
+      .where(sql`${t.status} in ${activeStatuses}`),
     index('recognitions_region_idx').on(t.regionId),
     uniqueIndex('recognitions_one_active_per_region')
       .on(t.regionId)
@@ -258,17 +259,12 @@ export const transcriptionLines = pgTable(
     w: doublePrecision('w').notNull(),
     h: doublePrecision('h').notNull(),
     boxSource: boxSourceEnum('box_source').notNull(),
-    confidence: real('confidence'),
   },
   (t) => [
     unique('transcription_lines_idx_unique').on(t.transcriptionId, t.idx),
     check(
       'transcription_lines_box',
       sql`${t.x} >= 0 and ${t.y} >= 0 and ${t.w} > 0 and ${t.h} > 0 and ${t.x} + ${t.w} <= 1.000001 and ${t.y} + ${t.h} <= 1.000001`,
-    ),
-    check(
-      'transcription_lines_confidence',
-      sql`${t.confidence} is null or ${t.confidence} between 0 and 1`,
     ),
   ],
 )

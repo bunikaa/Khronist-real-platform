@@ -10,15 +10,26 @@ export class ApiError extends Error {
   }
 }
 
-const pgCode = (error: unknown): string | undefined => {
+type PgViolation = { code: string; constraint: string | undefined }
+
+export const findPgViolation = (error: unknown): PgViolation | undefined => {
   let current: unknown = error
   while (current instanceof Error) {
-    if ('code' in current && typeof current.code === 'string' && /^[0-9A-Z]{5}$/.test(current.code)) {
-      return current.code
+    if (
+      'code' in current &&
+      typeof current.code === 'string' &&
+      /^[0-9A-Z]{5}$/.test(current.code)
+    ) {
+      const constraint =
+        'constraint' in current && typeof current.constraint === 'string'
+          ? current.constraint
+          : undefined
+      return { code: current.code, constraint }
     }
     current = current.cause
   }
   return undefined
 }
 
-export const isUniqueViolation = (error: unknown): boolean => pgCode(error) === '23505'
+export const isUniqueViolation = (error: unknown): boolean =>
+  findPgViolation(error)?.code === '23505'
