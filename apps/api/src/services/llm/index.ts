@@ -27,6 +27,20 @@ export class LlmOutputError extends Error {
   }
 }
 
+export const parseOutput = <T>(text: string, schema: z.ZodType<T>): T => {
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch (error) {
+    throw new LlmOutputError('the model did not return JSON', { cause: error })
+  }
+  const parsed = schema.safeParse(json)
+  if (!parsed.success) {
+    throw new LlmOutputError('the model output does not match the schema', { cause: parsed.error })
+  }
+  return parsed.data
+}
+
 export type LlmFailureLog = (details: { provider: string; err: unknown }, message: string) => void
 
 const retryInvalidOutput = async <T>(

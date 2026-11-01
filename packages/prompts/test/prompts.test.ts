@@ -1,7 +1,7 @@
 import { htrVisionOutputSchema } from '@khronist/contracts'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { loadPrompt, renderPrompt } from '../src/index.ts'
+import { loadPrompt, loadProviderNotes, renderPrompt } from '../src/index.ts'
 
 describe('htr_vision', () => {
   const prompt = loadPrompt('htr_vision')
@@ -14,6 +14,12 @@ describe('htr_vision', () => {
   it('keeps schema.json equal to the contract', () => {
     const { $schema: _, ...contract } = z.toJSONSchema(htrVisionOutputSchema, { io: 'output' })
     expect(prompt.schema).toEqual(contract)
+  })
+
+  it('keeps provider notes out of the shared prompt', () => {
+    const notes = loadProviderNotes('htr_vision', 'gemini')
+    expect(notes).toContain('[нрзб]')
+    expect(prompt.system).not.toContain(notes)
   })
 
   it('has a value for every template variable', () => {
