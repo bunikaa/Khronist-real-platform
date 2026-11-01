@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
-const claudeModel = z.string().regex(/^claude-/, 'only Claude models are connected so far')
+const readerModel = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
 const corsOrigins = z
   .string()
   .transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean))
@@ -28,8 +28,9 @@ const configSchema = z
     JOBS_CONCURRENCY: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(32).default(4)),
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, claudeModel.default('claude-sonnet-5-5')),
-    HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, claudeModel.optional()),
+    GOOGLE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, readerModel.default('claude-sonnet-5-5')),
+    HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, readerModel.optional()),
     HTR_EFFORT: z.preprocess(
       emptyToUndefined,
       z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
@@ -40,6 +41,14 @@ const configSchema = z
     message: 'LLM_FIXTURES must not be enabled in production',
     path: ['LLM_FIXTURES'],
   })
+  .refine(
+    (config) => {
+      const model = config.HTR_MODEL_FALLBACK
+      if (model === undefined) return true
+      return model.startsWith('gemini-') ? config.GOOGLE_API_KEY !== undefined : config.ANTHROPIC_API_KEY !== undefined
+    },
+    { message: 'the fallback model has no API key', path: ['HTR_MODEL_FALLBACK'] },
+  )
 
 export type Config = z.infer<typeof configSchema>
 

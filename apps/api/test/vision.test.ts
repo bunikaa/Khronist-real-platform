@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.ts'
 import { selectHtrReader } from '../src/services/htr/index.ts'
 import { createVisionReader } from '../src/services/htr/vision.ts'
 import { createAnthropicProvider, type AnthropicMessages } from '../src/services/llm/anthropic.ts'
+import { createGeminiProvider, type GeminiInteractions } from '../src/services/llm/gemini.ts'
 import { LlmOutputError, withFallback, type LlmProvider } from '../src/services/llm/index.ts'
 
 const output = {
@@ -150,6 +151,63 @@ describe('reader selection', () => {
   })
 
   it('refuses a model that has no connected provider', () => {
-    expect(() => loadConfig({ ...base, HTR_MODEL_FALLBACK: 'gemini-x' })).toThrow(/HTR_MODEL_FALLBACK/)
+    expect(() => loadConfig({ ...base, HTR_MODEL_FALLBACK: 'gpt-x' })).toThrow(/HTR_MODEL_FALLBACK/)
+  })
+
+  it('refuses a fallback without its key, so it cannot look like a working safety net', () => {
+    expect(() => loadConfig({ ...base, ANTHROPIC_API_KEY: 'k', HTR_MODEL_FALLBACK: 'gemini-x' })).toThrow(
+      /HTR_MODEL_FALLBACK/,
+    )
+  })
+
+  it('keeps Claude first and reads through the fallback alone when only its key is set', () => {
+    const both = { ...base, ANTHROPIC_API_KEY: 'a', GOOGLE_API_KEY: 'g', HTR_MODEL_FALLBACK: 'gemini-x' }
+    expect(selectHtrReader(loadConfig(both), logs)?.name).toBe('claude-sonnet-5-5')
+    const onlyGoogle = { ...base, GOOGLE_API_KEY: 'g', HTR_MODEL_FALLBACK: 'gemini-x' }
+    expect(selectHtrReader(loadConfig(onlyGoogle), logs)?.name).toBe('gemini-x')
+  })
+})
+
+describe('gemini provider', () => {
+  const completed = (text: string | undefined, status = 'completed') => ({
+    status,
+    output_text: text,
+    usage: { total_input_tokens: 10, total_output_tokens: 20, total_thought_tokens: 5 },
+  })
+  const fakeInteractions = (reply: unknown) => {
+    const create = vi.fn().mockResolvedValue(reply)
+    return { create, interactions: { create } as unknown as GeminiInteractions }
+  }
+  const provider = (interactions: GeminiInteractions, notes?: string) =>
+    createGeminiProvider({ interactions, model: 'gemini-test', thinkingLevel: 'low', notes })
+
+  it('sends the image, schema, notes and abort signal without hidden retries', async () => {
+    const { create, interactions } = fakeInteractions(completed('{"a":1}'))
+    const signal = new AbortController().signal
+    const image = { type: 'image', mediaType: 'image/png', base64: 'AAA' } as const
+    const result = await provider(interactions, 'notes').complete({ ...request, content: [image], signal })
+
+    expect(result).toEqual({ value: { a: 1 }, model: 'gemini-test', usage: { inputTokens: 10, outputTokens: 25 } })
+    const [body, options] = create.mock.calls[0] ?? []
+    expect(body.system_instruction).toBe('s\n\nnotes')
+    expect(body.store).toBe(false)
+    expect(body.input).toEqual([{ type: 'image', data: 'AAA', mime_type: 'image/png' }])
+    expect(body.generation_config).toEqual({ max_output_tokens: 10, thinking_level: 'low' })
+    expect(body.response_format.schema.required).toEqual(['a'])
+    expect(body.response_format.schema.$schema).toBeUndefined()
+    expect(options).toEqual({ signal, retries: { strategy: 'none' } })
+  })
+
+  it('reports invalid JSON, a wrong shape, no text and a cut-off answer as output errors', async () => {
+    const replies = [
+      completed('not json'),
+      completed('{"a":"x"}'),
+      completed(undefined),
+      completed('{"a":1}', 'incomplete'),
+    ]
+    for (const bad of replies) {
+      const { interactions } = fakeInteractions(bad)
+      await expect(provider(interactions).complete(request)).rejects.toBeInstanceOf(LlmOutputError)
+    }
   })
 })

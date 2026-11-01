@@ -17,6 +17,9 @@ export const loadPrompt = (name: PromptName): Prompt => ({
   schema: JSON.parse(read(`${name}/schema.json`)),
 })
 
+export const loadProviderNotes = (name: PromptName, provider: 'gemini'): string =>
+  read(`${name}/${provider}.md`)
+
 export const renderPrompt = (template: string, values: Record<string, string>): string =>
   template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
     const value = values[key]

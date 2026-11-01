@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
-import { LlmOutputError, type LlmProvider, type LlmRequest } from './index.ts'
+import { LlmOutputError, parseOutput, type LlmProvider, type LlmRequest } from './index.ts'
 
 export type LlmEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -24,20 +24,6 @@ const toContent = <T>(request: LlmRequest<T>): Anthropic.Beta.BetaContentBlockPa
         }
       : { type: 'text', text: part.text },
   )
-
-const parseOutput = <T>(text: string, schema: z.ZodType<T>): T => {
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch (error) {
-    throw new LlmOutputError('the model did not return JSON', { cause: error })
-  }
-  const parsed = schema.safeParse(json)
-  if (!parsed.success) {
-    throw new LlmOutputError('the model output does not match the schema', { cause: parsed.error })
-  }
-  return parsed.data
-}
 
 export const createAnthropicProvider = (options: AnthropicOptions): LlmProvider => ({
   name: options.model,
