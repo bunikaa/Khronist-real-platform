@@ -22,7 +22,10 @@ const readConfig = (): Config => {
 
 const config = readConfig()
 const { db, client } = createDatabase(config.DATABASE_URL)
-const reader = selectHtrReader(config)
+const reader = selectHtrReader(config, {
+  onRead: (details) => app.log.info(details, 'fragment read'),
+  onFailure: (details, message) => app.log.warn(details, message),
+})
 const hub = createEventHub()
 const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
 

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { ApiError } from './errors.ts'
 
-export const maxImageBytes = 8 * 1024 * 1024
-export const maxImageSide = 12000
+export const maxImageBytes = 7 * 1024 * 1024
+export const maxImageSide = 8000
 export const maxImagePixels = 50_000_000
 const maxBase64Length = Math.ceil(maxImageBytes / 3) * 4 + 8
 
