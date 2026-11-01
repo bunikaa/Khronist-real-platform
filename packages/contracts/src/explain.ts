@@ -24,9 +24,7 @@ export const explainResponseSchema = z.object({
 export type ExplainResponse = z.infer<typeof explainResponseSchema>
 
 export const chatRequestSchema = z.object({
-  messages: z
-    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() }))
-    .min(1),
+  messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).min(1),
   context: z.object({ transcriptionId: z.uuid().optional() }).optional(),
 })
 export type ChatRequest = z.infer<typeof chatRequestSchema>
