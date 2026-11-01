@@ -51,7 +51,7 @@ describe('guest access', () => {
           message: 'Денний ліміт розпізнавань вичерпано, спробуйте завтра',
         },
       })
-      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(3600)
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(86_000)
       expect(recording.inputs).toHaveLength(2)
     })
 
@@ -123,6 +123,17 @@ describe('guest access', () => {
       expect(res.headers['access-control-allow-origin']).toBe(origin)
       expect(res.headers['access-control-allow-credentials']).toBe('true')
       expect(res.headers['access-control-allow-headers']).toContain('content-type')
+    })
+
+    it('allows the methods that editing and deleting will need', async () => {
+      const { app } = await start({ corsOrigins: [origin] })
+      const res = await app.inject({
+        method: 'OPTIONS',
+        url: '/v1/transcriptions/any/lines',
+        headers: { origin, 'access-control-request-method': 'PATCH' },
+      })
+      expect(res.headers['access-control-allow-methods']).toContain('PATCH')
+      expect(res.headers['access-control-allow-methods']).toContain('DELETE')
     })
 
     it('gives an unknown origin no permission', async () => {

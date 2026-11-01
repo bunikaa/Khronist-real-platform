@@ -46,6 +46,7 @@ pnpm dev
 | `pnpm typecheck`   | перевіряє типи                        |
 | `pnpm test`        | запускає тести, Docker не потрібен    |
 | `pnpm format`      | форматує код через Prettier           |
+| `pnpm format:check` | перевіряє форматування                |
 | `pnpm db:generate` | створює міграцію зі змін у схемі      |
 | `pnpm db:migrate`  | застосовує міграції                   |
 

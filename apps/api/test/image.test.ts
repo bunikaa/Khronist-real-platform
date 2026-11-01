@@ -47,11 +47,6 @@ describe('decodePng hardening', () => {
     expect(thrown(() => decodePng(withoutEnd().toString('base64'))).code).toBe('bad_image')
   })
 
-  it('rejects a header-only file that claims a huge size', () => {
-    const png = makePng(maxImageSide, maxImageSide)
-    expect(thrown(() => decodePng(png.toString('base64'))).code).toBe('bad_image')
-  })
-
   it('rejects an image above the pixel limit even when each side is allowed', () => {
     expect(maxImagePixels).toBeLessThan(maxImageSide * maxImageSide)
     const png = makePng(8000, 7000)

@@ -1,3 +1,4 @@
+import type { HealthResponse } from '@khronist/contracts'
 import { z } from 'zod'
 import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 
@@ -12,6 +13,13 @@ const corsOrigins = z
     ),
   )
 
+const databaseUrl = z.string().min(1)
+
+type ProviderKeys = { ANTHROPIC_API_KEY?: string | undefined; GOOGLE_API_KEY?: string | undefined }
+
+export const hasKeyFor = (keys: ProviderKeys, model: string): boolean =>
+  (model.startsWith('gemini-') ? keys.GOOGLE_API_KEY : keys.ANTHROPIC_API_KEY) !== undefined
+
 const configSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -24,7 +32,7 @@ const configSchema = z
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
     ),
-    DATABASE_URL: z.string().min(1),
+    DATABASE_URL: databaseUrl,
     JOBS_CONCURRENCY: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(32).default(4)),
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
@@ -42,13 +50,13 @@ const configSchema = z
     path: ['LLM_FIXTURES'],
   })
   .refine(
-    (config) => {
-      const model = config.HTR_MODEL_FALLBACK
-      if (model === undefined) return true
-      return model.startsWith('gemini-') ? config.GOOGLE_API_KEY !== undefined : config.ANTHROPIC_API_KEY !== undefined
-    },
+    (config) => config.HTR_MODEL_FALLBACK === undefined || hasKeyFor(config, config.HTR_MODEL_FALLBACK),
     { message: 'the fallback model has no API key', path: ['HTR_MODEL_FALLBACK'] },
   )
+  .refine((config) => config.HTR_URL === undefined, {
+    message: 'the remote reader is not implemented yet, leave HTR_URL empty',
+    path: ['HTR_URL'],
+  })
 
 export type Config = z.infer<typeof configSchema>
 
@@ -61,10 +69,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
   return parsed.data
 }
 
-export type ProviderStatus = {
-  llm: 'ok' | 'degraded'
-  htr: 'vision' | 'remote' | 'fixture' | 'down'
+export const loadDatabaseUrl = (env: NodeJS.ProcessEnv = process.env): string => {
+  const parsed = databaseUrl.safeParse(env['DATABASE_URL'])
+  if (!parsed.success) throw new Error('Invalid configuration: DATABASE_URL is required')
+  return parsed.data
 }
 
+export type ProviderStatus = Pick<HealthResponse, 'llm' | 'htr'>
+
 export const llmStatus = (config: Config): ProviderStatus['llm'] =>
-  config.ANTHROPIC_API_KEY !== undefined ? 'ok' : 'degraded'
+  hasKeyFor(config, config.HTR_MODEL_PRIMARY) ? 'ok' : 'degraded'

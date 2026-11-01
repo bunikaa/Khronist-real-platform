@@ -74,6 +74,7 @@ export const buildApp = async (deps: AppDeps) => {
   await app.register(cors, {
     origin: deps.corsOrigins ?? false,
     credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['content-type', 'authorization'],
     exposedHeaders: ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'],
   })

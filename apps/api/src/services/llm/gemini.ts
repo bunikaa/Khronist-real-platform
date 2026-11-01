@@ -1,12 +1,11 @@
 import { GoogleGenAI } from '@google/genai'
-import { z } from 'zod'
-import { LlmOutputError, parseOutput, type LlmProvider, type LlmRequest } from './index.ts'
+import { parseOutput, toJsonSchema, type LlmProvider, type LlmRequest } from './index.ts'
 
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high'
 
 export type GeminiInteractions = Pick<GoogleGenAI['interactions'], 'create'>
 
-export type GeminiOptions = {
+type GeminiOptions = {
   interactions: GeminiInteractions
   model: string
   thinkingLevel: GeminiThinkingLevel
@@ -26,7 +25,6 @@ const toInput = <T>(request: LlmRequest<T>) =>
 export const createGeminiProvider = (options: GeminiOptions): LlmProvider => ({
   name: options.model,
   complete: async (request) => {
-    const { $schema: _, ...schema } = z.toJSONSchema(request.schema, { io: 'output' })
     const interaction = await options.interactions.create(
       {
         model: options.model,
@@ -37,12 +35,12 @@ export const createGeminiProvider = (options: GeminiOptions): LlmProvider => ({
           max_output_tokens: request.maxTokens,
           thinking_level: options.thinkingLevel,
         },
-        response_format: { type: 'text', mime_type: 'application/json', schema },
+        response_format: { type: 'text', mime_type: 'application/json', schema: toJsonSchema(request.schema) },
       },
       { signal: request.signal ?? null, retries: { strategy: 'none' } },
     )
     if (interaction.status !== 'completed') {
-      throw new LlmOutputError(`the model stopped early: ${interaction.status}`)
+      throw new Error(`the model stopped early: ${interaction.status}`)
     }
     return {
       value: parseOutput(interaction.output_text ?? '', request.schema),

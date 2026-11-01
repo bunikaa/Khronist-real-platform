@@ -1,10 +1,5 @@
-import { PGlite } from '@electric-sql/pglite'
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/pglite'
-import { migrate } from 'drizzle-orm/pglite/migrator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { migrationsFolder } from '../src/db/migrate.ts'
 import {
   chunks,
   documents,
@@ -15,28 +10,13 @@ import {
   sources,
   transcriptions,
 } from '../src/db/schema.ts'
+import { findPgViolation } from '../src/lib/errors.ts'
+import { createTestDatabase, type TestDatabase } from './helpers.ts'
 
 let hashCounter = 0
 const uniqueHash = () => {
   hashCounter += 1
   return hashCounter.toString(16).padStart(64, '0')
-}
-
-type PgViolation = { code: string; constraint: string | undefined }
-
-const findViolation = (error: unknown): PgViolation | undefined => {
-  let current: unknown = error
-  while (current instanceof Error) {
-    if ('code' in current && typeof current.code === 'string' && /^[0-9A-Z]{5}$/.test(current.code)) {
-      const constraint =
-        'constraint' in current && typeof current.constraint === 'string'
-          ? current.constraint
-          : undefined
-      return { code: current.code, constraint }
-    }
-    current = current.cause
-  }
-  return undefined
 }
 
 const expectViolation = async (promise: PromiseLike<unknown>, code: string, constraint?: string) => {
@@ -45,22 +25,23 @@ const expectViolation = async (promise: PromiseLike<unknown>, code: string, cons
     (e: unknown) => e ?? new Error('rejected without a reason'),
   )
   expect(error, 'statement should have been rejected').toBeDefined()
-  const violation = findViolation(error)
+  const violation = findPgViolation(error)
   expect(violation?.code).toBe(code)
   if (constraint) expect(violation?.constraint).toBe(constraint)
 }
 
 describe('database schema', () => {
-  const client = new PGlite({ extensions: { pg_trgm } })
-  const db = drizzle(client)
+  let database: TestDatabase
+  let db: TestDatabase['db']
   let counter = 0
 
   beforeAll(async () => {
-    await migrate(db, { migrationsFolder })
+    database = await createTestDatabase()
+    db = database.db
   })
 
   afterAll(async () => {
-    await client.close()
+    await database.client.close()
   })
 
   const makeDocument = async () => {

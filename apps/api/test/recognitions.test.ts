@@ -1,5 +1,6 @@
 import { recognitionEventSchema } from '@khronist/contracts'
 import { and, count, eq, inArray } from 'drizzle-orm'
+import type { RecognitionEvent } from '@khronist/contracts'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { documents, pages, recognitions, regions, transcriptions } from '../src/db/schema.ts'
 import { createEventHub } from '../src/jobs/events.ts'
@@ -355,6 +356,119 @@ describe('recognitions', () => {
     })
   })
 
+  describe('what the job records', () => {
+    const closingNormalizer = (outcome: 'answers' | 'throws') => ({
+      normalize: async () => {
+        await recoverInterruptedRecognitions(database.db)
+        if (outcome === 'throws') throw new Error('boom')
+        return { normalizedText: 'x', entities: [] }
+      },
+    })
+
+    it('saves nothing when the recognition is closed during normalization', async () => {
+      const { app, queue } = await createTestApp(database, { normalizer: closingNormalizer('answers') })
+      const created = await post(app, recognitionBody(nextPng()))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      expect(state.json().status).toBe('failed')
+      expect(state.json().error.code).toBe('restarted')
+      expect(state.json().transcription).toBeUndefined()
+      await app.close()
+    })
+
+    it('keeps the first failure code and tells the stream the same one', async () => {
+      const { app, hub, queue } = await createTestApp(database, { normalizer: closingNormalizer('throws') })
+      const created = await post(app, recognitionBody(nextPng()))
+      const events: RecognitionEvent[] = []
+      hub.subscribe(created.json().recognitionId, (event) => events.push(event))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      expect(state.json().error.code).toBe('restarted')
+      expect(events.at(-1)).toMatchObject({ event: 'failed', data: { code: 'restarted' } })
+      await app.close()
+    })
+
+    it('tells the stream of a stale recognition the code that was stored', async () => {
+      const recorder = createRecordingReader({ gated: true })
+      const { app, hub, queue } = await createTestApp(database, { reader: recorder.reader })
+      const png = nextPng()
+      const stuck = await post(app, recognitionBody(png))
+      await waitUntil(() => recorder.inputs.length === 1)
+      const events: RecognitionEvent[] = []
+      hub.subscribe(stuck.json().recognitionId, (event) => events.push(event))
+      await database.db
+        .update(recognitions)
+        .set({ createdAt: new Date(Date.now() - 60 * 60_000) })
+        .where(eq(recognitions.id, stuck.json().recognitionId))
+      await post(app, recognitionBody(png))
+      recorder.release()
+      await queue.onIdle()
+      expect(events.at(-1)).toMatchObject({ event: 'failed', data: { code: 'read_failed' } })
+      await app.close()
+    })
+
+    it('records the model that actually read the fragment', async () => {
+      const inner = createFixtureReader()
+      const { app, queue } = await createTestApp(database, {
+        reader: { ...inner, read: async (input) => ({ ...(await inner.read(input)), reader: 'gemini-x' }) },
+      })
+      const created = await post(app, recognitionBody(nextPng()))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      expect(state.json().transcription.reader).toBe('gemini-x')
+      await app.close()
+    })
+
+    it('stores entities and returns them', async () => {
+      const entity = {
+        type: 'place',
+        text: 'Борщаговка',
+        start: 0,
+        end: 10,
+        normalized: 'Борщагівка',
+        wikidataId: 'Q1',
+        extra: { modern: 'Київ' },
+      } as const
+      const { app, queue } = await createTestApp(database, {
+        normalizer: { normalize: async () => ({ normalizedText: 'Борщаговка', entities: [entity] }) },
+      })
+      const created = await post(app, recognitionBody(nextPng()))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      expect(state.json().transcription.entities).toEqual([entity])
+      await app.close()
+    })
+
+    it('answers from the cache with the newest version of a region', async () => {
+      const png = nextPng()
+      const { app, hub, queue } = await createTestApp(database)
+      const first = await post(app, recognitionBody(png))
+      await queue.onIdle()
+      const [row] = await database.db
+        .select({ regionId: recognitions.regionId })
+        .from(recognitions)
+        .where(eq(recognitions.id, first.json().recognitionId))
+      const [again] = await database.db
+        .insert(recognitions)
+        .values({ regionId: row?.regionId ?? '', source: 'batch' })
+        .returning()
+      await runRecognition(
+        {
+          db: database.db,
+          reader: createFixtureReader(),
+          normalizer: passthroughNormalizer,
+          hub,
+          log: { error: () => {} },
+        },
+        { recognitionId: again?.id ?? '', image: png },
+      )
+      const cached = await post(app, recognitionBody(png))
+      const state = await get(app, cached.json().recognitionId)
+      expect(state.json().transcription.version).toBe(2)
+      await app.close()
+    })
+  })
+
   describe('validation', () => {
     it('rejects a hash that does not match the image and creates nothing', async () => {
       const { app } = await createTestApp(database)
@@ -407,6 +521,7 @@ describe('recognitions', () => {
         { ...shelfmark, image: 1, portalUrl: 'https://user:secret@archium.cdiak.archives.gov.ua/x' },
         { ...shelfmark, image: 1, portalUrl: 'javascript:alert(1)' },
         { ...shelfmark, image: 1, portalUrl: 'https://evil.example/file-viewer/1' },
+        { ...shelfmark, image: 1, portalUrl: 'https://notgov.ua/file-viewer/1' },
         { ...shelfmark, portal: 'searcharchives', image: 1 },
         shelfmark,
       ]
@@ -479,8 +594,8 @@ describe('recognitions', () => {
         reader: {
           ...inner,
           read: async (input) => {
-            const lines = await inner.read(input)
-            return lines.map((line) => ({ ...line, box: { x: 0.9, y: 0, w: 0.5, h: 0.1 } }))
+            const { lines, reader } = await inner.read(input)
+            return { reader, lines: lines.map((line) => ({ ...line, box: { x: 0.9, y: 0, w: 0.5, h: 0.1 } })) }
           },
         },
       })
@@ -547,6 +662,46 @@ describe('recognitions', () => {
   describe('event stream', () => {
     const stream = (app: TestApp, id: string) =>
       app.inject({ method: 'GET', url: `/v1/recognitions/${id}/events` })
+
+    it('tells a client that connects to a waiting recognition where it stands', async () => {
+      const recorder = createRecordingReader({ gated: true })
+      const { app, queue } = await createTestApp(database, { reader: recorder.reader, maxStreamMs: 60 })
+      await post(app, recognitionBody(nextPng()))
+      await post(app, recognitionBody(nextPng()))
+      const waiting = await post(app, recognitionBody(nextPng()))
+      const res = await stream(app, waiting.json().recognitionId)
+      expect(parseSse(res.body)).toEqual([{ event: 'progress', data: { status: 'queued' } }])
+      recorder.release()
+      await queue.onIdle()
+      await app.close()
+    })
+
+    it('lets go of the recognition when the client disconnects', async () => {
+      const recorder = createRecordingReader({ gated: true })
+      const { app, hub, queue } = await createTestApp(database, { reader: recorder.reader })
+      const created = await post(app, recognitionBody(nextPng()))
+      await waitUntil(() => recorder.inputs.length === 1)
+      let released = false
+      const subscribe = hub.subscribe
+      hub.subscribe = (id, listener) => {
+        const stop = subscribe(id, listener)
+        return () => {
+          released = true
+          stop()
+        }
+      }
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+      const controller = new AbortController()
+      const res = await fetch(`${address}/v1/recognitions/${created.json().recognitionId}/events`, {
+        signal: controller.signal,
+      })
+      await res.body?.getReader().read()
+      controller.abort()
+      await waitUntil(() => released)
+      recorder.release()
+      await queue.onIdle()
+      await app.close()
+    })
 
     it('replays the whole reading to a client that connects afterwards', async () => {
       const { app, queue } = await createTestApp(database)
@@ -708,6 +863,19 @@ describe('recognitions', () => {
       expect(statuses.find((s) => s.status === 'failed')?.code).toBe('restarted')
       await own.client.close()
     })
+  })
+
+  it('closes recognitions in every active status after a restart', async () => {
+    const own = await createTestDatabase()
+    for (const [index, status] of (['queued', 'reading', 'normalizing'] as const).entries()) {
+      const [region] = await own.db
+        .insert(regions)
+        .values({ x: 0, y: 0, w: 1, h: 1, imageHash: String(index).repeat(64) })
+        .returning()
+      await own.db.insert(recognitions).values({ regionId: region?.id ?? '', source: 'batch', status })
+    }
+    expect(await recoverInterruptedRecognitions(own.db)).toBe(3)
+    await own.client.close()
   })
 
   it('does not leave active rows behind after a normal run', async () => {

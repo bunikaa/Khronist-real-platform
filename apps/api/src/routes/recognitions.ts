@@ -1,20 +1,19 @@
 import {
   createRecognitionRequestSchema,
   createRecognitionResponseSchema,
-  recognitionFailureCodeSchema,
   recognitionStateSchema,
   type RecognitionEvent,
 } from '@khronist/contracts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { failureMessages } from '../jobs/recognize.ts'
+import { failureEvent } from '../jobs/recognize.ts'
 import { ApiError } from '../lib/errors.ts'
 import { maxBodyBytes } from '../lib/limits.ts'
 import {
   createRecognition,
   findRecognition,
   getRecognitionState,
-  loadTranscription,
+  replayEvents,
   type RecognitionDeps,
 } from '../services/recognitions.ts'
 
@@ -119,33 +118,19 @@ export const recognitionRoutes =
       }
 
       try {
+        const hasHistory = deps.hub.hasHistory(id)
         const finished = record.status === 'done' || record.status === 'failed'
-        if (!finished || deps.hub.hasHistory(id)) {
-          const stop = deps.hub.subscribe(id, send)
-          unsubscribe = stop
-          if (closed) stop()
+        if (finished && !hasHistory) {
+          for (const event of await replayEvents(deps.db, record)) send(event)
           return
         }
-
-        if (record.status === 'failed') {
-          const parsed = recognitionFailureCodeSchema.safeParse(record.errorCode)
-          const code = parsed.success ? parsed.data : 'read_failed'
-          send({ event: 'failed', data: { code, message: record.errorMessage ?? failureMessages[code] } })
-          return
-        }
-
-        const transcription = record.transcriptionId
-          ? await loadTranscription(deps.db, record.transcriptionId)
-          : undefined
-        if (!transcription) {
-          send({ event: 'failed', data: { code: 'save_failed', message: failureMessages.save_failed } })
-          return
-        }
-        for (const line of transcription.lines) send({ event: 'line', data: { line } })
-        send({ event: 'done', data: { transcriptionId: transcription.id } })
+        if (!hasHistory) send({ event: 'progress', data: { status: record.status } })
+        const stop = deps.hub.subscribe(id, send)
+        unsubscribe = stop
+        if (closed) stop()
       } catch (error) {
         request.log.error(error)
-        send({ event: 'failed', data: { code: 'save_failed', message: failureMessages.save_failed } })
+        send(failureEvent('save_failed'))
         finish()
       }
     })
