@@ -1,7 +1,16 @@
 import { z } from 'zod'
+import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 const claudeModel = z.string().regex(/^claude-/, 'only Claude models are connected so far')
+const corsOrigins = z
+  .string()
+  .transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean))
+  .pipe(
+    z.array(
+      z.string().regex(/^(https?|chrome-extension):\/\/[^/\s*]+$/, 'expected an exact origin without a trailing slash'),
+    ),
+  )
 
 const configSchema = z
   .object({
@@ -9,12 +18,17 @@ const configSchema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     HOST: z.string().default('0.0.0.0'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-    TRUST_PROXY: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+    TRUST_PROXY_HOPS: z.preprocess(emptyToUndefined, z.coerce.number().int().min(0).max(5).default(0)),
+    CORS_ORIGINS: z.preprocess(emptyToUndefined, corsOrigins.default([])),
+    GUEST_RECOGNITIONS_PER_DAY: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
+    ),
     DATABASE_URL: z.string().min(1),
     JOBS_CONCURRENCY: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(32).default(4)),
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, claudeModel.default('claude-opus-5-5')),
+    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, claudeModel.default('claude-sonnet-5-5')),
     HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, claudeModel.optional()),
     HTR_EFFORT: z.preprocess(
       emptyToUndefined,

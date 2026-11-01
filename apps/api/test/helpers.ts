@@ -96,6 +96,9 @@ export type TestAppOptions = {
   staleAfterMs?: number
   maxStreamMs?: number
   heartbeatMs?: number
+  trustProxyHops?: number
+  corsOrigins?: string[]
+  guestRecognitionsPerDay?: number
 }
 
 export const createTestApp = async (database: TestDatabase, options: TestAppOptions = {}) => {
@@ -108,6 +111,9 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     logLevel: 'silent',
     providers: { llm: 'ok', htr: 'fixture' },
     checkDb: async () => true,
+    ...optional('trustProxyHops'),
+    ...optional('corsOrigins'),
+    ...optional('guestRecognitionsPerDay'),
     recognitions: {
       db: database.db,
       reader,

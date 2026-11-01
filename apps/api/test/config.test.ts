@@ -64,8 +64,32 @@ describe('production safety', () => {
     expect(loadConfig({ ...base, NODE_ENV: 'production' }).LLM_FIXTURES).toBe(false)
   })
 
-  it('reads the proxy trust flag', () => {
-    expect(loadConfig(base).TRUST_PROXY).toBe(false)
-    expect(loadConfig({ ...base, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true)
+  it('reads the number of trusted proxies', () => {
+    expect(loadConfig(base).TRUST_PROXY_HOPS).toBe(0)
+    expect(loadConfig({ ...base, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1)
+    expect(() => loadConfig({ ...base, TRUST_PROXY_HOPS: 'true' })).toThrow(/TRUST_PROXY_HOPS/)
   })
+})
+
+describe('guest access settings', () => {
+  it('allows no origins and sixty recognitions by default', () => {
+    const config = loadConfig({ ...base, CORS_ORIGINS: '' })
+    expect(config.CORS_ORIGINS).toEqual([])
+    expect(config.GUEST_RECOGNITIONS_PER_DAY).toBe(60)
+  })
+
+  it('splits origins including an extension origin', () => {
+    const origins = 'https://khronist.example, chrome-extension://abcdef'
+    expect(loadConfig({ ...base, CORS_ORIGINS: origins }).CORS_ORIGINS).toEqual([
+      'https://khronist.example',
+      'chrome-extension://abcdef',
+    ])
+  })
+
+  it.each(['*', 'https://*.example.com', 'https://khronist.example/', 'khronist.example'])(
+    'refuses the origin %s',
+    (origin) => {
+      expect(() => loadConfig({ ...base, CORS_ORIGINS: origin })).toThrow(/CORS_ORIGINS/)
+    },
+  )
 })

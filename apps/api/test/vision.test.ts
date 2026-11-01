@@ -145,7 +145,7 @@ describe('reader selection', () => {
 
   it('uses fixtures first, then vision with a key, and nothing without one', () => {
     expect(selectHtrReader(loadConfig({ ...base, LLM_FIXTURES: '1', ANTHROPIC_API_KEY: 'k' }), logs)?.kind).toBe('fixture')
-    expect(selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), logs)?.name).toBe('claude-opus-5-5')
+    expect(selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), logs)?.name).toBe('claude-sonnet-5-5')
     expect(selectHtrReader(loadConfig(base), logs)).toBeUndefined()
   })
 

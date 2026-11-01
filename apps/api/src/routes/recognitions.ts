@@ -26,7 +26,7 @@ const encode = (event: RecognitionEvent): string =>
   `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`
 
 export const recognitionRoutes =
-  (deps: RecognitionDeps): FastifyPluginAsyncZod =>
+  (deps: RecognitionDeps, guestPerDay: number): FastifyPluginAsyncZod =>
   async (app) => {
     const openStreams = new Set<() => void>()
     app.addHook('preClose', async () => {
@@ -37,6 +37,14 @@ export const recognitionRoutes =
       '/v1/recognitions',
       {
         bodyLimit: maxBodyBytes,
+        config: {
+          rateLimit: {
+            max: guestPerDay,
+            timeWindow: '1 day',
+            errorResponseBuilder: () =>
+              new ApiError(429, 'too_many_requests', 'Денний ліміт розпізнавань вичерпано, спробуйте завтра'),
+          },
+        },
         schema: {
           body: createRecognitionRequestSchema,
           response: { 201: createRecognitionResponseSchema },
