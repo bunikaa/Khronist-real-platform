@@ -4,6 +4,7 @@ import {
   hasValidAnswer,
   htrVisionOutputSchema,
   searchQuerySchema,
+  shelfmarkSchema,
   visionToLines,
 } from '../src/index.ts'
 
@@ -33,6 +34,28 @@ describe('visionToLines', () => {
     expect(lines[1]?.box).toEqual({ x: 0, y: 0.5, w: 1, h: 0.5 })
     expect(lines.every((l) => l.boxSource === 'estimated')).toBe(true)
     expect(lines.map((l) => l.uncertain)).toEqual([false, true])
+  })
+})
+
+describe('shelfmarkSchema', () => {
+  const base = { archive: 'ЦДІАК', fond: '127', opys: '1078', sprava: '177' }
+
+  it('accepts an ARCHIUM image number without a folio', () => {
+    const parsed = shelfmarkSchema.parse({ ...base, image: 6, portal: 'archium' })
+    expect(parsed.image).toBe(6)
+    expect(parsed.folio).toBeUndefined()
+  })
+
+  it('accepts a folio entered by hand', () => {
+    expect(shelfmarkSchema.safeParse({ ...base, folio: '14зв' }).success).toBe(true)
+  })
+
+  it('rejects a shelfmark with neither folio nor image', () => {
+    expect(shelfmarkSchema.safeParse(base).success).toBe(false)
+  })
+
+  it('rejects the retired searcharchives portal value', () => {
+    expect(shelfmarkSchema.safeParse({ ...base, image: 1, portal: 'searcharchives' }).success).toBe(false)
   })
 })
 
