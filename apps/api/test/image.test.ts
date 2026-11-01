@@ -54,7 +54,7 @@ describe('decodePng hardening', () => {
 
   it('rejects an image above the pixel limit even when each side is allowed', () => {
     expect(maxImagePixels).toBeLessThan(maxImageSide * maxImageSide)
-    const png = makePng(10000, 6000)
+    const png = makePng(8000, 7000)
     expect(thrown(() => decodePng(png.toString('base64'))).code).toBe('bad_image')
   })
 
@@ -70,7 +70,7 @@ describe('decodePng hardening', () => {
   })
 
   it('accepts an image exactly at the pixel limit', () => {
-    const png = makePng(10000, 5000)
-    expect(decodePng(png.toString('base64')).width).toBe(10000)
+    const png = makePng(8000, 6250)
+    expect(decodePng(png.toString('base64')).width).toBe(8000)
   })
 })

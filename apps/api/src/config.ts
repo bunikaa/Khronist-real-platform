@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
+const claudeModel = z.string().regex(/^claude-/, 'only Claude models are connected so far')
 
 const configSchema = z
   .object({
@@ -13,6 +14,12 @@ const configSchema = z
     JOBS_CONCURRENCY: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(32).default(4)),
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, claudeModel.default('claude-opus-5-5')),
+    HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, claudeModel.optional()),
+    HTR_EFFORT: z.preprocess(
+      emptyToUndefined,
+      z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+    ),
     HTR_URL: z.preprocess(emptyToUndefined, z.url().optional()),
   })
   .refine((config) => !(config.NODE_ENV === 'production' && config.LLM_FIXTURES), {
