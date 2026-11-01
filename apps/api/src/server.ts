@@ -1,7 +1,15 @@
 import { sql } from 'drizzle-orm'
 import { buildApp } from './app.ts'
-import { describeProviders, loadConfig, type Config } from './config.ts'
+import { llmStatus, loadConfig, type Config } from './config.ts'
 import { createDatabase } from './db/client.ts'
+import { createEventHub } from './jobs/events.ts'
+import { createJobQueue } from './jobs/queue.ts'
+import { recoverInterruptedRecognitions } from './jobs/recognize.ts'
+import { selectHtrReader } from './services/htr/index.ts'
+import { passthroughNormalizer } from './services/normalize.ts'
+
+const drainTimeoutMs = 10_000
+const exitTimeoutMs = 15_000
 
 const readConfig = (): Config => {
   try {
@@ -14,24 +22,46 @@ const readConfig = (): Config => {
 
 const config = readConfig()
 const { db, client } = createDatabase(config.DATABASE_URL)
+const reader = selectHtrReader(config)
+const hub = createEventHub()
+const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
 
 const app = await buildApp({
   logLevel: config.LOG_LEVEL,
-  providers: describeProviders(config),
+  trustProxy: config.TRUST_PROXY,
+  providers: { llm: llmStatus(config), htr: reader?.kind ?? 'down' },
   checkDb: async () => {
     await db.execute(sql`select 1`)
     return true
   },
+  recognitions: {
+    db,
+    reader,
+    normalizer: passthroughNormalizer,
+    hub,
+    queue,
+  },
 })
+
+try {
+  const recovered = await recoverInterruptedRecognitions(db)
+  if (recovered > 0) app.log.warn({ recovered }, 'marked interrupted recognitions as failed')
+} catch (error) {
+  app.log.error(error, 'could not recover interrupted recognitions')
+  await client.end({ timeout: 1 }).catch(() => undefined)
+  process.exit(1)
+}
 
 let closing = false
 
 const shutdown = async (signal: string) => {
-  if (closing) return
+  if (closing) process.exit(1)
   closing = true
   app.log.info({ signal }, 'shutting down')
+  setTimeout(() => process.exit(1), exitTimeoutMs).unref()
   try {
     await app.close()
+    await Promise.race([queue.onIdle(), new Promise((resolve) => setTimeout(resolve, drainTimeoutMs))])
     await client.end({ timeout: 5 })
     process.exit(0)
   } catch (error) {

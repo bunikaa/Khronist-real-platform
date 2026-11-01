@@ -4,13 +4,16 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod'
+import { ApiError } from './lib/errors.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
+import { recognitionRoutes } from './routes/recognitions.ts'
+import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
   logLevel?: string
+  trustProxy?: boolean
+  recognitions?: Omit<RecognitionDeps, 'log'>
 }
-
-export const maxBodyBytes = 12 * 1024 * 1024
 
 type ErrorDescription = { code: string; message: string }
 
@@ -37,14 +40,15 @@ const statusOf = (error: unknown): number =>
     ? error.statusCode
     : 500
 
-const describe = (status: number): ErrorDescription => {
+const describe = (error: unknown, status: number): ErrorDescription => {
+  if (error instanceof ApiError) return { code: error.code, message: error.message }
   if (status >= 500) return serverError
   return clientErrors[status] ?? { code: 'bad_request', message: 'Некоректний запит' }
 }
 
 export const buildApp = async (deps: AppDeps) => {
   const app = Fastify({
-    bodyLimit: maxBodyBytes,
+    trustProxy: deps.trustProxy ?? false,
     logger: { level: deps.logLevel ?? 'info' },
   }).withTypeProvider<ZodTypeProvider>()
   app.setValidatorCompiler(validatorCompiler)
@@ -54,13 +58,17 @@ export const buildApp = async (deps: AppDeps) => {
     const status = statusOf(error)
     if (status >= 500) request.log.error(error)
     else request.log.warn({ err: error, status }, 'request rejected')
-    return reply.status(status).send({ error: describe(status) })
+    if (status === 429) reply.header('retry-after', '60')
+    return reply.status(status).send({ error: describe(error, status) })
   })
 
   app.setNotFoundHandler((_request, reply) =>
-    reply.status(404).send({ error: describe(404) }),
+    reply.status(404).send({ error: describe(undefined, 404) }),
   )
 
   await app.register(healthRoutes(deps))
+  if (deps.recognitions) {
+    await app.register(recognitionRoutes({ ...deps.recognitions, log: app.log }))
+  }
   return app
 }

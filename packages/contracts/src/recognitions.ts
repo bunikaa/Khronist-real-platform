@@ -50,6 +50,7 @@ export const recognitionFailureCodeSchema = z.enum([
   'restarted',
   'bad_image',
   'too_large',
+  'save_failed',
 ])
 export type RecognitionFailureCode = z.infer<typeof recognitionFailureCodeSchema>
 
