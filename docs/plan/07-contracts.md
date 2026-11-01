@@ -7,7 +7,7 @@
 ## 1. Спільні типи
 
 ```ts
-Shelfmark = { archive: string; fond: string; opys: string; sprava: string; folio: string; portal?: 'searcharchives' | 'own'; portalUrl?: string }
+Shelfmark = { archive: string; fond: string; opys: string; sprava: string; folio?: string; image?: number; portal?: 'archium' | 'own'; portalUrl?: string }   // потрібне хоча б одне з folio, image
 Box = { x: number; y: number; w: number; h: number }
 Word = { text: string; uncertain: boolean; confidence?: number }            // confidence лише від HTR-сервісу
 Line = { idx: number; text: string; box: Box; boxSource: 'model' | 'estimated'; uncertain: boolean; words: Word[] }
@@ -28,16 +28,17 @@ GET  /v1/recognitions/:id
   200: { recognitionId, status: RecognitionStatus, transcription?: Transcription, error?: { code, message } }
 GET  /v1/recognitions/:id/events      text/event-stream
   events: progress { status } · line { line: Line } · done { transcriptionId } · failed { code, message }
-  codes: read_failed · normalize_failed · restarted · bad_image · too_large
+  codes: read_failed · normalize_failed · save_failed · restarted · bad_image · too_large
+  помилки POST: 400 bad_request · 400 bad_image · 413 too_large · 429 too_many_requests · 503 reader_unavailable
 Hints = { language?: 'uk' | 'ru' | 'church-slavonic' | 'pl'; period?: '17' | '18' | '19' | '20'; documentType?: 'metric' | 'revision' | 'court' | 'other' }
 ```
 
 ### Аркуші й транскрипції
 ```
-GET  /v1/pages/lookup?archive&fond&opys&sprava&folio
+GET  /v1/pages/lookup?archive&fond&opys&sprava&folio&image
   200: { page?: { id, shelfmark, transcriptions: TranscriptionSummary[] } }
 GET  /v1/transcriptions/:id
-  200: Transcription = { id, regionId, shelfmark, box, version, status, lines: Line[], normalizedText, entities: Entity[], reader, author?: { name }, verifiedBy?: { name }, verifiedAt?, createdAt }
+  200: Transcription = { id, regionId, shelfmark?, box, version, status, lines: Line[], normalizedText, entities: Entity[], reader, author?: { name }, verifiedBy?: { name }, verifiedAt?, createdAt }
 PATCH /v1/transcriptions/:id/lines          (вхід обов'язковий)
   body: { baseVersion: number; lines: [{ idx, text }] }
   200: Transcription (нова версія) · 409 { error: { code: 'version_conflict' }, current: Transcription }   → стан E4
@@ -60,7 +61,7 @@ POST /v1/chat
 ### Commons і цитата
 ```
 GET  /v1/search?q=&archive=&fond=&yearFrom=&yearTo=&verifiedOnly=&limit=&cursor=
-  200: { items: [{ transcriptionId, shelfmark, year?, snippet, status, portalUrl }], nextCursor? }
+  200: { items: [{ transcriptionId, shelfmark, year?, snippet, status, portalUrl? }], nextCursor? }
 POST /v1/cite
   body: { transcriptionId; format: 'dstu' | 'markdown' | 'text'; withTranscription: boolean }  → 200: { text }
 GET  /v1/notes · POST /v1/notes · DELETE /v1/notes/:id      (should; вхід обов'язковий)
@@ -68,7 +69,7 @@ GET  /v1/notes · POST /v1/notes · DELETE /v1/notes/:id      (should; вхід 
 
 ### Службові й адміністративні
 ```
-GET  /health → { ok: true, db: 'ok', llm: 'ok' | 'degraded', htr: 'vision' | 'remote' | 'down' }
+GET  /health → 200 { ok: true, db: 'ok', llm: 'ok' | 'degraded', htr: 'vision' | 'remote' | 'fixture' | 'down' } · 503 { ok: false, db: 'down', llm, htr }
 /api/auth/*  Better Auth (magic link: POST /api/auth/sign-in/magic-link { email }, GET /api/auth/magic-link/verify?token)
 POST /v1/admin/sources   body: { items: [{ id?, title, url, licence, kind, period }] }
 POST /v1/admin/chunks    body: { items: [{ sourceId, text, textHash, topic, type, period }] }       (upsert за textHash)

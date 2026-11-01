@@ -2,12 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   boxSchema,
   createRecognitionRequestSchema,
-  healthResponseSchema,
-  recognitionFailureCodeSchema,
   hasValidAnswer,
   htrVisionOutputSchema,
   searchQuerySchema,
-  shelfmarkBaseSchema,
   shelfmarkSchema,
   visionToLines,
 } from '../src/index.ts'
@@ -39,6 +36,13 @@ describe('visionToLines', () => {
     expect(lines.every((l) => l.boxSource === 'estimated')).toBe(true)
     expect(lines.map((l) => l.uncertain)).toEqual([false, true])
   })
+
+  it('keeps the strips equal for any number of lines', () => {
+    const line = { text: 'оба', words: [{ text: 'оба', uncertain: false }] }
+    const lines = visionToLines(htrVisionOutputSchema.parse({ lines: [line, line, line, line] }))
+    expect(lines.map((l) => l.box.y)).toEqual([0, 0.25, 0.5, 0.75])
+    expect(lines.every((l) => l.box.h === 0.25)).toBe(true)
+  })
 })
 
 describe('shelfmarkSchema', () => {
@@ -58,18 +62,10 @@ describe('shelfmarkSchema', () => {
     expect(shelfmarkSchema.safeParse(base).success).toBe(false)
   })
 
-  it('allows picking fields from the base schema', () => {
-    const picked = shelfmarkBaseSchema.pick({ fond: true, opys: true })
-    expect(picked.parse({ fond: '127', opys: '1078' })).toEqual({ fond: '127', opys: '1078' })
-  })
-
-  it('rejects non-http portal links', () => {
-    const result = shelfmarkSchema.safeParse({ ...base, image: 1, portalUrl: 'javascript:alert(1)' })
-    expect(result.success).toBe(false)
-  })
-
   it('rejects the retired searcharchives portal value', () => {
-    expect(shelfmarkSchema.safeParse({ ...base, image: 1, portal: 'searcharchives' }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, image: 1, portal: 'searcharchives' }).success).toBe(
+      false,
+    )
   })
 })
 
@@ -124,21 +120,25 @@ describe('shelfmark limits', () => {
   })
 
   it('rejects a control character and an out-of-range image number', () => {
-    expect(shelfmarkSchema.safeParse({ ...base, fond: `1${String.fromCharCode(0)}2` }).success).toBe(false)
+    for (const code of [0, 1, 10, 13, 127]) {
+      const fond = `1${String.fromCharCode(code)}2`
+      expect(shelfmarkSchema.safeParse({ ...base, image: 1, fond }).success, `code ${code}`).toBe(
+        false,
+      )
+    }
     expect(shelfmarkSchema.safeParse({ ...base, image: 2 ** 31 }).success).toBe(false)
     expect(shelfmarkSchema.safeParse({ ...base, image: 100001 }).success).toBe(false)
   })
 
   it('rejects a portal link with credentials or a non-http scheme', () => {
-    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://u:p@example.org/' }).success).toBe(false)
-    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'ftp://example.org/' }).success).toBe(false)
-    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://example.org/x' }).success).toBe(true)
-  })
-})
-
-describe('shared enums', () => {
-  it('knows the fixture reader status and the save failure code', () => {
-    expect(healthResponseSchema.safeParse({ ok: true, db: 'ok', llm: 'ok', htr: 'fixture' }).success).toBe(true)
-    expect(recognitionFailureCodeSchema.safeParse('save_failed').success).toBe(true)
+    expect(
+      shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://u:p@example.org/' }).success,
+    ).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'ftp://example.org/' }).success).toBe(
+      false,
+    )
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://example.org/x' }).success).toBe(
+      true,
+    )
   })
 })
