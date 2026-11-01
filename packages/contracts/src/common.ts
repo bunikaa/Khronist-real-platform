@@ -5,12 +5,12 @@ const shelfmarkPart = z
   .trim()
   .min(1)
   .max(64)
-  .refine((value) => !value.includes(String.fromCharCode(0)), { message: 'control character' })
+  .refine((value) => !/\p{Cc}/u.test(value), { message: 'control character' })
 
-export const maxImageNumber = 100000
-export const maxPortalUrlLength = 2048
+const maxImageNumber = 100000
+const maxPortalUrlLength = 2048
 
-export const portalUrlSchema = z.httpUrl().refine(
+const portalUrlSchema = z.httpUrl().refine(
   (value) => {
     if (value.length > maxPortalUrlLength) return false
     const url = new URL(value)
@@ -38,7 +38,7 @@ export type Shelfmark = z.infer<typeof shelfmarkSchema>
 
 const fraction = z.number().min(0).max(1)
 
-export const boxTolerance = 1.000001
+const boxTolerance = 1.000001
 
 export const boxSchema = z
   .object({
@@ -92,7 +92,13 @@ export type Citation = z.infer<typeof citationSchema>
 export const transcriptionStatusSchema = z.enum(['draft', 'verified', 'disputed'])
 export type TranscriptionStatus = z.infer<typeof transcriptionStatusSchema>
 
-export const recognitionStatusSchema = z.enum(['queued', 'reading', 'normalizing', 'done', 'failed'])
+export const recognitionStatusSchema = z.enum([
+  'queued',
+  'reading',
+  'normalizing',
+  'done',
+  'failed',
+])
 export type RecognitionStatus = z.infer<typeof recognitionStatusSchema>
 
 export const hintsSchema = z.object({
