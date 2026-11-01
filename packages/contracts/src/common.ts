@@ -1,14 +1,33 @@
 import { z } from 'zod'
 
+const shelfmarkPart = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((value) => !value.includes(String.fromCharCode(0)), { message: 'control character' })
+
+export const maxImageNumber = 100000
+export const maxPortalUrlLength = 2048
+
+export const portalUrlSchema = z.httpUrl().refine(
+  (value) => {
+    if (value.length > maxPortalUrlLength) return false
+    const url = new URL(value)
+    return url.username === '' && url.password === ''
+  },
+  { message: 'portal link must be short and without credentials' },
+)
+
 export const shelfmarkBaseSchema = z.object({
-  archive: z.string().min(1),
-  fond: z.string().min(1),
-  opys: z.string().min(1),
-  sprava: z.string().min(1),
-  folio: z.string().min(1).optional(),
-  image: z.number().int().min(1).optional(),
+  archive: shelfmarkPart,
+  fond: shelfmarkPart,
+  opys: shelfmarkPart,
+  sprava: shelfmarkPart,
+  folio: shelfmarkPart.optional(),
+  image: z.number().int().min(1).max(maxImageNumber).optional(),
   portal: z.enum(['archium', 'own']).optional(),
-  portalUrl: z.httpUrl().optional(),
+  portalUrl: portalUrlSchema.optional(),
 })
 
 export const shelfmarkSchema = shelfmarkBaseSchema.refine(
@@ -19,12 +38,18 @@ export type Shelfmark = z.infer<typeof shelfmarkSchema>
 
 const fraction = z.number().min(0).max(1)
 
-export const boxSchema = z.object({
-  x: fraction,
-  y: fraction,
-  w: fraction,
-  h: fraction,
-})
+export const boxTolerance = 1.000001
+
+export const boxSchema = z
+  .object({
+    x: fraction,
+    y: fraction,
+    w: fraction,
+    h: fraction,
+  })
+  .refine((b) => b.w > 0 && b.h > 0 && b.x + b.w <= boxTolerance && b.y + b.h <= boxTolerance, {
+    message: 'box must have a positive size and stay inside the image',
+  })
 export type Box = z.infer<typeof boxSchema>
 
 export const wordSchema = z.object({

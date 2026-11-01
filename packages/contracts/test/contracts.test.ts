@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  boxSchema,
   createRecognitionRequestSchema,
+  healthResponseSchema,
+  recognitionFailureCodeSchema,
   hasValidAnswer,
   htrVisionOutputSchema,
   searchQuerySchema,
@@ -94,5 +97,48 @@ describe('hasValidAnswer', () => {
     expect(hasValidAnswer({ answer: 'текст', citations: [] })).toBe(false)
     expect(hasValidAnswer({ answer: null, citations: [{}] })).toBe(false)
     expect(hasValidAnswer({ answer: 'текст', citations: [{}] })).toBe(true)
+  })
+})
+
+describe('boxSchema', () => {
+  it('accepts a box inside the image and tolerates float error on the edge', () => {
+    expect(boxSchema.safeParse({ x: 0.1, y: 0.2, w: 0.5, h: 0.4 }).success).toBe(true)
+    expect(boxSchema.safeParse({ x: 0.5, y: 0, w: 0.5000001, h: 1 }).success).toBe(true)
+  })
+
+  it('rejects empty, negative and overflowing boxes', () => {
+    expect(boxSchema.safeParse({ x: 0, y: 0, w: 0, h: 0.5 }).success).toBe(false)
+    expect(boxSchema.safeParse({ x: 0.9, y: 0, w: 0.5, h: 0.5 }).success).toBe(false)
+    expect(boxSchema.safeParse({ x: 0, y: 0.6, w: 0.5, h: 0.5 }).success).toBe(false)
+    expect(boxSchema.safeParse({ x: -0.1, y: 0, w: 0.5, h: 0.5 }).success).toBe(false)
+  })
+})
+
+describe('shelfmark limits', () => {
+  const base = { archive: 'A', fond: '127', opys: '1078', sprava: '177', image: 1 }
+
+  it('trims whitespace and rejects blank and over-long parts', () => {
+    expect(shelfmarkSchema.parse({ ...base, sprava: ' 177 ' }).sprava).toBe('177')
+    expect(shelfmarkSchema.safeParse({ ...base, sprava: '   ' }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, archive: 'x'.repeat(65) }).success).toBe(false)
+  })
+
+  it('rejects a control character and an out-of-range image number', () => {
+    expect(shelfmarkSchema.safeParse({ ...base, fond: `1${String.fromCharCode(0)}2` }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, image: 2 ** 31 }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, image: 100001 }).success).toBe(false)
+  })
+
+  it('rejects a portal link with credentials or a non-http scheme', () => {
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://u:p@example.org/' }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'ftp://example.org/' }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://example.org/x' }).success).toBe(true)
+  })
+})
+
+describe('shared enums', () => {
+  it('knows the fixture reader status and the save failure code', () => {
+    expect(healthResponseSchema.safeParse({ ok: true, db: 'ok', llm: 'ok', htr: 'fixture' }).success).toBe(true)
+    expect(recognitionFailureCodeSchema.safeParse('save_failed').success).toBe(true)
   })
 })

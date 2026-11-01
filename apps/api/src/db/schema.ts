@@ -178,7 +178,7 @@ export const regions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index('regions_image_hash_idx').on(t.imageHash),
+    uniqueIndex('regions_image_hash_unique').on(t.imageHash),
     index('regions_page_idx').on(t.pageId),
     check(
       'regions_box',

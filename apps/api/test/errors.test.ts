@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildApp, maxBodyBytes } from '../src/app.ts'
+import { buildApp } from '../src/app.ts'
+import { maxBodyBytes } from '../src/lib/limits.ts'
 
 const providers = { llm: 'ok', htr: 'vision' } as const
 

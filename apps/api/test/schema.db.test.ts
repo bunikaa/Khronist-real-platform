@@ -16,7 +16,11 @@ import {
   transcriptions,
 } from '../src/db/schema.ts'
 
-const hash = 'a'.repeat(64)
+let hashCounter = 0
+const uniqueHash = () => {
+  hashCounter += 1
+  return hashCounter.toString(16).padStart(64, '0')
+}
 
 type PgViolation = { code: string; constraint: string | undefined }
 
@@ -75,7 +79,7 @@ describe('database schema', () => {
     if (!page) throw new Error('page not inserted')
     const [region] = await db
       .insert(regions)
-      .values({ pageId: page.id, x: 0.1, y: 0.1, w: 0.5, h: 0.5, imageHash: hash })
+      .values({ pageId: page.id, x: 0.1, y: 0.1, w: 0.5, h: 0.5, imageHash: uniqueHash() })
       .returning()
     if (!region) throw new Error('region not inserted')
     return { doc, page, region }
@@ -123,11 +127,10 @@ describe('database schema', () => {
   })
 
   describe('regions', () => {
-    const base = { imageHash: hash }
 
     it('rejects a box outside the image', async () => {
       await expectViolation(
-        db.insert(regions).values({ ...base, x: 0.8, y: 0, w: 0.5, h: 0.5 }),
+        db.insert(regions).values({ imageHash: uniqueHash(), x: 0.8, y: 0, w: 0.5, h: 0.5 }),
         '23514',
         'regions_box',
       )
@@ -135,14 +138,24 @@ describe('database schema', () => {
 
     it('rejects a zero-size box', async () => {
       await expectViolation(
-        db.insert(regions).values({ ...base, x: 0, y: 0, w: 0, h: 0.5 }),
+        db.insert(regions).values({ imageHash: uniqueHash(), x: 0, y: 0, w: 0, h: 0.5 }),
         '23514',
         'regions_box',
       )
     })
 
+    it('keeps one region per image hash', async () => {
+      const imageHash = uniqueHash()
+      await db.insert(regions).values({ imageHash, x: 0, y: 0, w: 1, h: 1 })
+      await expectViolation(
+        db.insert(regions).values({ imageHash, x: 0, y: 0, w: 0.5, h: 0.5 }),
+        '23505',
+        'regions_image_hash_unique',
+      )
+    })
+
     it('tolerates floating point error at the right edge', async () => {
-      await db.insert(regions).values({ ...base, x: 0.5, y: 0, w: 0.5000001, h: 1 })
+      await db.insert(regions).values({ imageHash: uniqueHash(), x: 0.5, y: 0, w: 0.5000001, h: 1 })
     })
   })
 
