@@ -76,7 +76,12 @@ export const buildApp = async (deps: AppDeps) => {
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['content-type', 'authorization'],
-    exposedHeaders: ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'],
+    exposedHeaders: [
+      'retry-after',
+      'x-ratelimit-limit',
+      'x-ratelimit-remaining',
+      'x-ratelimit-reset',
+    ],
   })
   await app.register(rateLimit, { global: false })
 

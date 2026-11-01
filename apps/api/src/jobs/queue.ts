@@ -9,7 +9,10 @@ export type JobQueue = {
   stop: () => void
 }
 
-export const createJobQueue = (concurrency: number, onError: (error: unknown) => void): JobQueue => {
+export const createJobQueue = (
+  concurrency: number,
+  onError: (error: unknown) => void,
+): JobQueue => {
   const queue = new PQueue({ concurrency })
   let held = 0
   const release = () => {

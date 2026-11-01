@@ -133,8 +133,16 @@ export const parseSse = (body: string): { event: string; data: unknown }[] =>
     .filter((chunk) => chunk.startsWith('event:'))
     .map((chunk) => {
       const lines = chunk.split('\n')
-      const event = lines.find((l) => l.startsWith('event:'))?.slice(6).trim() ?? ''
-      const data = lines.find((l) => l.startsWith('data:'))?.slice(5).trim() ?? 'null'
+      const event =
+        lines
+          .find((l) => l.startsWith('event:'))
+          ?.slice(6)
+          .trim() ?? ''
+      const data =
+        lines
+          .find((l) => l.startsWith('data:'))
+          ?.slice(5)
+          .trim() ?? 'null'
       return { event, data: JSON.parse(data) as unknown }
     })
 

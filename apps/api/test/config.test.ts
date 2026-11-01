@@ -36,7 +36,9 @@ describe('loadDatabaseUrl', () => {
 
 describe('remote reader', () => {
   it('refuses HTR_URL until the remote reader exists, so it cannot look switched on', () => {
-    expect(() => loadConfig({ ...base, HTR_URL: 'https://htr.example/recognize' })).toThrow(/HTR_URL/)
+    expect(() => loadConfig({ ...base, HTR_URL: 'https://htr.example/recognize' })).toThrow(
+      /HTR_URL/,
+    )
   })
 })
 
@@ -75,11 +77,15 @@ describe('job settings', () => {
 
 describe('production safety', () => {
   it('refuses fixtures in production', () => {
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', LLM_FIXTURES: '1' })).toThrow(/LLM_FIXTURES/)
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', LLM_FIXTURES: '1' })).toThrow(
+      /LLM_FIXTURES/,
+    )
   })
 
   it('allows fixtures outside production and production without them', () => {
-    expect(loadConfig({ ...base, NODE_ENV: 'development', LLM_FIXTURES: '1' }).LLM_FIXTURES).toBe(true)
+    expect(loadConfig({ ...base, NODE_ENV: 'development', LLM_FIXTURES: '1' }).LLM_FIXTURES).toBe(
+      true,
+    )
     expect(loadConfig({ ...base, NODE_ENV: 'production' }).LLM_FIXTURES).toBe(false)
   })
 

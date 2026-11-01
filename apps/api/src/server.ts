@@ -67,7 +67,10 @@ const shutdown = async (signal: string) => {
   try {
     queue.stop()
     await app.close()
-    await Promise.race([queue.onIdle(), new Promise((resolve) => setTimeout(resolve, drainTimeoutMs))])
+    await Promise.race([
+      queue.onIdle(),
+      new Promise((resolve) => setTimeout(resolve, drainTimeoutMs)),
+    ])
     await client.end({ timeout: 5 })
     process.exit(0)
   } catch (error) {

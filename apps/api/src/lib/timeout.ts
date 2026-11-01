@@ -9,7 +9,9 @@ export const runWithTimeout = async <T>(
     ms,
   )
   const aborted = new Promise<never>((_, reject) => {
-    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })
+    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+      once: true,
+    })
   })
   try {
     return await Promise.race([task(controller.signal), aborted])

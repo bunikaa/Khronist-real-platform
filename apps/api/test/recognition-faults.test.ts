@@ -82,7 +82,11 @@ describe('recognition races and faults', () => {
       },
     })
     const { app, queue } = await createTestApp(hooked, { reader: recorder.reader })
-    const res = await app.inject({ method: 'POST', url: '/v1/recognitions', payload: recognitionBody(png) })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/recognitions',
+      payload: recognitionBody(png),
+    })
     expect(res.statusCode).toBe(201)
     expect(res.json()).toEqual({ recognitionId: rivalId, status: 'queued' })
     expect(queue.backlog()).toBe(0)
@@ -107,7 +111,11 @@ describe('recognition races and faults', () => {
       },
     })
     const { app, queue } = await createTestApp(hooked, { reader: recorder.reader })
-    const res = await app.inject({ method: 'POST', url: '/v1/recognitions', payload: recognitionBody(png) })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/recognitions',
+      payload: recognitionBody(png),
+    })
     expect(res.json()).toMatchObject({ status: 'cached', transcriptionId })
     expect(queue.backlog()).toBe(0)
     expect(recorder.inputs).toHaveLength(0)

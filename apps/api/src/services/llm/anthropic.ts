@@ -32,7 +32,8 @@ const answerText = (content: Anthropic.Beta.BetaContentBlock[]): string => {
 }
 
 const servedBy = (message: Anthropic.Beta.BetaMessage): string =>
-  message.usage.iterations?.findLast((step) => step.type === 'fallback_message')?.model ?? message.model
+  message.usage.iterations?.findLast((step) => step.type === 'fallback_message')?.model ??
+  message.model
 
 export const createAnthropicProvider = (options: AnthropicOptions): LlmProvider => ({
   name: options.model,

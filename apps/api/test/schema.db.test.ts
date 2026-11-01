@@ -19,7 +19,11 @@ const uniqueHash = () => {
   return hashCounter.toString(16).padStart(64, '0')
 }
 
-const expectViolation = async (promise: PromiseLike<unknown>, code: string, constraint?: string) => {
+const expectViolation = async (
+  promise: PromiseLike<unknown>,
+  code: string,
+  constraint?: string,
+) => {
   const error = await Promise.resolve(promise).then(
     () => undefined,
     (e: unknown) => e ?? new Error('rejected without a reason'),
@@ -48,7 +52,13 @@ describe('database schema', () => {
     counter += 1
     const [doc] = await db
       .insert(documents)
-      .values({ archive: 'ЦДІАК', fond: '127', opys: '1078', sprava: String(counter), portal: 'archium' })
+      .values({
+        archive: 'ЦДІАК',
+        fond: '127',
+        opys: '1078',
+        sprava: String(counter),
+        portal: 'archium',
+      })
       .returning()
     if (!doc) throw new Error('document not inserted')
     return doc
@@ -84,7 +94,11 @@ describe('database schema', () => {
 
     it('rejects a page with neither folio nor image number', async () => {
       const doc = await makeDocument()
-      await expectViolation(db.insert(pages).values({ documentId: doc.id }), '23514', 'pages_folio_or_image')
+      await expectViolation(
+        db.insert(pages).values({ documentId: doc.id }),
+        '23514',
+        'pages_folio_or_image',
+      )
     })
 
     it('rejects a duplicate image number inside one document', async () => {
@@ -108,7 +122,6 @@ describe('database schema', () => {
   })
 
   describe('regions', () => {
-
     it('rejects a box outside the image', async () => {
       await expectViolation(
         db.insert(regions).values({ imageHash: uniqueHash(), x: 0.8, y: 0, w: 0.5, h: 0.5 }),
@@ -155,13 +168,18 @@ describe('database schema', () => {
         .returning()
       if (!t) throw new Error('transcription not inserted')
       await db.insert(edits).values({ transcriptionId: t.id, lineIdx: 0, before: 'a', after: 'b' })
-      await expectViolation(db.delete(transcriptions).where(sql`${transcriptions.id} = ${t.id}`), '23001')
+      await expectViolation(
+        db.delete(transcriptions).where(sql`${transcriptions.id} = ${t.id}`),
+        '23001',
+      )
     })
 
     it('rejects a verified transcription without a verification time', async () => {
       const { region } = await makeRegion()
       await expectViolation(
-        db.insert(transcriptions).values({ regionId: region.id, rawText: 'x', reader: 'test', status: 'verified' }),
+        db
+          .insert(transcriptions)
+          .values({ regionId: region.id, rawText: 'x', reader: 'test', status: 'verified' }),
         '23514',
         'transcriptions_verified_has_time',
       )
@@ -191,7 +209,9 @@ describe('database schema', () => {
 
     it('allows a new recognition once the previous one has finished', async () => {
       const { region } = await makeRegion()
-      await db.insert(recognitions).values({ regionId: region.id, source: 'extension', status: 'failed' })
+      await db
+        .insert(recognitions)
+        .values({ regionId: region.id, source: 'extension', status: 'failed' })
       await db.insert(recognitions).values({ regionId: region.id, source: 'extension' })
     })
   })
@@ -218,7 +238,11 @@ describe('database schema', () => {
       })
       await db.insert(chunks).values(row(first.id))
       await db.insert(chunks).values(row(second.id))
-      await expectViolation(db.insert(chunks).values(row(first.id)), '23505', 'chunks_source_hash_unique')
+      await expectViolation(
+        db.insert(chunks).values(row(first.id)),
+        '23505',
+        'chunks_source_hash_unique',
+      )
     })
 
     it('requires a search vector', async () => {

@@ -9,7 +9,9 @@ const collapseSpaces = (text: string) => text.trim().replace(/\s+/g, ' ')
 
 const visionOutput = htrVisionOutputSchema.refine(
   ({ lines }) =>
-    lines.every((line) => line.words.map((word) => word.text).join(' ') === collapseSpaces(line.text)),
+    lines.every(
+      (line) => line.words.map((word) => word.text).join(' ') === collapseSpaces(line.text),
+    ),
   { message: 'the words of a line must add up to its text' },
 )
 

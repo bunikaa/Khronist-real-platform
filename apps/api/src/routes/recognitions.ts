@@ -41,7 +41,11 @@ export const recognitionRoutes =
             max: guestPerDay,
             timeWindow: '1 day',
             errorResponseBuilder: () =>
-              new ApiError(429, 'too_many_requests', 'Денний ліміт розпізнавань вичерпано, спробуйте завтра'),
+              new ApiError(
+                429,
+                'too_many_requests',
+                'Денний ліміт розпізнавань вичерпано, спробуйте завтра',
+              ),
           },
         },
         schema: {
@@ -62,76 +66,80 @@ export const recognitionRoutes =
       },
     )
 
-    app.get('/v1/recognitions/:id/events', { schema: { params: idParams } }, async (request, reply) => {
-      const { id } = request.params
-      const record = await findRecognition(deps.db, id)
-      if (!record) throw new ApiError(404, 'not_found', 'Розпізнавання не знайдено')
+    app.get(
+      '/v1/recognitions/:id/events',
+      { schema: { params: idParams } },
+      async (request, reply) => {
+        const { id } = request.params
+        const record = await findRecognition(deps.db, id)
+        if (!record) throw new ApiError(404, 'not_found', 'Розпізнавання не знайдено')
 
-      reply.hijack()
-      const raw = reply.raw
-      if (raw.destroyed || request.raw.destroyed) return
+        reply.hijack()
+        const raw = reply.raw
+        if (raw.destroyed || request.raw.destroyed) return
 
-      for (const [name, value] of Object.entries(reply.getHeaders())) {
-        if (value !== undefined) raw.setHeader(name, value)
-      }
-      raw.writeHead(200, {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache, no-transform',
-        connection: 'close',
-        'x-accel-buffering': 'no',
-      })
-      raw.write('retry: 3000\n\n')
+        for (const [name, value] of Object.entries(reply.getHeaders())) {
+          if (value !== undefined) raw.setHeader(name, value)
+        }
+        raw.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache, no-transform',
+          connection: 'close',
+          'x-accel-buffering': 'no',
+        })
+        raw.write('retry: 3000\n\n')
 
-      let closed = false
-      let unsubscribe: (() => void) | undefined
+        let closed = false
+        let unsubscribe: (() => void) | undefined
 
-      const finish = () => {
-        if (closed) return
-        closed = true
-        clearInterval(heartbeat)
-        clearTimeout(lifetime)
-        openStreams.delete(finish)
-        unsubscribe?.()
-        raw.end()
-      }
-      const heartbeat = setInterval(() => {
-        if (closed) return
-        if (raw.writableLength > maxPendingBytes) {
-          raw.destroy()
+        const finish = () => {
+          if (closed) return
+          closed = true
+          clearInterval(heartbeat)
+          clearTimeout(lifetime)
+          openStreams.delete(finish)
+          unsubscribe?.()
+          raw.end()
+        }
+        const heartbeat = setInterval(() => {
+          if (closed) return
+          if (raw.writableLength > maxPendingBytes) {
+            raw.destroy()
+            finish()
+            return
+          }
+          raw.write(': ping\n\n')
+        }, deps.heartbeatMs ?? 15_000)
+        heartbeat.unref()
+        const lifetime = setTimeout(finish, deps.maxStreamMs ?? 5 * 60_000)
+        lifetime.unref()
+
+        openStreams.add(finish)
+        raw.once('close', finish)
+        request.raw.once('close', finish)
+
+        const send = (event: RecognitionEvent) => {
+          if (closed) return
+          raw.write(encode(event))
+          if (event.event === 'done' || event.event === 'failed') finish()
+        }
+
+        try {
+          const hasHistory = deps.hub.hasHistory(id)
+          const finished = record.status === 'done' || record.status === 'failed'
+          if (finished && !hasHistory) {
+            for (const event of await replayEvents(deps.db, record)) send(event)
+            return
+          }
+          if (!hasHistory) send({ event: 'progress', data: { status: record.status } })
+          const stop = deps.hub.subscribe(id, send)
+          unsubscribe = stop
+          if (closed) stop()
+        } catch (error) {
+          request.log.error(error)
+          send(failureEvent('save_failed'))
           finish()
-          return
         }
-        raw.write(': ping\n\n')
-      }, deps.heartbeatMs ?? 15_000)
-      heartbeat.unref()
-      const lifetime = setTimeout(finish, deps.maxStreamMs ?? 5 * 60_000)
-      lifetime.unref()
-
-      openStreams.add(finish)
-      raw.once('close', finish)
-      request.raw.once('close', finish)
-
-      const send = (event: RecognitionEvent) => {
-        if (closed) return
-        raw.write(encode(event))
-        if (event.event === 'done' || event.event === 'failed') finish()
-      }
-
-      try {
-        const hasHistory = deps.hub.hasHistory(id)
-        const finished = record.status === 'done' || record.status === 'failed'
-        if (finished && !hasHistory) {
-          for (const event of await replayEvents(deps.db, record)) send(event)
-          return
-        }
-        if (!hasHistory) send({ event: 'progress', data: { status: record.status } })
-        const stop = deps.hub.subscribe(id, send)
-        unsubscribe = stop
-        if (closed) stop()
-      } catch (error) {
-        request.log.error(error)
-        send(failureEvent('save_failed'))
-        finish()
-      }
-    })
+      },
+    )
   }

@@ -1,4 +1,8 @@
-import { createRecognitionResponseSchema, healthResponseSchema, recognitionStateSchema } from '@khronist/contracts'
+import {
+  createRecognitionResponseSchema,
+  healthResponseSchema,
+  recognitionStateSchema,
+} from '@khronist/contracts'
 import { createHash } from 'node:crypto'
 
 const baseUrl = process.env['SMOKE_URL'] ?? 'http://localhost:3000'
@@ -43,7 +47,11 @@ const readState = async (id: string) =>
 
 const created = await post()
 let state = await readState(created.recognitionId)
-for (let attempt = 0; attempt < pollLimit && state.status !== 'done' && state.status !== 'failed'; attempt += 1) {
+for (
+  let attempt = 0;
+  attempt < pollLimit && state.status !== 'done' && state.status !== 'failed';
+  attempt += 1
+) {
   await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
   state = await readState(created.recognitionId)
 }
@@ -53,7 +61,9 @@ expectThat((state.transcription?.lines.length ?? 0) > 0, 'the transcription has 
 const repeated = await post()
 expectThat(repeated.status === 'cached', 'a repeated fragment comes from the cache')
 
-const events = await (await fetch(`${baseUrl}/v1/recognitions/${repeated.recognitionId}/events`)).text()
+const events = await (
+  await fetch(`${baseUrl}/v1/recognitions/${repeated.recognitionId}/events`)
+).text()
 expectThat(events.includes('event: done'), 'the event stream ends with done')
 
 console.log('smoke checks passed')

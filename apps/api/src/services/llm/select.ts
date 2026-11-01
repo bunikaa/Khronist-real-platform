@@ -9,7 +9,10 @@ type ProviderSettings = {
   geminiNotes?: string | undefined
 }
 
-export type ProviderFactory = (config: Config, settings: ProviderSettings) => LlmProvider | undefined
+export type ProviderFactory = (
+  config: Config,
+  settings: ProviderSettings,
+) => LlmProvider | undefined
 
 export const createProvider: ProviderFactory = (config, { model, effort, geminiNotes }) => {
   if (!hasKeyFor(config, model)) return undefined

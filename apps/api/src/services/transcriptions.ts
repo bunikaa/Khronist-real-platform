@@ -24,7 +24,10 @@ type NewVersion = {
   normalized: Normalized
 }
 
-export const insertTranscriptionVersion = async (tx: Database, version: NewVersion): Promise<string> => {
+export const insertTranscriptionVersion = async (
+  tx: Database,
+  version: NewVersion,
+): Promise<string> => {
   const { regionId, reader, lines, normalized } = version
   const [latest] = await tx
     .select({ version: sql<number>`coalesce(max(${transcriptions.version}), 0)` })
@@ -90,7 +93,11 @@ export const loadTranscription = async (
   db: Database,
   transcriptionId: string,
 ): Promise<Transcription | undefined> => {
-  const [t] = await db.select().from(transcriptions).where(eq(transcriptions.id, transcriptionId)).limit(1)
+  const [t] = await db
+    .select()
+    .from(transcriptions)
+    .where(eq(transcriptions.id, transcriptionId))
+    .limit(1)
   if (!t) return undefined
 
   const [region] = await db.select().from(regions).where(eq(regions.id, t.regionId)).limit(1)
@@ -107,7 +114,12 @@ export const loadTranscription = async (
       : await db
           .select()
           .from(lineWords)
-          .where(inArray(lineWords.lineId, lineRows.map((line) => line.id)))
+          .where(
+            inArray(
+              lineWords.lineId,
+              lineRows.map((line) => line.id),
+            ),
+          )
           .orderBy(asc(lineWords.idx))
   const entityRows = await db.select().from(entities).where(eq(entities.transcriptionId, t.id))
 
@@ -135,7 +147,11 @@ export const loadTranscription = async (
 
   const nameOf = async (userId: string | null) => {
     if (!userId) return undefined
-    const [row] = await db.select({ name: user.name }).from(user).where(eq(user.id, userId)).limit(1)
+    const [row] = await db
+      .select({ name: user.name })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1)
     return row ? { name: row.name } : undefined
   }
   const author = await nameOf(t.authorId)

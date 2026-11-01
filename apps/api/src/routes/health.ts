@@ -16,9 +16,11 @@ export const healthRoutes =
       '/health',
       { schema: { response: { 200: healthResponseSchema, 503: healthResponseSchema } } },
       async (_request, reply) => {
-        const dbUp = await runWithTimeout(deps.checkDb, deps.dbTimeoutMs ?? 2000, 'database check').catch(
-          () => false,
-        )
+        const dbUp = await runWithTimeout(
+          deps.checkDb,
+          deps.dbTimeoutMs ?? 2000,
+          'database check',
+        ).catch(() => false)
         if (!dbUp) reply.code(503)
         return {
           ok: dbUp,

@@ -33,7 +33,9 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 
 export const activeRecognitionStatuses = ['queued', 'reading', 'normalizing'] as const
 
-const activeStatuses = sql.raw(`(${activeRecognitionStatuses.map((status) => `'${status}'`).join(', ')})`)
+const activeStatuses = sql.raw(
+  `(${activeRecognitionStatuses.map((status) => `'${status}'`).join(', ')})`,
+)
 
 export const portalEnum = pgEnum('portal', ['archium', 'own'])
 export const recognitionStatusEnum = pgEnum('recognition_status', [
@@ -232,7 +234,9 @@ export const recognitions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index('recognitions_active_status_idx').on(t.status).where(sql`${t.status} in ${activeStatuses}`),
+    index('recognitions_active_status_idx')
+      .on(t.status)
+      .where(sql`${t.status} in ${activeStatuses}`),
     index('recognitions_region_idx').on(t.regionId),
     uniqueIndex('recognitions_one_active_per_region')
       .on(t.regionId)

@@ -43,5 +43,8 @@ export const selectHtrReader = (
   const fallback = config.HTR_MODEL_FALLBACK ? provider(config.HTR_MODEL_FALLBACK) : undefined
   const first = primary ?? fallback
   if (!first) return undefined
-  return createVisionReader(withFallback(first, primary ? fallback : undefined, logs.onFailure), logs.onRead)
+  return createVisionReader(
+    withFallback(first, primary ? fallback : undefined, logs.onFailure),
+    logs.onRead,
+  )
 }

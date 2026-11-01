@@ -30,7 +30,9 @@ describe('decodePng', () => {
 
   it('rejects a zero or oversized dimension', () => {
     expect(thrown(() => decodePng(makePng(0, 10).toString('base64'))).code).toBe('bad_image')
-    expect(thrown(() => decodePng(makePng(maxImageSide + 1, 10).toString('base64'))).code).toBe('bad_image')
+    expect(thrown(() => decodePng(makePng(maxImageSide + 1, 10).toString('base64'))).code).toBe(
+      'bad_image',
+    )
   })
 
   it('rejects an image above the size limit with too_large', () => {

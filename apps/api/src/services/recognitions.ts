@@ -145,7 +145,12 @@ const findActiveRecognition = async (db: Database, regionId: string) => {
   const [active] = await db
     .select({ id: recognitions.id })
     .from(recognitions)
-    .where(and(eq(recognitions.regionId, regionId), inArray(recognitions.status, [...activeRecognitionStatuses])))
+    .where(
+      and(
+        eq(recognitions.regionId, regionId),
+        inArray(recognitions.status, [...activeRecognitionStatuses]),
+      ),
+    )
     .limit(1)
   return active
 }
@@ -239,7 +244,10 @@ export const createRecognition = async (
   }
 
   queue.add(() =>
-    runRecognition({ ...deps, reader }, { recognitionId, image: image.bytes, hints: request.hints }),
+    runRecognition(
+      { ...deps, reader },
+      { recognitionId, image: image.bytes, hints: request.hints },
+    ),
   )
   return { recognitionId, status: 'queued' }
 }
@@ -255,7 +263,9 @@ export const getRecognitionState = async (
 ): Promise<RecognitionState | undefined> => {
   const row = await findRecognition(db, id)
   if (!row) return undefined
-  const transcription = row.transcriptionId ? await loadTranscription(db, row.transcriptionId) : undefined
+  const transcription = row.transcriptionId
+    ? await loadTranscription(db, row.transcriptionId)
+    : undefined
   return {
     recognitionId: row.id,
     status: row.status,
@@ -266,9 +276,14 @@ export const getRecognitionState = async (
 
 type RecognitionRow = NonNullable<Awaited<ReturnType<typeof findRecognition>>>
 
-export const replayEvents = async (db: Database, row: RecognitionRow): Promise<RecognitionEvent[]> => {
+export const replayEvents = async (
+  db: Database,
+  row: RecognitionRow,
+): Promise<RecognitionEvent[]> => {
   if (row.status === 'failed') return [{ event: 'failed', data: failureOf(row) }]
-  const transcription = row.transcriptionId ? await loadTranscription(db, row.transcriptionId) : undefined
+  const transcription = row.transcriptionId
+    ? await loadTranscription(db, row.transcriptionId)
+    : undefined
   if (!transcription) return [failureEvent('save_failed')]
   return [
     ...transcription.lines.map((line): RecognitionEvent => ({ event: 'line', data: { line } })),

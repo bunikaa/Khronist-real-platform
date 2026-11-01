@@ -29,13 +29,19 @@ export const createGeminiProvider = (options: GeminiOptions): LlmProvider => ({
       {
         model: options.model,
         store: false,
-        system_instruction: options.notes ? `${request.system}\n\n${options.notes}` : request.system,
+        system_instruction: options.notes
+          ? `${request.system}\n\n${options.notes}`
+          : request.system,
         input: toInput(request),
         generation_config: {
           max_output_tokens: request.maxTokens,
           thinking_level: options.thinkingLevel,
         },
-        response_format: { type: 'text', mime_type: 'application/json', schema: toJsonSchema(request.schema) },
+        response_format: {
+          type: 'text',
+          mime_type: 'application/json',
+          schema: toJsonSchema(request.schema),
+        },
       },
       { signal: request.signal ?? null, retries: { strategy: 'none' } },
     )
@@ -48,7 +54,8 @@ export const createGeminiProvider = (options: GeminiOptions): LlmProvider => ({
       usage: {
         inputTokens: interaction.usage?.total_input_tokens ?? 0,
         outputTokens:
-          (interaction.usage?.total_output_tokens ?? 0) + (interaction.usage?.total_thought_tokens ?? 0),
+          (interaction.usage?.total_output_tokens ?? 0) +
+          (interaction.usage?.total_thought_tokens ?? 0),
       },
     }
   },

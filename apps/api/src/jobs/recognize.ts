@@ -212,7 +212,10 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
         log.error({ err: markError, recognitionId }, 'could not record the failure')
         return true
       }))
-    log.error({ err: error, recognitionId, stage }, closedElsewhere ? 'recognition cancelled' : 'recognition failed')
+    log.error(
+      { err: error, recognitionId, stage },
+      closedElsewhere ? 'recognition cancelled' : 'recognition failed',
+    )
     const event = closedElsewhere
       ? await storedFailureEvent(db, recognitionId).catch(() => failureEvent('restarted'))
       : failureEvent(code)

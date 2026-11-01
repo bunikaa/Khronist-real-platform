@@ -6,10 +6,20 @@ const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 const readerModel = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
 const corsOrigins = z
   .string()
-  .transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean))
+  .transform((value) =>
+    value
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  )
   .pipe(
     z.array(
-      z.string().regex(/^(https?|chrome-extension):\/\/[^/\s*]+$/, 'expected an exact origin without a trailing slash'),
+      z
+        .string()
+        .regex(
+          /^(https?|chrome-extension):\/\/[^/\s*]+$/,
+          'expected an exact origin without a trailing slash',
+        ),
     ),
   )
 
@@ -25,15 +35,23 @@ const configSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     HOST: z.string().default('0.0.0.0'),
-    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-    TRUST_PROXY_HOPS: z.preprocess(emptyToUndefined, z.coerce.number().int().min(0).max(5).default(0)),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
+    TRUST_PROXY_HOPS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(0).max(5).default(0),
+    ),
     CORS_ORIGINS: z.preprocess(emptyToUndefined, corsOrigins.default([])),
     GUEST_RECOGNITIONS_PER_DAY: z.preprocess(
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
     ),
     DATABASE_URL: databaseUrl,
-    JOBS_CONCURRENCY: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(32).default(4)),
+    JOBS_CONCURRENCY: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).max(32).default(4),
+    ),
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     GOOGLE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
@@ -50,7 +68,8 @@ const configSchema = z
     path: ['LLM_FIXTURES'],
   })
   .refine(
-    (config) => config.HTR_MODEL_FALLBACK === undefined || hasKeyFor(config, config.HTR_MODEL_FALLBACK),
+    (config) =>
+      config.HTR_MODEL_FALLBACK === undefined || hasKeyFor(config, config.HTR_MODEL_FALLBACK),
     { message: 'the fallback model has no API key', path: ['HTR_MODEL_FALLBACK'] },
   )
   .refine((config) => config.HTR_URL === undefined, {

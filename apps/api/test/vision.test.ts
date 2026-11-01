@@ -11,7 +11,13 @@ import type { ProviderFactory } from '../src/services/llm/select.ts'
 
 const output = {
   lines: [
-    { text: 'Села Борщаговки', words: [{ text: 'Села', uncertain: false }, { text: 'Борщаговки', uncertain: true }] },
+    {
+      text: 'Села Борщаговки',
+      words: [
+        { text: 'Села', uncertain: false },
+        { text: 'Борщаговки', uncertain: true },
+      ],
+    },
     { text: 'оба', words: [{ text: 'оба', uncertain: false }] },
   ],
   warnings: ['cut_off_right'],
@@ -20,7 +26,10 @@ const output = {
 const reply = (text: string, stop_reason = 'end_turn') => ({
   model: 'claude-test',
   stop_reason,
-  content: [{ type: 'thinking', thinking: '' }, { type: 'text', text }],
+  content: [
+    { type: 'thinking', thinking: '' },
+    { type: 'text', text },
+  ],
   usage: { input_tokens: 10, output_tokens: 20 },
 })
 
@@ -65,7 +74,9 @@ describe('anthropic provider', () => {
   it('does not treat a refusal or a cut-off answer as output worth repeating', async () => {
     for (const bad of [reply('', 'refusal'), reply('{"a":1}', 'max_tokens')]) {
       const { messages } = fakeMessages(bad)
-      const failure = await provider(messages).complete(request).catch((error: unknown) => error)
+      const failure = await provider(messages)
+        .complete(request)
+        .catch((error: unknown) => error)
       expect(failure).toBeInstanceOf(Error)
       expect(failure).not.toBeInstanceOf(LlmOutputError)
     }
@@ -106,21 +117,27 @@ describe('withFallback', () => {
 
   it('retries the same model once after invalid output', async () => {
     const primary = fake(new LlmOutputError('bad'), ok)
-    await expect(withFallback(primary.provider, undefined, noLog).complete(request)).resolves.toBe(ok)
+    await expect(withFallback(primary.provider, undefined, noLog).complete(request)).resolves.toBe(
+      ok,
+    )
     expect(primary.complete).toHaveBeenCalledTimes(2)
   })
 
   it('moves to the fallback after an API error without retrying the primary', async () => {
     const primary = fake(new Error('503'))
     const fallback = fake(ok)
-    await expect(withFallback(primary.provider, fallback.provider, noLog).complete(request)).resolves.toBe(ok)
+    await expect(
+      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+    ).resolves.toBe(ok)
     expect(primary.complete).toHaveBeenCalledTimes(1)
   })
 
   it('moves to the fallback when both tries give invalid output', async () => {
     const primary = fake(new LlmOutputError('a'), new LlmOutputError('b'))
     const fallback = fake(ok)
-    await expect(withFallback(primary.provider, fallback.provider, noLog).complete(request)).resolves.toBe(ok)
+    await expect(
+      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+    ).resolves.toBe(ok)
   })
 
   it('does not spend another call after the time limit', async () => {
@@ -129,7 +146,10 @@ describe('withFallback', () => {
     const primary = fake(new LlmOutputError('late'))
     const fallback = fake(ok)
     await expect(
-      withFallback(primary.provider, fallback.provider, noLog).complete({ ...request, signal: controller.signal }),
+      withFallback(primary.provider, fallback.provider, noLog).complete({
+        ...request,
+        signal: controller.signal,
+      }),
     ).rejects.toThrow('late')
     expect(primary.complete).toHaveBeenCalledTimes(1)
     expect(fallback.complete).not.toHaveBeenCalled()
@@ -144,7 +164,9 @@ describe('withFallback', () => {
         }),
     } as unknown as LlmProvider
     const fallback = fake(ok)
-    await expect(withFallback(hanging, fallback.provider, noLog, 10).complete(request)).resolves.toBe(ok)
+    await expect(
+      withFallback(hanging, fallback.provider, noLog, 10).complete(request),
+    ).resolves.toBe(ok)
   })
 
   it('does not limit the only model when there is no fallback', async () => {
@@ -156,13 +178,17 @@ describe('withFallback', () => {
   it('retries the fallback once after invalid output too', async () => {
     const primary = fake(new Error('503'))
     const fallback = fake(new LlmOutputError('bad'), ok)
-    await expect(withFallback(primary.provider, fallback.provider, noLog).complete(request)).resolves.toBe(ok)
+    await expect(
+      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+    ).resolves.toBe(ok)
     expect(fallback.complete).toHaveBeenCalledTimes(2)
   })
 
   it('throws the error when there is no fallback', async () => {
     const primary = fake(new Error('503'))
-    await expect(withFallback(primary.provider, undefined, noLog).complete(request)).rejects.toThrow('503')
+    await expect(
+      withFallback(primary.provider, undefined, noLog).complete(request),
+    ).rejects.toThrow('503')
   })
 })
 
@@ -189,7 +215,9 @@ describe('vision reader', () => {
     expect(sent.content[0].base64).toBe(Buffer.from('png').toString('base64'))
     expect(sent.content[1].text).toContain('Century: 19')
     expect(sent.content[1].text).toContain('Language: unknown')
-    expect(onRead).toHaveBeenCalledWith(expect.objectContaining({ lines: 2, warnings: ['cut_off_right'] }))
+    expect(onRead).toHaveBeenCalledWith(
+      expect.objectContaining({ lines: 2, warnings: ['cut_off_right'] }),
+    )
   })
 
   const readReply = (lines: unknown) => {
@@ -200,7 +228,10 @@ describe('vision reader', () => {
 
   it.each([
     ['no words at all', { text: 'Іван Коваленко', words: [] }],
-    ['words that differ from the text', { text: 'Іван Коваленко', words: [{ text: 'Іван', uncertain: false }] }],
+    [
+      'words that differ from the text',
+      { text: 'Іван Коваленко', words: [{ text: 'Іван', uncertain: false }] },
+    ],
   ])('rejects %s, because uncertainty marks would not match the text', async (_, line) => {
     await expect(readReply([line])).rejects.toBeInstanceOf(LlmOutputError)
   })
@@ -220,8 +251,13 @@ describe('reader selection', () => {
   const logs = { onRead: noLog, onFailure: noLog }
 
   it('uses fixtures first, then vision with a key, and nothing without one', () => {
-    expect(selectHtrReader(loadConfig({ ...base, LLM_FIXTURES: '1', ANTHROPIC_API_KEY: 'k' }), logs)?.kind).toBe('fixture')
-    expect(selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), logs)?.kind).toBe('vision')
+    expect(
+      selectHtrReader(loadConfig({ ...base, LLM_FIXTURES: '1', ANTHROPIC_API_KEY: 'k' }), logs)
+        ?.kind,
+    ).toBe('fixture')
+    expect(selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), logs)?.kind).toBe(
+      'vision',
+    )
     expect(selectHtrReader(loadConfig(base), logs)).toBeUndefined()
   })
 
@@ -230,12 +266,15 @@ describe('reader selection', () => {
   })
 
   it('refuses a fallback without its key, so it cannot look like a working safety net', () => {
-    expect(() => loadConfig({ ...base, ANTHROPIC_API_KEY: 'k', HTR_MODEL_FALLBACK: 'gemini-x' })).toThrow(
-      /HTR_MODEL_FALLBACK/,
-    )
+    expect(() =>
+      loadConfig({ ...base, ANTHROPIC_API_KEY: 'k', HTR_MODEL_FALLBACK: 'gemini-x' }),
+    ).toThrow(/HTR_MODEL_FALLBACK/)
   })
 
-  const lineOutput = { lines: [{ text: 'оба', words: [{ text: 'оба', uncertain: false }] }], warnings: [] }
+  const lineOutput = {
+    lines: [{ text: 'оба', words: [{ text: 'оба', uncertain: false }] }],
+    warnings: [],
+  }
   const providers =
     (broken: string[] = []): ProviderFactory =>
     (config, { model }) => {
@@ -248,7 +287,12 @@ describe('reader selection', () => {
         },
       } as unknown as LlmProvider
     }
-  const both = { ...base, ANTHROPIC_API_KEY: 'a', GOOGLE_API_KEY: 'g', HTR_MODEL_FALLBACK: 'gemini-x' }
+  const both = {
+    ...base,
+    ANTHROPIC_API_KEY: 'a',
+    GOOGLE_API_KEY: 'g',
+    HTR_MODEL_FALLBACK: 'gemini-x',
+  }
   const readWith = (env: NodeJS.ProcessEnv, broken?: string[]) =>
     selectHtrReader(loadConfig(env), logs, providers(broken))?.read({ image: Buffer.from('png') })
 
@@ -283,9 +327,17 @@ describe('gemini provider', () => {
     const { create, interactions } = fakeInteractions(completed('{"a":1}'))
     const signal = new AbortController().signal
     const image = { type: 'image', mediaType: 'image/png', base64: 'AAA' } as const
-    const result = await provider(interactions, 'notes').complete({ ...request, content: [image], signal })
+    const result = await provider(interactions, 'notes').complete({
+      ...request,
+      content: [image],
+      signal,
+    })
 
-    expect(result).toEqual({ value: { a: 1 }, model: 'gemini-test', usage: { inputTokens: 10, outputTokens: 25 } })
+    expect(result).toEqual({
+      value: { a: 1 },
+      model: 'gemini-test',
+      usage: { inputTokens: 10, outputTokens: 25 },
+    })
     const [body, options] = create.mock.calls[0] ?? []
     expect(body.system_instruction).toBe('s\n\nnotes')
     expect(body.store).toBe(false)
@@ -305,7 +357,9 @@ describe('gemini provider', () => {
 
   it('does not treat a cut-off answer as output worth repeating', async () => {
     const { interactions } = fakeInteractions(completed('{"a":1}', 'incomplete'))
-    const failure = await provider(interactions).complete(request).catch((error: unknown) => error)
+    const failure = await provider(interactions)
+      .complete(request)
+      .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(Error)
     expect(failure).not.toBeInstanceOf(LlmOutputError)
   })

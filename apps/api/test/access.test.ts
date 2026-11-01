@@ -59,7 +59,12 @@ describe('guest access', () => {
       const { app } = await start({ guestRecognitionsPerDay: 1 })
       const payload = recognitionBody(makePng(10, 10))
       const first = await app.inject({ method: 'POST', url, payload, remoteAddress: '203.0.113.1' })
-      const blocked = await app.inject({ method: 'POST', url, payload, remoteAddress: '203.0.113.1' })
+      const blocked = await app.inject({
+        method: 'POST',
+        url,
+        payload,
+        remoteAddress: '203.0.113.1',
+      })
       const other = await app.inject({ method: 'POST', url, payload, remoteAddress: '203.0.113.2' })
       const state = await app.inject({
         method: 'GET',
