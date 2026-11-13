@@ -89,7 +89,7 @@ AI-компаньйон для дослідників української і�
 | Сайт продукту | https://github.com/code-by-accident/chronicler (публічний) | 8 маршрутів, пререндер, готовий до деплою на Vercel; у `docs/` — база знань, у `CLAUDE.md` — правила |
 | Figma: компоненти й екрани | https://www.figma.com/design/4UXNnyAAyCxTI5NqMtvQPM/ | ≈ 2/3, див. розділ 11 |
 | План MVP v2 (цей комплект, файли 00–10) | у власника; після 3.11 — приватний репозиторій `khronist`, `docs/plan/` | версія 2.0 від 1.11 |
-| Монорепо продукту `khronist` | https://github.com/code-by-accident (приватний до 13.11) | є: API читання, контракти, промпт `htr_vision`, CI; деплою ще немає |
+| Монорепо продукту | https://github.com/code-by-accident/Khronist-real-platform (публічний з 14.11, Apache-2.0) | є: API читання, контракти, промпт `htr_vision`, CI; API в проді на https://api.khronist.org (Railway) |
 
 ## 9. Сайт продукту: що є і як влаштовано
 

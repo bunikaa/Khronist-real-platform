@@ -2,7 +2,7 @@
 
 AI-компаньйон для дослідників українських архівів: розширення Chrome читає рукописні скани на архівних порталах, пояснює терміни й дати з джерелами, а підтверджені людьми транскрипції потрапляють у відкритий шар Commons (CC BY 4.0).
 
-Зараз у репозиторії працює лише API. Розширення, вебзастосунок, MCP-сервер і `services/*` ще не створені.
+Зараз у репозиторії працює лише API: https://api.khronist.org (Railway, опис інфраструктури — `.railway/railway.ts`). Розширення, вебзастосунок, MCP-сервер і `services/*` ще не створені.
 
 ## Що потрібно встановити
 
@@ -59,8 +59,13 @@ pnpm dev
 | `packages/prompts`   | промпти                                                   | ML-команда             |
 | `packages/config`    | спільні налаштування                                      | Владислав              |
 | `infra`              | локальний PostgreSQL                                      | Владислав              |
+| `.railway`           | сервіс API і база на Railway                              | Владислав              |
 | `docs`               | план, контекст, рішення                                   | уся команда            |
 
 ## Як долучитися
 
 Правила роботи з гілками, комітами й PR, а також типові проблеми описані в [CONTRIBUTING.md](CONTRIBUTING.md). Контекст проєкту: [docs/project-context.md](docs/project-context.md), план: [docs/plan/README.md](docs/plan/README.md), контракти: [docs/plan/07-contracts.md](docs/plan/07-contracts.md), рішення: [docs/decisions.md](docs/decisions.md).
+
+## Ліцензія
+
+Код — [Apache-2.0](LICENSE). Підтверджені транскрипції Commons публікуються під CC BY 4.0.
