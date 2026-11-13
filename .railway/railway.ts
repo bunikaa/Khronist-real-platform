@@ -1,6 +1,7 @@
 import { defineRailway, github, postgres, preserve, project, service } from 'railway/iac'
 
 const region = 'europe-west4-drams3a'
+const port = 8080
 
 export default defineRailway(() => {
   const db = postgres('postgres', { region })
@@ -25,8 +26,10 @@ export default defineRailway(() => {
     start: 'pnpm --filter @khronist/api start',
     healthcheck: '/health',
     replicas: { [region]: 1 },
+    domains: [{ domain: 'api.khronist.org', port }],
     env: {
       NODE_ENV: 'production',
+      PORT: String(port),
       RAILPACK_NODE_VERSION: '24',
       RAILWAY_DEPLOYMENT_DRAINING_SECONDS: '25',
       RAILWAY_DEPLOYMENT_OVERLAP_SECONDS: '0',
