@@ -77,7 +77,7 @@ describe('guest access', () => {
       expect(state.statusCode).toBe(200)
     })
 
-    it('ignores a forged forwarded address without a trusted proxy', async () => {
+    it('ignores a forwarded address the client wrote', async () => {
       const { app } = await start({ guestRecognitionsPerDay: 1 })
       const send = (forwarded: string) =>
         app.inject({
@@ -91,19 +91,49 @@ describe('guest access', () => {
       expect((await send('198.51.100.2')).statusCode).toBe(429)
     })
 
-    it('behind one proxy takes the address the proxy saw, not one the client wrote', async () => {
-      const { app } = await start({ guestRecognitionsPerDay: 1, trustProxyHops: 1 })
-      const send = (forwarded: string) =>
+    it('takes the address from the header the proxy sets', async () => {
+      const { app } = await start({ guestRecognitionsPerDay: 1, clientIpHeader: 'x-real-ip' })
+      const send = (headers: Record<string, string>) =>
         app.inject({
           method: 'POST',
           url,
           payload: recognitionBody(makePng(10, 10)),
-          headers: { 'x-forwarded-for': forwarded },
+          headers,
         })
 
-      expect((await send('198.51.100.1, 203.0.113.9')).statusCode).toBe(201)
-      expect((await send('198.51.100.2, 203.0.113.9')).statusCode).toBe(429)
-      expect((await send('198.51.100.1, 203.0.113.10')).statusCode).toBe(201)
+      expect((await send({ 'x-real-ip': '203.0.113.9' })).statusCode).toBe(201)
+      expect(
+        (await send({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '198.51.100.1' })).statusCode,
+      ).toBe(429)
+      expect((await send({ 'x-real-ip': '203.0.113.10' })).statusCode).toBe(201)
+    })
+
+    it('counts one IPv6 subnet as one guest', async () => {
+      const { app } = await start({ guestRecognitionsPerDay: 1, clientIpHeader: 'x-real-ip' })
+      const send = (address: string) =>
+        app.inject({
+          method: 'POST',
+          url,
+          payload: recognitionBody(makePng(10, 10)),
+          headers: { 'x-real-ip': address },
+        })
+
+      expect((await send('2001:db8:1:2::1')).statusCode).toBe(201)
+      expect((await send('2001:db8:1:2::ffff')).statusCode).toBe(429)
+    })
+
+    it('falls back to the socket address when the header is not an address', async () => {
+      const { app } = await start({ guestRecognitionsPerDay: 1, clientIpHeader: 'x-real-ip' })
+      const send = (address: string) =>
+        app.inject({
+          method: 'POST',
+          url,
+          payload: recognitionBody(makePng(10, 10)),
+          headers: { 'x-real-ip': address },
+        })
+
+      expect((await send('not-an-address')).statusCode).toBe(201)
+      expect((await send('also-not-an-address')).statusCode).toBe(429)
     })
   })
 

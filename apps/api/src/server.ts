@@ -31,7 +31,7 @@ const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(e
 
 const app = await buildApp({
   logLevel: config.LOG_LEVEL,
-  trustProxyHops: config.TRUST_PROXY_HOPS,
+  clientIpHeader: config.CLIENT_IP_HEADER,
   corsOrigins: config.CORS_ORIGINS,
   guestRecognitionsPerDay: config.GUEST_RECOGNITIONS_PER_DAY,
   providers: { llm: llmStatus(config), htr: reader?.kind ?? 'down' },

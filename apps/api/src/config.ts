@@ -38,9 +38,12 @@ const configSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
-    TRUST_PROXY_HOPS: z.preprocess(
+    CLIENT_IP_HEADER: z.preprocess(
       emptyToUndefined,
-      z.coerce.number().int().min(0).max(5).default(0),
+      z
+        .string()
+        .regex(/^[a-z0-9-]+$/, 'expected a lowercase header name')
+        .optional(),
     ),
     CORS_ORIGINS: z.preprocess(emptyToUndefined, corsOrigins.default([])),
     GUEST_RECOGNITIONS_PER_DAY: z.preprocess(
