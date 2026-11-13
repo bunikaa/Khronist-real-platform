@@ -1,10 +1,10 @@
 # apps/api
 
-Fastify 5 + Drizzle + PostgreSQL 16. Контракти запитів і відповідей — у `@khronist/contracts`.
+Fastify 5 + Drizzle + PostgreSQL 18. Контракти запитів і відповідей — у `@khronist/contracts`.
 
 ## Запуск
 
-1. `docker compose -f infra/docker-compose.yml up -d` (Postgres 16, порт лише на `127.0.0.1`).
+1. `docker compose -f infra/docker-compose.yml up -d` (Postgres 18, порт лише на `127.0.0.1`).
 2. Скопіювати `.env.example` у `.env`.
 3. `pnpm db:migrate`, потім `pnpm dev`.
 4. `GET http://localhost:3000/health`: 200, якщо база відповідає, інакше 503 із `db: "down"`.

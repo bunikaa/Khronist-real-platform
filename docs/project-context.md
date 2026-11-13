@@ -148,7 +148,7 @@ AI-компаньйон для дослідників української і�
 
 ## 13. Технічна архітектура MVP (коротко; деталі в `00`–`07`)
 
-Монорепо `khronist`: `apps/api` (Fastify 5, Drizzle, PostgreSQL 16 з `pg_trgm`, фонові задачі в процесі, Better Auth, SSE), `apps/extension` (WXT, Chrome MV3, React 19, side panel, `PortalAdapter`), `apps/web` (Vite, React 19, пошук і мінімальне робоче місце), `apps/mcp` (три інструменти, stdio для Claude Desktop), `packages/{contracts,ui,prompts,config}`, `services/knowledge` (корпус, словник, оцінка), `services/htr` (трек B на Modal, лише за рішенням 9 листопада). Читання: мультимодальна модель за промптом `htr_vision` через `LlmProvider` (Claude основна, Gemini резерв). Пошук по корпусу повнотекстовий зі словником варіантів. Хостинг: Railway (api, postgres), Vercel (web). Контракти — `07-contracts.md`.
+Монорепо `khronist`: `apps/api` (Fastify 5, Drizzle, PostgreSQL 18 з `pg_trgm`, фонові задачі в процесі, Better Auth, SSE), `apps/extension` (WXT, Chrome MV3, React 19, side panel, `PortalAdapter`), `apps/web` (Vite, React 19, пошук і мінімальне робоче місце), `apps/mcp` (три інструменти, stdio для Claude Desktop), `packages/{contracts,ui,prompts,config}`, `services/knowledge` (корпус, словник, оцінка), `services/htr` (трек B на Modal, лише за рішенням 9 листопада). Читання: мультимодальна модель за промптом `htr_vision` через `LlmProvider` (Claude основна, Gemini резерв). Пошук по корпусу повнотекстовий зі словником варіантів. Хостинг: Railway (api, postgres), Vercel (web). Контракти — `07-contracts.md`.
 
 ## 14. Статус на 1 листопада 2026
 

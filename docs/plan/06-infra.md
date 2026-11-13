@@ -7,7 +7,7 @@
 | Компонент | Де | Тариф | Орієнтовна вартість за листопад |
 | --- | --- | --- | --- |
 | API (Fastify, один процес із фоновими задачами) | Railway, сервіс `api` | Hobby, оплата за використання | $5–8 |
-| PostgreSQL 16 | Railway Postgres | — | $2–5 при < 1 ГБ |
+| PostgreSQL 18 | Railway Postgres | — | $2–5 при < 1 ГБ |
 | Веб-застосунок | Vercel Hobby | безкоштовно | $0 |
 | Сайт | Vercel Hobby (вже є) | безкоштовно | $0 |
 | LLM: читання, нормалізація, сутності, пояснення, чат | Anthropic API; Gemini як резерв | за токени | $20–35 при 200 аркушах і тестах |
@@ -38,7 +38,7 @@
 
 ## 3. Локальна розробка
 
-`infra/docker-compose.yml`: `postgres:16` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api, extension, web), `pnpm db:migrate`, `pnpm db:seed` (демо-документ і 3 аркуші з фікстурними транскрипціями). Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): повертає записані відповіді з `test/fixtures`, щоб фронтенд розроблявся без витрат.
+`infra/docker-compose.yml`: `postgres:18` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api, extension, web), `pnpm db:migrate`, `pnpm db:seed` (демо-документ і 3 аркуші з фікстурними транскрипціями). Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): повертає записані відповіді з `test/fixtures`, щоб фронтенд розроблявся без витрат.
 
 ## 4. CI/CD (GitHub Actions)
 
