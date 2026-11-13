@@ -33,7 +33,7 @@
 | Три середовища (local, stage, prod) | Два (local, prod) плюс preview від Railway на PR за бажанням | менше секретів і налаштувань |
 | Бюджет $60–95 | $45–65 без треку B, $60–85 із ним | Redis, воркер і GPU прибрані з обов'язкових витрат |
 
-Рішення, які не змінилися: один монорепо, Fastify 5 + Drizzle + PostgreSQL 16, Better Auth з magic link через Resend, WXT для розширення, Railway + Vercel, MCP у must-обсязі, Commons під CC BY 4.0, читання без входу.
+Рішення, які не змінилися: один монорепо, Fastify 5 + Drizzle + PostgreSQL 18, Better Auth з magic link через Resend, WXT для розширення, Railway + Vercel, MCP у must-обсязі, Commons під CC BY 4.0, читання без входу.
 
 ## Розподіл відповідальності
 
@@ -49,7 +49,7 @@
 ## Головні рішення, зафіксовані до початку
 
 - Один монорепо `khronist`: TypeScript-застосунки в `apps/`, спільні пакети в `packages/`, Python у `services/`.
-- Бекенд: Node.js 24, Fastify 5, Drizzle ORM, PostgreSQL 16 (`pg_trgm`, повнотекст). Один процес API з фоновими задачами.
+- Бекенд: Node.js 24, Fastify 5, Drizzle ORM, PostgreSQL 18 (`pg_trgm`, повнотекст). Один процес API з фоновими задачами.
 - Читання рукопису: мультимодальна модель через API за промптом `htr_vision` (Claude основна, Gemini резерв) через єдиний адаптер `LlmProvider`. Rukopys-OCR-4B на Modal — трек B, перемикається за контрактом `/recognize`, якщо до 17 листопада доведе кращий CER.
 - Пояснення й чат лише з довідкового корпусу з посиланнями; без джерел — чесне «не знаю». Пошук по корпусу повнотекстовий.
 - Авторизація: Better Auth з magic link, листи через Resend. Читання, пояснення й чат — без входу.
