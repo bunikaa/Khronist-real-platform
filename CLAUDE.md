@@ -25,7 +25,7 @@
 - Не чіпати чужу зону без потреби: зміни в `services/*` і `packages/prompts` робить ML-команда, в `apps/*` — Владислав. Якщо треба змінити щось у чужій зоні — опиши в PR, не роби мовчки.
 - Секрети лише через env; `.env.example` оновлюється разом із новою змінною.
 - Рішення й скорочення обсягу фіксуються в `docs/decisions.md` того ж дня.
-- Репозиторій приватний до 13 листопада 2026.
+- Репозиторій публічний з 14 листопада 2026, код під Apache-2.0 (`LICENSE`).
 
 ## Команди
 `pnpm dev` · `pnpm db:generate` · `pnpm db:migrate` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python scripts/ingest.py`, `uv run python eval/run_qa.py`, `uv run python eval/run_htr_eval.py`
