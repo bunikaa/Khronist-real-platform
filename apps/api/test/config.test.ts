@@ -89,10 +89,13 @@ describe('production safety', () => {
     expect(loadConfig({ ...base, NODE_ENV: 'production' }).LLM_FIXTURES).toBe(false)
   })
 
-  it('reads the number of trusted proxies', () => {
-    expect(loadConfig(base).TRUST_PROXY_HOPS).toBe(0)
-    expect(loadConfig({ ...base, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1)
-    expect(() => loadConfig({ ...base, TRUST_PROXY_HOPS: 'true' })).toThrow(/TRUST_PROXY_HOPS/)
+  it('reads the header that carries the client address', () => {
+    expect(loadConfig(base).CLIENT_IP_HEADER).toBeUndefined()
+    expect(loadConfig({ ...base, CLIENT_IP_HEADER: '' }).CLIENT_IP_HEADER).toBeUndefined()
+    expect(loadConfig({ ...base, CLIENT_IP_HEADER: 'x-real-ip' }).CLIENT_IP_HEADER).toBe(
+      'x-real-ip',
+    )
+    expect(() => loadConfig({ ...base, CLIENT_IP_HEADER: 'X-Real-IP' })).toThrow(/CLIENT_IP_HEADER/)
   })
 })
 

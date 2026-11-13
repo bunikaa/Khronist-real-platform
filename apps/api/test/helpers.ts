@@ -93,7 +93,7 @@ export type TestAppOptions = {
   staleAfterMs?: number
   maxStreamMs?: number
   heartbeatMs?: number
-  trustProxyHops?: number
+  clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
 }
@@ -106,7 +106,7 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     logLevel: 'silent',
     providers: { llm: 'ok', htr: 'fixture' },
     checkDb: async () => true,
-    trustProxyHops: options.trustProxyHops,
+    clientIpHeader: options.clientIpHeader,
     corsOrigins: options.corsOrigins,
     guestRecognitionsPerDay: options.guestRecognitionsPerDay,
     recognitions: {

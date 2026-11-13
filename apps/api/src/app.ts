@@ -1,6 +1,7 @@
 import cors from '@fastify/cors'
-import rateLimit from '@fastify/rate-limit'
-import Fastify from 'fastify'
+import rateLimit, { normalizeIP } from '@fastify/rate-limit'
+import Fastify, { type FastifyRequest } from 'fastify'
+import { isIP } from 'node:net'
 import {
   serializerCompiler,
   validatorCompiler,
@@ -14,7 +15,7 @@ import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
   logLevel?: string
-  trustProxyHops?: number
+  clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
   recognitions?: Omit<RecognitionDeps, 'log'>
@@ -51,9 +52,13 @@ const describe = (error: unknown, status: number): ErrorDescription => {
   return clientErrors[status] ?? { code: 'bad_request', message: 'Некоректний запит' }
 }
 
+const clientAddress = (request: FastifyRequest, header: string | undefined): string => {
+  const value = header === undefined ? undefined : request.headers[header]
+  return typeof value === 'string' && isIP(value) !== 0 ? value : request.ip
+}
+
 export const buildApp = async (deps: AppDeps) => {
   const app = Fastify({
-    trustProxy: (_address, hop) => hop < (deps.trustProxyHops ?? 0),
     logger: { level: deps.logLevel ?? 'info' },
   }).withTypeProvider<ZodTypeProvider>()
   app.setValidatorCompiler(validatorCompiler)
@@ -83,7 +88,10 @@ export const buildApp = async (deps: AppDeps) => {
       'x-ratelimit-reset',
     ],
   })
-  await app.register(rateLimit, { global: false })
+  await app.register(rateLimit, {
+    global: false,
+    keyGenerator: (request) => normalizeIP(clientAddress(request, deps.clientIpHeader)),
+  })
 
   await app.register(healthRoutes(deps))
   if (deps.recognitions) {
