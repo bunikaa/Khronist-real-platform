@@ -25,6 +25,9 @@ Fastify 5 + Drizzle + PostgreSQL 16. Контракти запитів і від
 
 Сервіс і база на Railway описані в `.railway/railway.ts`: збірка Railpack, міграції як pre-deploy, перевірка `/health`, деплой `main` лише після зеленого CI. Зміни застосовуються з кореня репозиторію через Railway CLI: `railway login`, `railway link`, `railway config plan`, `railway config apply`. Ключі (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) у файлі позначені `preserve()` і задаються в Railway, а не в репозиторії.
 
+- Власний домен конфігурація не реєструє: `api.khronist.org` додається в дашборді Railway (Settings → Networking), записи CNAME і TXT — у Cloudflare в режимі «DNS only». Після цього домен дописується в `domains` сервісу в `.railway/railway.ts`, і `railway config plan` має показати відсутність змін (`pull` не використовуємо: він перезаписує файл згенерованим кодом).
+- На Windows SDK `railway` перевіряє версію CLI запуском `process.env._ || "railway"` без оболонки й не бачить обгортку `railway.cmd` з npm, тому падає з «requires Railway CLI 5.42.1 or newer» навіть на новому CLI. У PowerShell перед `railway config` вказати справжній файл: `$env:_ = "$(npm root -g)\@railway\cli\bin\railway.exe"`.
+
 ## Рішення по схемі
 
 - Ідентифікатори прикладних таблиць — UUID v7 (генерує застосунок через `uuidv7`), тож сирий SQL має передавати `id` сам. Таблиці Better Auth (`user`, `session`, `account`, `verification`) мають текстові ідентифікатори й експортуються під цими іменами, як очікує адаптер.

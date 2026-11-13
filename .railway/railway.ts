@@ -25,7 +25,6 @@ export default defineRailway(() => {
     start: 'pnpm --filter @khronist/api start',
     healthcheck: '/health',
     replicas: { [region]: 1 },
-    domains: ['api.khronist.org'],
     env: {
       NODE_ENV: 'production',
       RAILPACK_NODE_VERSION: '24',
