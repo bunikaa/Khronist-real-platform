@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { citationSchema } from './common.ts'
+import { citationSchema, recordCitationSchema } from './common.ts'
 
 const noAnswerReason = z.literal('no_sources')
 
@@ -43,10 +43,24 @@ export type ChatRequest = z.infer<typeof chatRequestSchema>
 export const chatResponseSchema = z.object({
   answer: z.string().nullable(),
   reason: noAnswerReason.optional(),
-  citations: z.array(citationSchema),
+  confidence: answerConfidenceSchema.optional(),
+  citations: z.array(z.discriminatedUnion('kind', [citationSchema, recordCitationSchema])),
   followups: z.array(z.string()),
 })
 export type ChatResponse = z.infer<typeof chatResponseSchema>
+
+export const chatOutputSchema = z.object({
+  answer: z.string().nullable(),
+  confidence: answerConfidenceSchema,
+  citations: z.array(
+    z.union([
+      z.object({ source: z.literal('record'), quote: z.string() }),
+      z.object({ source: z.literal('chunk'), chunkId: z.string(), quote: z.string() }),
+    ]),
+  ),
+  followups: z.array(z.string()),
+})
+export type ChatOutput = z.infer<typeof chatOutputSchema>
 
 export const hasValidAnswer = (r: { answer: string | null; citations: unknown[] }): boolean =>
   r.answer !== null && r.citations.length > 0

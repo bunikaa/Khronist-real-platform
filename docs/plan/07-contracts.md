@@ -12,7 +12,8 @@ Box = { x: number; y: number; w: number; h: number }
 Word = { text: string; uncertain: boolean; confidence?: number }            // confidence лише від HTR-сервісу
 Line = { idx: number; text: string; box: Box; boxSource: 'model' | 'estimated'; uncertain: boolean; words: Word[] }
 Entity = { type: 'person' | 'place' | 'term' | 'date'; text: string; start: number; end: number; normalized?: string; wikidataId?: string; extra?: Record<string, unknown> }
-Citation = { chunkId: string; sourceId: string; title: string; url?: string; quote: string }
+Citation = { kind: 'chunk'; chunkId: string; sourceId: string; title: string; url?: string; quote: string }
+RecordCitation = { kind: 'record'; transcriptionId: string; quote: string }   // цитата із самої транскрипції, лише в чаті
 TranscriptionStatus = 'draft' | 'verified' | 'disputed'
 RecognitionStatus = 'queued' | 'reading' | 'normalizing' | 'done' | 'failed'
 ```
@@ -55,7 +56,7 @@ POST /v1/explain
   200: { answer: string | null; reason?: 'no_sources'; confidence?: 'high' | 'low'; citations: Citation[]; place?: { modernName, region, wikidataId }; date?: { julian, gregorian, weekday } }
 POST /v1/chat
   body: { messages: [{ role: 'user' | 'assistant'; content: string }]; context?: { transcriptionId?: string } }
-  200: { answer: string | null; reason?: 'no_sources'; citations: Citation[]; followups: string[] }
+  200: { answer: string | null; reason?: 'no_sources'; confidence?: 'high' | 'low'; citations: (Citation | RecordCitation)[]; followups: string[] }
 ```
 
 ### Commons і цитата
@@ -159,3 +160,19 @@ background:        hotkey:toggle, auth:changed
 - `quote` — точний фрагмент тексту чанка, на якому тримається відповідь. API відкидає цитату, якщо `chunkId` не з переданих чанків або `quote` немає в тексті чанка; якщо не лишилося жодної — відповідь стає `answer: null` з `reason: 'no_sources'`.
 - `confidence`: `high` — чанки прямо відповідають на запитання; `low` — відповідають частково. API передає його в `confidence` відповіді `POST /v1/explain` лише разом із відповіддю; при `answer: null` поле не передається.
 - Значення `enum` API порівнює без урахування регістру: structured output не гарантує регістр значень `enum` (документація Claude API, Invalid outputs).
+
+## 11. Промпт `chat`
+
+Вхід: історія діалогу, запис (нормалізований текст транскрипції з `context.transcriptionId`, якщо є) і до шести знайдених чанків корпусу за останнім запитанням. Вихід structured output (`chatOutputSchema` у `packages/contracts`):
+```json
+{ "answer": "string | null", "confidence": "high | low",
+  "citations": [ { "source": "record", "quote": "string" } | { "source": "chunk", "chunkId": "string", "quote": "string" } ],
+  "followups": ["string"] }
+```
+- `answer` — до п'яти речень українською, лише із запису й переданих чанків. Маркер `[n]` у тексті посилається на `n`-ту цитату в `citations` (з 1).
+- `quote` — точний фрагмент запису (`source: record`) або тексту чанка (`source: chunk`).
+- Перевірка в API сувора: якщо хоч одна цитата не знайдена у своєму джерелі, `chunkId` не з переданих чанків, цитата на запис без запису або маркер `[n]` вказує за межі `citations` — уся відповідь стає `answer: null` з `reason: 'no_sources'`. Відповідь без жодної цитати — так само.
+- Якщо запис і чанки не відповідають — `answer: null`, `confidence: low`, без цитат.
+- `confidence` — як в `explain` (розділ 10): `high` — джерела відповідають прямо, `low` — частково; у відповіді `POST /v1/chat` лише разом із відповіддю.
+- `followups` — 2–3 короткі запитання українською, на які є відповідь у переданих джерелах; також і при `answer: null`.
+- API перетворює цитати моделі на `Citation` (`kind: 'chunk'`) і `RecordCitation` (`kind: 'record'`) відповіді `POST /v1/chat`.

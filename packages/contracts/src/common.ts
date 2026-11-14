@@ -81,6 +81,7 @@ export const entitySchema = z.object({
 export type Entity = z.infer<typeof entitySchema>
 
 export const citationSchema = z.object({
+  kind: z.literal('chunk'),
   chunkId: z.uuid(),
   sourceId: z.uuid(),
   title: z.string(),
@@ -88,6 +89,13 @@ export const citationSchema = z.object({
   quote: z.string(),
 })
 export type Citation = z.infer<typeof citationSchema>
+
+export const recordCitationSchema = z.object({
+  kind: z.literal('record'),
+  transcriptionId: z.uuid(),
+  quote: z.string(),
+})
+export type RecordCitation = z.infer<typeof recordCitationSchema>
 
 export const transcriptionStatusSchema = z.enum(['draft', 'verified', 'disputed'])
 export type TranscriptionStatus = z.infer<typeof transcriptionStatusSchema>
