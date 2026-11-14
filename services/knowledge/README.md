@@ -10,6 +10,20 @@ uv sync
 uv run ruff check && uv run ruff format --check && uv run pytest
 ```
 
+## Оцінка читання
+
+Читає той самий код, що й прод (`createVisionReader` в `apps/api`), а рахує метрики Python:
+
+```sh
+uv run python eval/prepare_fragments.py
+pnpm --filter @khronist/api read-fragments --model claude-sonnet-5-5 \
+  --fragments ../../services/knowledge/eval/.cache/fragments --out <readings.jsonl>
+uv run python eval/run_htr_eval.py --reference eval/reference/lines.jsonl \
+  --readings <readings.jsonl> ... --out eval/results/<дата>-htr.md
+```
+
+Шляхи для `read-fragments` — абсолютні або від `apps/api`. Протокол метрик — `docs/decisions.md`, 14 листопада; походження еталона — `eval/reference/README.md`.
+
 ## Корпус
 
 Одна стаття — один файл `data/entries/*.md`: YAML-шапка між рядками `---`, далі текст. Формат — `docs/plan/07-contracts.md`, розділ 5; перевіряє його `src/khronist_knowledge/corpus.py`, а тест `test_corpus_entries_are_valid` проганяє всі статті теки.
