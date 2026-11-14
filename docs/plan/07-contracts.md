@@ -138,3 +138,13 @@ background:        hotkey:toggle, auth:changed
 - Слово, непевне у вході, лишається непевним у виході.
 - `expansions` — розкриті загальновідомі скорочення: `from` — як у вході, `to` — як у виході.
 - `normalizedText` транскрипції — тексти рядків виходу через `\n`.
+
+## 9. Промпт `entities`
+
+Вхід: нормалізований текст (`normalizedText`, вихід `normalize`) і `hints`. Вихід structured output (`entitiesOutputSchema` у `packages/contracts`):
+```json
+{ "entities": [ { "type": "person | place | term | date", "text": "string", "normalized": "string" } ] }
+```
+- Сутності йдуть у порядку появи в тексті. `text` — точний фрагмент `normalizedText`; якщо слово перенесено на інший рядок, фрагмент містить і дефіс, і перенос рядка між частинами.
+- `normalized` — початкова форма в сучасній орфографії тієї самої мови, без перекладу й без здогадок (`Борщаговки` → `Борщаговка`); для дат — фрагмент як є, без обчислень.
+- Числових полів у схемі немає: structured output моделі не підтримує обмежень `minimum`/`maximum`. `start` і `end` для `Entity` рахує API: шукає кожен `text` у `normalizedText` після кінця попереднього знайденого; не знайдено — сутність відкидається.
