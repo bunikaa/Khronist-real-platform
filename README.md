@@ -55,6 +55,7 @@ pnpm dev
 | Тека                 | Що там                                                    | Власник                |
 | -------------------- | --------------------------------------------------------- | ---------------------- |
 | `apps/api`           | API на Fastify 5 і Drizzle ([README](apps/api/README.md)) | Владислав              |
+| `packages/ui`        | тема daisyUI і компоненти з Figma ([README](packages/ui/README.md)) | Владислав |
 | `packages/contracts` | Zod-схеми й типи                                          | Владислав і ML-команда |
 | `packages/prompts`   | промпти                                                   | ML-команда             |
 | `packages/config`    | спільні налаштування                                      | Владислав              |

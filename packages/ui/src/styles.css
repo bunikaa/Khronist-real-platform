@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/cyrillic-400.css';
+@import '@fontsource/inter/cyrillic-ext-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/cyrillic-500.css';
+@import '@fontsource/inter/cyrillic-ext-500.css';
+@import '@fontsource/source-serif-4/latin-500.css';
+@import '@fontsource/source-serif-4/cyrillic-500.css';
+@import '@fontsource/source-serif-4/cyrillic-ext-500.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/cyrillic-400.css';
+@import '@fontsource/jetbrains-mono/cyrillic-ext-400.css';
+
+@source "./";
+
+@plugin "daisyui" {
+  themes: false;
+}
+
+@plugin "daisyui/theme" {
+  name: 'khronist';
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #f7f5f0;
+  --color-base-200: #efece4;
+  --color-base-300: #e6e1d6;
+  --color-base-content: #1c1a17;
+
+  --color-primary: #a3561a;
+  --color-primary-content: #fbf8f2;
+  --color-accent: #a3561a;
+  --color-accent-content: #fbf8f2;
+  --color-neutral: #1c1a17;
+  --color-neutral-content: #f7f5f0;
+
+  --color-success: #2e7d4f;
+  --color-success-content: #f7f5f0;
+  --color-warning: #b08a2e;
+  --color-warning-content: #1c1a17;
+  --color-error: #a33a2b;
+  --color-error-content: #f7f5f0;
+
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.375rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --color-ink-muted: #5b554b;
+  --color-rule: #ddd8cc;
+  --color-accent-soft: #a3561a1f;
+
+  --text-heading-20: 20px;
+  --text-heading-20--line-height: 26px;
+  --text-heading-20--letter-spacing: -0.2px;
+  --text-heading-20--font-weight: 500;
+  --text-heading-16: 16px;
+  --text-heading-16--line-height: 22px;
+  --text-heading-16--letter-spacing: -0.1px;
+  --text-heading-16--font-weight: 500;
+  --text-label-13: 13px;
+  --text-label-13--line-height: 18px;
+  --text-label-13--font-weight: 500;
+  --text-label-section: 10px;
+  --text-label-section--line-height: 14px;
+  --text-label-section--letter-spacing: 0.8px;
+  --text-label-section--font-weight: 500;
+  --text-body-14: 14px;
+  --text-body-14--line-height: 20px;
+  --text-body-13: 13px;
+  --text-body-13--line-height: 18px;
+  --text-body-12: 12px;
+  --text-body-12--line-height: 16px;
+  --text-mono-transcription: 13px;
+  --text-mono-transcription--line-height: 20px;
+  --text-mono-11: 11px;
+  --text-mono-11--line-height: 14px;
+  --text-mono-10: 10px;
+  --text-mono-10--line-height: 12px;
+  --text-brand-logo: 16px;
+  --text-brand-logo--line-height: 20px;
+  --text-brand-logo--font-weight: 500;
+}
+
+@layer base {
+  body {
+    @apply bg-base-100 text-base-content font-sans antialiased;
+  }
+}
