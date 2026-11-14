@@ -14,6 +14,7 @@
   "dependencies": {
     "@khronist/contracts": "workspace:*",
     "@khronist/ui": "workspace:*",
+    "lucide-react": "^1.72.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"
