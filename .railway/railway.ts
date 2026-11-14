@@ -13,6 +13,7 @@ export default defineRailway(() => {
     }),
     build: {
       builder: 'RAILPACK',
+      buildCommand: 'pnpm --filter @khronist/api run --if-present build',
       watchPatterns: [
         '/apps/api/**',
         '/packages/contracts/**',

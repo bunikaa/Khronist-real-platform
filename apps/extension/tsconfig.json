@@ -1,0 +1,8 @@
+{
+  "extends": ["@khronist/config/tsconfig.base.json", "./.wxt/tsconfig.json"],
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
+  }
+}
