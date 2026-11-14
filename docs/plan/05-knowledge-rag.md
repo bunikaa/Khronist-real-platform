@@ -36,6 +36,7 @@ type: term
 period: XVIII–XX
 source_title: Енциклопедія історії України, т. 2
 source_url: https://…
+source_kind: encyclopedia
 licence: цитата з посиланням
 ---
 Хрещені батьки, записані в метричній книзі при хрещенні. …

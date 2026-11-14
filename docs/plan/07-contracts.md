@@ -103,7 +103,7 @@ GET /health → { ok: true, warm: boolean, model: { name, revision } }
 
 ## 5. Формат корпусу
 
-Стаття — Markdown з YAML-шапкою (`05`, розділ 3): `term`, `variants[]`, `type` (`term|place|date|unit|abbr`), `period`, `source_title`, `source_url`, `licence`, опційно `wikidata_id`. Інгестія відправляє статті як `chunks` із `textHash = sha256(text)` і `variants` як `synonyms`.
+Стаття — Markdown з YAML-шапкою (`05`, розділ 3): `term`, `variants[]`, `type` (`term|place|date|unit|abbr`), `period`, `source_title`, `source_url`, `source_kind` (`dictionary|encyclopedia|wikidata|publication`, як `kind` у `/v1/admin/sources`), `licence`, опційно `wikidata_id`. Інгестія відправляє джерела статей як `sources`, статті як `chunks` із `textHash = sha256(text)` і `variants` як `synonyms`.
 
 ## 6. MCP-сервер (`apps/mcp`)
 
