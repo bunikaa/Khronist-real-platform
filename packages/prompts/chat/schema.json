@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": ["string", "null"]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "low"]
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "record"
+              },
+              "quote": {
+                "type": "string"
+              }
+            },
+            "required": ["source", "quote"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "chunk"
+              },
+              "chunkId": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              }
+            },
+            "required": ["source", "chunkId", "quote"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["answer", "confidence", "citations", "followups"],
+  "additionalProperties": false
+}

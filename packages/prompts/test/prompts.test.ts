@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import {
+  chatOutputSchema,
+  chatRequestSchema,
   entitiesOutputSchema,
   explainOutputSchema,
   explainRequestSchema,
@@ -215,6 +217,86 @@ describe('explain', () => {
   })
 
   it('has examples with a confident answer, a partial answer and no answer', () => {
+    const kinds = new Set(
+      examples.map(({ output }) => (output.answer === null ? 'none' : output.confidence)),
+    )
+    expect(kinds).toEqual(new Set(['high', 'low', 'none']))
+  })
+})
+
+describe('chat', () => {
+  const prompt = loadPrompt('chat')
+
+  const exampleSchema = z.object({
+    source: z.string(),
+    input: z.object({
+      period: z.string(),
+      record: z.string(),
+      chunks: z.array(z.object({ chunkId: z.string(), title: z.string(), text: z.string() })),
+      messages: chatRequestSchema.shape.messages,
+    }),
+    output: chatOutputSchema,
+  })
+  const examples = readFileSync(new URL('../chat/examples.jsonl', import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => exampleSchema.parse(JSON.parse(line)))
+
+  it('starts the system prompt with the shared persona', () => {
+    expect(prompt.system.startsWith('Ти — Хроніст')).toBe(true)
+    expect(prompt.system).toContain('[нрзб]')
+  })
+
+  it('keeps schema.json equal to the contract', () => {
+    const { $schema: _, ...contract } = z.toJSONSchema(chatOutputSchema, { io: 'output' })
+    expect(prompt.schema).toEqual(contract)
+  })
+
+  it('has a value for every template variable', () => {
+    const text = renderPrompt(prompt.user, {
+      period: '19',
+      record: 'none',
+      chunks: '[]',
+      messages: '[]',
+    })
+    expect(text).toContain('Century: 19')
+    expect(text).not.toContain('{{')
+  })
+
+  it('has examples whose quotes come from their sources', () => {
+    expect(examples.length).toBeGreaterThanOrEqual(5)
+    for (const { input, output } of examples) {
+      for (const citation of output.citations) {
+        const source =
+          citation.source === 'record'
+            ? input.record
+            : input.chunks.find((c) => c.chunkId === citation.chunkId)?.text
+        expect(source, citation.quote).toContain(citation.quote)
+      }
+    }
+  })
+
+  it('has examples where markers and citations match one to one', () => {
+    for (const { output } of examples) {
+      const markers = [...(output.answer ?? '').matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]))
+      expect(new Set(markers)).toEqual(new Set(output.citations.map((_, i) => i + 1)))
+    }
+  })
+
+  it('has examples with short answers, followups and honest unknowns', () => {
+    for (const { input, output } of examples) {
+      expect(input.messages.at(-1)?.role).toBe('user')
+      expect(output.followups.length).toBeGreaterThanOrEqual(2)
+      expect(output.followups.length).toBeLessThanOrEqual(3)
+      if (output.answer === null) {
+        expect(output.citations).toEqual([])
+        expect(output.confidence).toBe('low')
+        continue
+      }
+      expect(
+        output.answer.split(/[.!?](?:\s|$)/).filter((s) => s.trim()).length,
+      ).toBeLessThanOrEqual(5)
+    }
     const kinds = new Set(
       examples.map(({ output }) => (output.answer === null ? 'none' : output.confidence)),
     )
