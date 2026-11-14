@@ -1,5 +1,8 @@
 export { ActionBar } from './ActionBar.tsx'
 export { Button } from './Button.tsx'
 export { PanelHeader } from './PanelHeader.tsx'
+export { SectionLabel } from './SectionLabel.tsx'
 export { SelectionOverlay, type SelectionRect } from './SelectionOverlay.tsx'
+export { StatusBar } from './StatusBar.tsx'
 export { strings } from './strings.uk.ts'
+export { TranscriptionLine } from './TranscriptionLine.tsx'
