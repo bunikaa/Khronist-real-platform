@@ -52,7 +52,7 @@ GET  /v1/transcriptions/:id/history
 ```
 POST /v1/explain
   body: { kind: 'term' | 'place' | 'date' | 'entity'; text: string; context?: { transcriptionId?: string; period?: string } }
-  200: { answer: string | null; reason?: 'no_sources'; citations: Citation[]; place?: { modernName, region, wikidataId }; date?: { julian, gregorian, weekday } }
+  200: { answer: string | null; reason?: 'no_sources'; confidence?: 'high' | 'low'; citations: Citation[]; place?: { modernName, region, wikidataId }; date?: { julian, gregorian, weekday } }
 POST /v1/chat
   body: { messages: [{ role: 'user' | 'assistant'; content: string }]; context?: { transcriptionId?: string } }
   200: { answer: string | null; reason?: 'no_sources'; citations: Citation[]; followups: string[] }
@@ -148,3 +148,14 @@ background:        hotkey:toggle, auth:changed
 - Сутності йдуть у порядку появи в тексті. `text` — точний фрагмент `normalizedText`; якщо слово перенесено на інший рядок, фрагмент містить і дефіс, і перенос рядка між частинами.
 - `normalized` — початкова форма в сучасній орфографії тієї самої мови, без перекладу й без здогадок (`Борщаговки` → `Борщаговка`); для дат — фрагмент як є, без обчислень.
 - Числових полів у схемі немає: structured output моделі не підтримує обмежень `minimum`/`maximum`. `start` і `end` для `Entity` рахує API: шукає кожен `text` у `normalizedText` після кінця попереднього знайденого; не знайдено — сутність відкидається.
+
+## 10. Промпт `explain`
+
+Вхід: що пояснити (`kind`, `text`), контекст запису (нормалізований текст транскрипції й період, якщо є) і до шести знайдених чанків корпусу з ідентифікаторами. Вихід structured output (`explainOutputSchema` у `packages/contracts`):
+```json
+{ "answer": "string | null", "confidence": "high | low", "citations": [ { "chunkId": "string", "quote": "string" } ] }
+```
+- `answer` — до трьох речень українською, лише з переданих чанків. Якщо чанки не відповідають на запитання — `answer: null`, `citations: []`.
+- `quote` — точний фрагмент тексту чанка, на якому тримається відповідь. API відкидає цитату, якщо `chunkId` не з переданих чанків або `quote` немає в тексті чанка; якщо не лишилося жодної — відповідь стає `answer: null` з `reason: 'no_sources'`.
+- `confidence`: `high` — чанки прямо відповідають на запитання; `low` — відповідають частково. API передає його в `confidence` відповіді `POST /v1/explain` лише разом із відповіддю; при `answer: null` поле не передається.
+- Значення `enum` API порівнює без урахування регістру: structured output не гарантує регістр значень `enum` (документація Claude API, Invalid outputs).
