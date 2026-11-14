@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": ["string", "null"]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "low"]
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chunkId": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": ["chunkId", "quote"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["answer", "confidence", "citations"],
+  "additionalProperties": false
+}
