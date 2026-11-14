@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'wxt'
+import { apiOrigin } from './api/origin.ts'
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
@@ -9,6 +10,7 @@ export default defineConfig({
   }),
   manifest: {
     name: 'Хроніст',
+    host_permissions: [`${apiOrigin}/*`],
     action: {
       default_title: 'Відкрити Хроніст',
     },

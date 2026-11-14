@@ -21,6 +21,7 @@
     "@fontsource/source-serif-4": "^5.3.1",
     "@khronist/contracts": "workspace:*",
     "daisyui": "^5.8.0",
+    "lucide-react": "^1.72.0",
     "tailwindcss": "^4.3.5"
   },
   "peerDependencies": {

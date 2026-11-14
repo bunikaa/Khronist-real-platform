@@ -31,6 +31,9 @@
 | `ActionBar` | ActionBar (State) | `children`: кнопки стану. Панель 48 px із лінією згори; набір кнопок задає екран, рівно одна primary |
 | `PanelHeader` | PanelHeader | `shelfmark?`: шифр відкритого скану (`Shelfmark` з контрактів); без нього — лише логотип. Шифр обрізається з кінця першої частини, номер аркуша або зображення лишається видимим. Меню користувача з'явиться разом із входом |
 | `SelectionOverlay` | ScanLineBox (Tone=Draft) | `onSelect(rect)`: прямокутник у координатах вікна, `onCancel()`: Esc. Накриває вікно, малює рамку пунктиром accent із заливкою accent-soft. Окремого макета накладки немає, вигляд узято з `ScanLineBox` |
+| `SectionLabel` | SectionLabel | `children`: назва секції; великими літерами, `label/section`, ink-muted |
+| `StatusBar` | StatusBar (Type) | `type`: `info` · `success` · `warning` · `error` (іконки info, check-circle, alert-circle, wifi-off у кольорі стану); `message`: одне речення; `action` і `onAction`: одна дія |
+| `TranscriptionLine` | TranscriptionLine (State, Confidence) | `line`: рядок із контрактів. Номер з 01, текст `mono/transcription`; непевні слова підкреслені кольором warning з підказкою «Модель не впевнена в цьому слові» (якщо модель не дала слів — увесь рядок). Hover — фон base-300. Стани Editing і Changed з'являться разом із редагуванням |
 
 Одна primary-кнопка на екран; outline — вторинна дія; ghost — дії в панелі дій.
 

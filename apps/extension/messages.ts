@@ -27,5 +27,6 @@ export type Fragment = z.infer<typeof fragmentSchema>
 export const fragmentMessageSchema = z.object({
   type: z.literal('fragment'),
   fragment: fragmentSchema,
+  shelfmark: shelfmarkSchema.nullable(),
 })
 export type FragmentMessage = z.infer<typeof fragmentMessageSchema>

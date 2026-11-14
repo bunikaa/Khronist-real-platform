@@ -339,6 +339,9 @@ importers:
       daisyui:
         specifier: ^5.8.0
         version: 5.8.0
+      lucide-react:
+        specifier: ^1.72.0
+        version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
       tailwindcss:
         specifier: ^4.3.5
         version: 4.3.5

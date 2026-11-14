@@ -1,9 +1,10 @@
-import { ActionBar, Button, PanelHeader, strings } from '@khronist/ui'
-import { Crosshair } from 'lucide-react'
+import { PanelHeader } from '@khronist/ui'
 import { useEffect } from 'react'
 import { browser } from 'wxt/browser'
-import type { SelectionCommand } from '../../messages.ts'
+import { fragmentMessageSchema, type SelectionCommand } from '../../messages.ts'
+import { Failed, Reading, ReadyToRead, Result, Selecting } from './screens.tsx'
 import { activeTabId, useActivePage } from './useActivePage.ts'
+import { useReading } from './useReading.ts'
 
 const sendToActiveTab = async (command: SelectionCommand) => {
   const tabId = await activeTabId()
@@ -13,58 +14,47 @@ const sendToActiveTab = async (command: SelectionCommand) => {
 const startSelection = () => void sendToActiveTab({ type: 'start-selection' })
 const cancelSelection = () => void sendToActiveTab({ type: 'cancel-selection' })
 
-const ReadyToRead = () => (
-  <>
-    <main className="flex-1 overflow-y-auto">
-      <section className="flex flex-col items-center gap-3 px-3 py-8 text-center">
-        <Crosshair
-          size={32}
-          strokeWidth={4 / 3}
-          absoluteStrokeWidth
-          className="text-ink-muted"
-          aria-hidden
-        />
-        <h2 className="text-heading-16">{strings.read.promptTitle}</h2>
-        <p className="text-body-13 text-ink-muted">{strings.read.promptBody}</p>
-      </section>
-    </main>
-    <ActionBar>
-      <Button onClick={startSelection}>{strings.read.selectFragment}</Button>
-    </ActionBar>
-  </>
-)
-
-const Selecting = () => (
-  <>
-    <main className="flex-1 overflow-y-auto">
-      <section className="flex flex-col items-center gap-3 px-3 py-8 text-center opacity-50">
-        <h2 className="text-heading-16">{strings.read.selectingTitle}</h2>
-        <p className="font-mono text-mono-11 text-ink-muted">{strings.read.selectingHint}</p>
-      </section>
-    </main>
-    <ActionBar>
-      <Button kind="ghost" onClick={cancelSelection}>
-        {strings.read.cancel}
-      </Button>
-    </ActionBar>
-  </>
-)
-
 export const App = () => {
   const page = useActivePage()
+  const { reading, start, cancel } = useReading()
 
   useEffect(() => {
     const onCommand = (command: string) => {
       if (command === 'open-panel') startSelection()
     }
+    const onMessage = (message: unknown, sender: { tab?: { id?: number } }) => {
+      const parsed = fragmentMessageSchema.safeParse(message)
+      if (!parsed.success) return
+      void activeTabId().then((tabId) => {
+        if (sender.tab?.id === tabId) start(parsed.data.fragment, parsed.data.shelfmark)
+      })
+    }
     browser.commands.onCommand.addListener(onCommand)
-    return () => browser.commands.onCommand.removeListener(onCommand)
-  }, [])
+    browser.runtime.onMessage.addListener(onMessage)
+    return () => {
+      browser.commands.onCommand.removeListener(onCommand)
+      browser.runtime.onMessage.removeListener(onMessage)
+    }
+  }, [start])
+
+  const screen = () => {
+    if (page?.selecting) return <Selecting onCancel={cancelSelection} />
+    switch (reading.phase) {
+      case 'idle':
+        return <ReadyToRead onSelect={startSelection} />
+      case 'reading':
+        return <Reading {...reading} onCancel={cancel} />
+      case 'done':
+        return <Result transcription={reading.transcription} onSelect={startSelection} />
+      case 'failed':
+        return <Failed {...reading} onSelect={startSelection} />
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col">
       <PanelHeader shelfmark={page?.shelfmark ?? undefined} />
-      {page?.shelfmark && (page.selecting ? <Selecting /> : <ReadyToRead />)}
+      {page?.shelfmark && screen()}
     </div>
   )
 }

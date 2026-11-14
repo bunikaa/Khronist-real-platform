@@ -70,7 +70,10 @@ export default defineContentScript({
       })
       if (!region) return
       stopSelection()
-      void cropFragment(scan, region).then((fragment) => send({ type: 'fragment', fragment }))
+      const { shelfmark } = currentPage()
+      void cropFragment(scan, region).then((fragment) =>
+        send({ type: 'fragment', fragment, shelfmark }),
+      )
     }
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
