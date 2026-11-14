@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-export type PromptName = 'htr_vision'
+export type PromptName = 'htr_vision' | 'normalize'
 
 export type Prompt = {
   system: string
