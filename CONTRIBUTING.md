@@ -30,7 +30,7 @@ git switch -c feat/short-name
 
 Прапорець `--no-verify` обходить хуки, але не CI. Не використовуйте його, щоб приховати падіння тестів.
 
-У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check` і `runtime`, без force-push і видалення гілки. Хуки поки не перевіряють `services/*`: там перед комітом запускайте `uv run ruff check && uv run pytest`.
+У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check` і `runtime`, без force-push і видалення гілки. Хуки поки не перевіряють `services/*`: там перед комітом запускайте `uv run ruff check && uv run ruff format --check && uv run pytest`. На PR це робить задача CI `knowledge`.
 
 ## Правила коду
 

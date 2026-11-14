@@ -27,6 +27,22 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  knowledge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/knowledge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: services/knowledge
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run pytest
+
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 10
