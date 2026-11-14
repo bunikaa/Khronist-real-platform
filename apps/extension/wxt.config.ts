@@ -15,7 +15,7 @@ export default defineConfig({
     commands: {
       'open-panel': {
         suggested_key: { default: 'Alt+Shift+X' },
-        description: 'Відкрити панель Хроніста',
+        description: 'Відкрити панель Хроніста, повторно — виділити фрагмент',
       },
     },
   },

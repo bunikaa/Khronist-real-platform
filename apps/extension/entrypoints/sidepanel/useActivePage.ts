@@ -1,26 +1,25 @@
-import type { Shelfmark } from '@khronist/contracts'
 import { useEffect, useState } from 'react'
 import { browser } from 'wxt/browser'
-import { pageMessageSchema } from '../../messages.ts'
+import { pageMessageSchema, type PageMessage } from '../../messages.ts'
 
-const activeTabId = async (): Promise<number | undefined> => {
+export const activeTabId = async (): Promise<number | undefined> => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   return tab?.id
 }
 
-const askPage = async (tabId: number): Promise<Shelfmark | null> => {
+const askPage = async (tabId: number): Promise<PageMessage | null> => {
   try {
     const parsed = pageMessageSchema.safeParse(
       await browser.tabs.sendMessage(tabId, { type: 'get-page' }),
     )
-    return parsed.success ? parsed.data.shelfmark : null
+    return parsed.success ? parsed.data : null
   } catch {
     return null
   }
 }
 
-export const useActivePage = (): Shelfmark | null => {
-  const [shelfmark, setShelfmark] = useState<Shelfmark | null>(null)
+export const useActivePage = (): PageMessage | null => {
+  const [page, setPage] = useState<PageMessage | null>(null)
 
   useEffect(() => {
     let tabId: number | undefined
@@ -29,12 +28,12 @@ export const useActivePage = (): Shelfmark | null => {
     const refresh = async () => {
       tabId = await activeTabId()
       const next = tabId === undefined ? null : await askPage(tabId)
-      if (!disposed) setShelfmark(next)
+      if (!disposed) setPage(next)
     }
 
     const onMessage = (message: unknown, sender: { tab?: { id?: number } }) => {
       const parsed = pageMessageSchema.safeParse(message)
-      if (parsed.success && sender.tab?.id === tabId) setShelfmark(parsed.data.shelfmark)
+      if (parsed.success && sender.tab?.id === tabId) setPage(parsed.data)
     }
     const onUpdated = (updatedTabId: number, change: { status?: string }) => {
       if (updatedTabId === tabId && change.status === 'complete') void refresh()
@@ -54,5 +53,5 @@ export const useActivePage = (): Shelfmark | null => {
     }
   }, [])
 
-  return shelfmark
+  return page
 }

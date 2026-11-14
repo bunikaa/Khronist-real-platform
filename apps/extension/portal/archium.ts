@@ -9,8 +9,11 @@ export const archiumMatches = Object.keys(archives).map((host) => `https://${hos
 const linkText = (root: ParentNode, hrefPrefix: string): string | undefined =>
   root.querySelector(`a[href^="${hrefPrefix}"]`)?.textContent?.trim()
 
+export const findArchiumScan = (doc: Document): HTMLImageElement | null =>
+  doc.querySelector<HTMLImageElement>('img#main-image')
+
 const imageNumber = (doc: Document): number | undefined => {
-  const src = doc.querySelector<HTMLImageElement>('img#main-image')?.getAttribute('src')
+  const src = findArchiumScan(doc)?.getAttribute('src')
   if (!src) return undefined
   const escaped = CSS.escape(src)
   const thumbnail = doc.querySelector(
