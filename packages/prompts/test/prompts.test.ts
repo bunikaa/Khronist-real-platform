@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import {
   entitiesOutputSchema,
+  explainOutputSchema,
+  explainRequestSchema,
   hintsSchema,
   htrVisionOutputSchema,
   normalizeOutputSchema,
@@ -145,6 +147,78 @@ describe('entities', () => {
         expect(entity.normalized).not.toMatch(/-\n|\n/)
       }
     }
+  })
+})
+
+describe('explain', () => {
+  const prompt = loadPrompt('explain')
+
+  const exampleSchema = z.object({
+    source: z.string(),
+    input: z.object({
+      kind: explainRequestSchema.shape.kind,
+      text: z.string(),
+      period: z.string(),
+      record: z.string(),
+      chunks: z.array(z.object({ chunkId: z.string(), title: z.string(), text: z.string() })),
+    }),
+    output: explainOutputSchema,
+  })
+  const examples = readFileSync(new URL('../explain/examples.jsonl', import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => exampleSchema.parse(JSON.parse(line)))
+
+  it('starts the system prompt with the shared persona', () => {
+    expect(prompt.system.startsWith('Ти — Хроніст')).toBe(true)
+  })
+
+  it('keeps schema.json equal to the contract', () => {
+    const { $schema: _, ...contract } = z.toJSONSchema(explainOutputSchema, { io: 'output' })
+    expect(prompt.schema).toEqual(contract)
+  })
+
+  it('has a value for every template variable', () => {
+    const text = renderPrompt(prompt.user, {
+      kind: 'term',
+      text: 'восприемники',
+      period: '19',
+      record: 'none',
+      chunks: '[]',
+    })
+    expect(text).toContain('Explain this term: восприемники')
+    expect(text).not.toContain('{{')
+  })
+
+  it('has examples that quote only the given articles', () => {
+    expect(examples.length).toBeGreaterThanOrEqual(5)
+    for (const { input, output } of examples) {
+      for (const citation of output.citations) {
+        const chunk = input.chunks.find((c) => c.chunkId === citation.chunkId)
+        expect(chunk?.text, citation.quote).toContain(citation.quote)
+      }
+    }
+  })
+
+  it('has examples that answer in at most three sentences or say they do not know', () => {
+    for (const { output } of examples) {
+      if (output.answer === null) {
+        expect(output.citations).toEqual([])
+        expect(output.confidence).toBe('low')
+        continue
+      }
+      expect(output.citations.length).toBeGreaterThan(0)
+      expect(
+        output.answer.split(/[.!?](?:\s|$)/).filter((s) => s.trim()).length,
+      ).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('has examples with a confident answer, a partial answer and no answer', () => {
+    const kinds = new Set(
+      examples.map(({ output }) => (output.answer === null ? 'none' : output.confidence)),
+    )
+    expect(kinds).toEqual(new Set(['high', 'low', 'none']))
   })
 })
 
