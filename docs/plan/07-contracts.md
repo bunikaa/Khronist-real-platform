@@ -126,3 +126,15 @@ content → panel:   page:detected { shelfmark, imageAvailable }, selection:done
 panel → content:   selection:start, lines:show { lines: Line[], tone }, line:hover { idx | null }, overlay:clear
 background:        hotkey:toggle, auth:changed
 ```
+
+## 8. Промпт `normalize`
+
+Вхід: прочитані рядки (`Line[]`: текст і слова з позначками непевності) і `hints`. Вихід structured output (`normalizeOutputSchema` у `packages/contracts`):
+```json
+{ "lines": [ { "text": "string", "words": [ { "text": "string", "uncertain": false } ] } ], "expansions": [ { "from": "string", "to": "string" } ] }
+```
+- Рядок у рядок: стільки ж рядків і в тому ж порядку, що у вході; слова рядка через пробіл дорівнюють його тексту.
+- Сучасна орфографія тієї самої мови, без перекладу. Імена, по батькові, прізвища й назви місць не перекладаються й не замінюються іншими формами; `[нрзб]` лишається як є.
+- Слово, непевне у вході, лишається непевним у виході.
+- `expansions` — розкриті загальновідомі скорочення: `from` — як у вході, `to` — як у виході.
+- `normalizedText` транскрипції — тексти рядків виходу через `\n`.
