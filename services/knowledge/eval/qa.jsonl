@@ -1,0 +1,30 @@
+{"id": "q01", "mode": "explain", "kind": "term", "text": "восприемники", "expected": "answer", "relevant": ["vospriemniki"]}
+{"id": "q02", "mode": "explain", "kind": "term", "text": "дьячекъ", "expected": "answer", "relevant": ["dyachok"]}
+{"id": "q03", "mode": "explain", "kind": "term", "text": "крестьянинъ собственникъ", "expected": "answer", "relevant": ["krestyane-sobstvenniki"]}
+{"id": "q04", "mode": "explain", "kind": "term", "text": "псаломщикъ", "expected": "answer", "relevant": ["psalomshchik"]}
+{"id": "q05", "mode": "explain", "kind": "term", "text": "мѣщанинъ", "expected": "answer", "relevant": ["meshchane"]}
+{"id": "q06", "mode": "explain", "kind": "term", "text": "поручители", "expected": "answer", "relevant": ["poruchiteli"]}
+{"id": "q07", "mode": "explain", "kind": "term", "text": "временнообязанные крестьяне", "expected": "answer", "relevant": ["vremenno-obyazannye-krestyane"]}
+{"id": "q08", "mode": "explain", "kind": "term", "text": "посполитые", "expected": "answer", "relevant": ["pospolitye"]}
+{"id": "q09", "mode": "explain", "kind": "term", "text": "исповѣдныя росписи", "expected": "answer", "relevant": ["ispovednye-rospisi"]}
+{"id": "q10", "mode": "explain", "kind": "place", "text": "Братской Борщаговки", "expected": "answer", "relevant": ["bratskaya-borshchagovka"]}
+{"id": "q11", "mode": "explain", "kind": "place", "text": "Будаевка", "expected": "answer", "relevant": ["budaevka"]}
+{"id": "q12", "mode": "explain", "kind": "place", "text": "Новыхъ Безрадичъ", "expected": "answer", "relevant": ["novye-bezradichi"]}
+{"id": "q13", "mode": "explain", "kind": "place", "text": "Киевская губерния", "expected": "answer", "relevant": ["kievskaya-guberniya"]}
+{"id": "q14", "mode": "chat", "text": "Скільки разів на рік православний мусив сповідатися?", "expected": "answer", "relevant": ["pokayanie"]}
+{"id": "q15", "mode": "chat", "text": "Хто такі восприемники і що вони мали робити при хрещенні?", "expected": "answer", "relevant": ["vospriemniki", "kreshchenie"]}
+{"id": "q16", "mode": "chat", "text": "Де зберігалися оригінали православних метричних книг?", "expected": "answer", "relevant": ["metricheskie-knigi"]}
+{"id": "q17", "mode": "chat", "text": "З якого віку можна було вступати в шлюб за указом 1830 року?", "expected": "answer", "relevant": ["brak"]}
+{"id": "q18", "mode": "chat", "text": "Коли скасували гетьманство?", "expected": "answer", "relevant": ["getman", "malorossiyskaya-kollegiya"]}
+{"id": "q19", "mode": "chat", "text": "Хто в парафії вів метричні книги?", "expected": "answer", "relevant": ["psalomshchik", "metricheskie-knigi"]}
+{"id": "q20", "mode": "chat", "text": "Чи міг охрестити дитину не священник?", "expected": "answer", "relevant": ["kreshchenie"]}
+{"id": "q21", "mode": "explain", "kind": "term", "text": "однодворецъ", "expected": "no_answer", "relevant": []}
+{"id": "q22", "mode": "explain", "kind": "term", "text": "солдатка", "expected": "no_answer", "relevant": []}
+{"id": "q23", "mode": "explain", "kind": "term", "text": "вдовецъ", "expected": "no_answer", "relevant": []}
+{"id": "q24", "mode": "explain", "kind": "place", "text": "Бишів", "expected": "no_answer", "relevant": []}
+{"id": "q25", "mode": "explain", "kind": "place", "text": "Біличі", "expected": "no_answer", "relevant": []}
+{"id": "q26", "mode": "chat", "text": "Яке число за новим стилем відповідає 12 січня 1884 року за старим?", "expected": "no_answer", "relevant": []}
+{"id": "q27", "mode": "chat", "text": "На скільки днів юліанський календар відставав від григоріанського в XIX столітті?", "expected": "no_answer", "relevant": []}
+{"id": "q28", "mode": "chat", "text": "Що означає запис «умеръ отъ горячки» в метричній книзі?", "expected": "no_answer", "relevant": []}
+{"id": "q29", "mode": "chat", "text": "Хто така повивальна бабка і чому її записували в метриці?", "expected": "no_answer", "relevant": []}
+{"id": "q30", "mode": "chat", "text": "Чи потрібен був селянинові паспорт, щоб піти на заробітки?", "expected": "no_answer", "relevant": []}
