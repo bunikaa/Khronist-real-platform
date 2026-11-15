@@ -26,10 +26,10 @@
 | `DATABASE_URL` | api | postgres.js URL |
 | `NODE_ENV`, `PORT`, `HOST`, `LOG_LEVEL` | api | середовище й сервер |
 | `CLIENT_IP_HEADER` | api | на Railway `x-real-ip` |
-| `GUEST_RECOGNITIONS_PER_DAY`, `MODEL_CALLS_PER_DAY` | api | 300 нових читань гостя на добу, 2000 викликів моделей на добу |
+| `GUEST_RECOGNITIONS_PER_DAY`, `MODEL_CALLS_PER_DAY` | api | 300 нових читань гостя на добу, 4000 викликів моделей на добу |
 | `API_KEY_RECOGNITIONS_PER_DAY` | api | 1000 нових читань на ключ API на добу |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | api, Railway | вікно дренажу, на проді 150 |
-| `LLM_FIXTURES`, `HTR_EFFORT` | api | фікстурне читання; глибина читання |
+| `LLM_FIXTURES`, `HTR_EFFORT`, `LLM_EFFORT` | api | фікстурне читання; глибина читання; глибина текстових задач |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | вхід (V-15): секрет від 32 символів; адреса API, у проді лише `https` |
 | `RESEND_API_KEY`, `MAIL_FROM`, `SIGN_IN_CODES_PER_DAY` | api | листи з кодом входу; без ключа Resend входу немає; 300 листів на добу |
 | `VERIFIER_EMAILS` | api | хто може підтверджувати, заплановано (V-17) |

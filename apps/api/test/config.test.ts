@@ -58,7 +58,7 @@ describe('llmStatus', () => {
   })
 
   it('looks at the key of the primary model, not always at the same provider', () => {
-    const gemini = { ...base, HTR_MODEL_PRIMARY: 'gemini-x' }
+    const gemini = { ...base, LLM_MODEL_PRIMARY: 'gemini-x' }
     expect(llmStatus(loadConfig({ ...gemini, GOOGLE_API_KEY: 'g' }))).toBe('ok')
     expect(llmStatus(loadConfig({ ...gemini, ANTHROPIC_API_KEY: 'a' }))).toBe('degraded')
   })
@@ -114,6 +114,20 @@ describe('production safety', () => {
         ANTHROPIC_API_KEY: 'a',
       }),
     ).toThrow(/HTR_MODEL_PRIMARY/)
+  })
+
+  it('refuses to start production without a key for the primary text model', () => {
+    const production = { ...base, ...signIn, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'a' }
+    expect(loadConfig(production).LLM_MODEL_PRIMARY).toBe('claude-sonnet-5-5')
+    expect(() => loadConfig({ ...production, LLM_MODEL_PRIMARY: 'gemini-x' })).toThrow(
+      /LLM_MODEL_PRIMARY/,
+    )
+  })
+
+  it('refuses a text fallback without its key in any environment', () => {
+    expect(() => loadConfig({ ...base, LLM_MODEL_FALLBACK: 'gemini-x' })).toThrow(
+      /LLM_MODEL_FALLBACK/,
+    )
   })
 
   it('reads the header that carries the client address', () => {
@@ -175,12 +189,12 @@ describe('admin key', () => {
 })
 
 describe('guest access settings', () => {
-  it('allows no origins, three hundred readings and two thousand model calls by default', () => {
+  it('allows no origins, three hundred readings and four thousand model calls by default', () => {
     const config = loadConfig({ ...base, CORS_ORIGINS: '' })
     expect(config.CORS_ORIGINS).toEqual([])
     expect(config.GUEST_RECOGNITIONS_PER_DAY).toBe(300)
     expect(config.API_KEY_RECOGNITIONS_PER_DAY).toBe(1000)
-    expect(config.MODEL_CALLS_PER_DAY).toBe(2000)
+    expect(config.MODEL_CALLS_PER_DAY).toBe(4000)
   })
 
   it('reads the draining window of the deployment', () => {

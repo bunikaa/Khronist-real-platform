@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Config } from '../../config.ts'
+import type { ModelEffort } from '../../config.ts'
 import {
   asLimitError,
   parseOutput,
@@ -13,7 +13,7 @@ export type AnthropicMessages = Pick<Anthropic['beta']['messages'], 'create'>
 type AnthropicOptions = {
   messages: AnthropicMessages
   model: string
-  effort: Config['HTR_EFFORT']
+  effort: ModelEffort
 }
 
 export const createAnthropicMessages = (apiKey: string): AnthropicMessages =>
