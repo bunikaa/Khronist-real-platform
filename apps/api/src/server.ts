@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { buildApp } from './app.ts'
-import { llmStatus, loadConfig, type Config } from './config.ts'
+import { createResendSender } from './auth/mail.ts'
+import { llmStatus, loadConfig, signInSettings, type Config } from './config.ts'
 import { createDatabase } from './db/client.ts'
 import { createEventHub } from './jobs/events.ts'
 import { createJobQueue } from './jobs/queue.ts'
@@ -32,6 +33,7 @@ const budget = createCallBudget(db, config.MODEL_CALLS_PER_DAY)
 const reader = selectHtrReader(config, budget)
 const hub = createEventHub()
 const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
+const signIn = signInSettings(config)
 let closing = false
 
 const app = await buildApp({
@@ -54,6 +56,14 @@ const app = await buildApp({
     hub,
     queue,
   },
+  ...(signIn && {
+    auth: {
+      db,
+      secret: signIn.secret,
+      baseURL: signIn.baseURL,
+      sendCode: createResendSender(signIn.resendApiKey, signIn.mailFrom),
+    },
+  }),
 })
 
 try {

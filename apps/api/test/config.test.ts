@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { llmStatus, loadConfig, loadDatabaseUrl } from '../src/config.ts'
+import { llmStatus, loadConfig, loadDatabaseUrl, signInSettings } from '../src/config.ts'
 
 const base = { DATABASE_URL: 'postgres://u:p@localhost:5432/db' }
+const signIn = {
+  RESEND_API_KEY: 're_test',
+  BETTER_AUTH_SECRET: 's'.repeat(32),
+  BETTER_AUTH_URL: 'https://api.khronist.example',
+  MAIL_FROM: 'Хроніст <noreply@khronist.example>',
+}
 
 describe('loadConfig', () => {
   it('applies defaults', () => {
@@ -87,8 +93,15 @@ describe('production safety', () => {
       true,
     )
     expect(
-      loadConfig({ ...base, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' }).LLM_FIXTURES,
+      loadConfig({ ...base, ...signIn, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' })
+        .LLM_FIXTURES,
     ).toBe(false)
+  })
+
+  it('refuses to start production without sign-in mail', () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' })).toThrow(
+      /RESEND_API_KEY/,
+    )
   })
 
   it('refuses to start production without a key for the primary model', () => {
@@ -110,6 +123,31 @@ describe('production safety', () => {
       'x-real-ip',
     )
     expect(() => loadConfig({ ...base, CLIENT_IP_HEADER: 'X-Real-IP' })).toThrow(/CLIENT_IP_HEADER/)
+  })
+})
+
+describe('sign-in settings', () => {
+  it('turns sign-in off without a mail key', () => {
+    expect(signInSettings(loadConfig(base))).toBeUndefined()
+  })
+
+  it('turns sign-in on with the mail key, secret, address and sender', () => {
+    expect(signInSettings(loadConfig({ ...base, ...signIn }))).toEqual({
+      secret: signIn.BETTER_AUTH_SECRET,
+      baseURL: signIn.BETTER_AUTH_URL,
+      resendApiKey: signIn.RESEND_API_KEY,
+      mailFrom: signIn.MAIL_FROM,
+    })
+  })
+
+  it('refuses a mail key without the rest of the sign-in settings', () => {
+    expect(() => loadConfig({ ...base, ...signIn, MAIL_FROM: '' })).toThrow(/RESEND_API_KEY/)
+  })
+
+  it('refuses a short secret', () => {
+    expect(() => loadConfig({ ...base, ...signIn, BETTER_AUTH_SECRET: 'short' })).toThrow(
+      /BETTER_AUTH_SECRET/,
+    )
   })
 })
 
