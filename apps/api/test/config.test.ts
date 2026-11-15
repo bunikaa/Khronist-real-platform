@@ -151,6 +151,21 @@ describe('sign-in settings', () => {
   })
 })
 
+describe('admin key', () => {
+  const production = { ...base, ...signIn, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' }
+
+  it('needs at least 32 characters in production', () => {
+    expect(() => loadConfig({ ...production, ADMIN_API_KEY: 'short' })).toThrow(/ADMIN_API_KEY/)
+    expect(loadConfig({ ...production, ADMIN_API_KEY: 'k'.repeat(32) }).ADMIN_API_KEY).toHaveLength(
+      32,
+    )
+  })
+
+  it('is optional, so the admin routes can stay off', () => {
+    expect(loadConfig({ ...production, ADMIN_API_KEY: '' }).ADMIN_API_KEY).toBeUndefined()
+  })
+})
+
 describe('guest access settings', () => {
   it('allows no origins, three hundred readings and two thousand model calls by default', () => {
     const config = loadConfig({ ...base, CORS_ORIGINS: '' })

@@ -64,6 +64,9 @@ const app = await buildApp({
       sendCode: createResendSender(signIn.resendApiKey, signIn.mailFrom),
     },
   }),
+  ...(config.ADMIN_API_KEY !== undefined && {
+    admin: { db, apiKey: config.ADMIN_API_KEY, modelCallsPerDay: config.MODEL_CALLS_PER_DAY },
+  }),
 })
 
 try {

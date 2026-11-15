@@ -17,3 +17,4 @@ export const entitiesTimeoutMs = 20_000
 export const staleAfterMs = 10 * 60_000
 export const staleSweepMs = 60_000
 export const defaultDrainMs = 10_000
+export const maxAdminBodyBytes = 2 * 1024 * 1024
