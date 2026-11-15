@@ -50,6 +50,26 @@ export const shelfmarkOf = (
 export const normalizedTextOf = (lines: Line[], normalized: NormalizeOutput | null): string =>
   (normalized?.lines ?? lines).map((line) => line.text).join('\n')
 
+export const insertEntities = async (
+  tx: Database,
+  transcriptionId: string,
+  found: Entity[],
+): Promise<void> => {
+  if (found.length === 0) return
+  await tx.insert(entities).values(
+    found.map((entity) => ({
+      transcriptionId,
+      type: entity.type,
+      text: entity.text,
+      normalized: entity.normalized ?? null,
+      wikidataId: entity.wikidataId ?? null,
+      startPos: entity.start,
+      endPos: entity.end,
+      extra: entity.extra ?? null,
+    })),
+  )
+}
+
 export const insertTranscriptionVersion = async (
   tx: Database,
   version: NewVersion,
@@ -101,20 +121,7 @@ export const insertTranscriptionVersion = async (
   )
   if (wordRows.length > 0) await tx.insert(lineWords).values(wordRows)
 
-  if (found.length > 0) {
-    await tx.insert(entities).values(
-      found.map((entity) => ({
-        transcriptionId: transcription.id,
-        type: entity.type,
-        text: entity.text,
-        normalized: entity.normalized ?? null,
-        wikidataId: entity.wikidataId ?? null,
-        startPos: entity.start,
-        endPos: entity.end,
-        extra: entity.extra ?? null,
-      })),
-    )
-  }
+  await insertEntities(tx, transcription.id, found)
   return transcription.id
 }
 

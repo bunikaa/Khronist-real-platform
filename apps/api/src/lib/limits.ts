@@ -22,6 +22,7 @@ export const normalizePrimaryLimitMs = 20_000
 export const normalizeTimeoutMs = 30_000
 export const renormalizeConcurrency = 2
 export const renormalizeBacklog = 50
+export const entitiesPrimaryLimitMs = 8_000
 export const entitiesTimeoutMs = 20_000
 export const staleAfterMs = 10 * 60_000
 export const staleSweepMs = 60_000

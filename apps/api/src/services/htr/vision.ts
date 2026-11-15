@@ -2,10 +2,10 @@ import {
   htrVisionOutputSchema,
   readingWarningSchema,
   visionToLines,
-  type Hints,
   type ReadingWarning,
 } from '@khronist/contracts'
 import { loadPrompt, renderPrompt } from '@khronist/prompts'
+import { hintValues } from '../hints.ts'
 import type { LlmProvider } from '../llm/index.ts'
 import type { HtrReader } from './index.ts'
 
@@ -34,12 +34,6 @@ const visionOutput = htrVisionOutputSchema
     { message: 'the words of a line must add up to its text' },
   )
 
-const promptValues = (hints: Hints | undefined) => ({
-  language: hints?.language ?? 'unknown',
-  period: hints?.period ?? 'unknown',
-  documentType: hints?.documentType ?? 'unknown',
-})
-
 const knownWarnings = (warnings: string[]): ReadingWarning[] => [
   ...new Set(
     warnings.flatMap((warning) => {
@@ -59,7 +53,7 @@ export const createVisionReader = (llm: LlmProvider): HtrReader => {
         system: prompt.system,
         content: [
           { type: 'image', mediaType: 'image/png', base64: image.toString('base64') },
-          { type: 'text', text: renderPrompt(prompt.user, promptValues(hints)) },
+          { type: 'text', text: renderPrompt(prompt.user, hintValues(hints)) },
         ],
         schema: visionOutput,
         maxTokens: maxOutputTokens,
