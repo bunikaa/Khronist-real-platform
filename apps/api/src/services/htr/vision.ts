@@ -13,13 +13,26 @@ const maxOutputTokens = 4096
 
 const collapseSpaces = (text: string) => text.trim().replace(/\s+/g, ' ')
 
-const visionOutput = htrVisionOutputSchema.refine(
-  ({ lines }) =>
-    lines.every(
-      (line) => line.words.map((word) => word.text).join(' ') === collapseSpaces(line.text),
-    ),
-  { message: 'the words of a line must add up to its text' },
-)
+const fitaFromLookalike: Record<string, string> = { Ө: 'Ѳ', ө: 'ѳ' }
+
+const restoreFita = (text: string) =>
+  text.replace(/[Өө]/g, (letter) => fitaFromLookalike[letter] ?? letter)
+
+const visionOutput = htrVisionOutputSchema
+  .overwrite((output) => ({
+    ...output,
+    lines: output.lines.map((line) => ({
+      text: restoreFita(line.text),
+      words: line.words.map((word) => ({ ...word, text: restoreFita(word.text) })),
+    })),
+  }))
+  .refine(
+    ({ lines }) =>
+      lines.every(
+        (line) => line.words.map((word) => word.text).join(' ') === collapseSpaces(line.text),
+      ),
+    { message: 'the words of a line must add up to its text' },
+  )
 
 const promptValues = (hints: Hints | undefined) => ({
   language: hints?.language ?? 'unknown',
