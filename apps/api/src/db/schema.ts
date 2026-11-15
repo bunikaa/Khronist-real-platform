@@ -139,6 +139,8 @@ export const documents = pgTable(
     opys: text('opys').notNull(),
     sprava: text('sprava').notNull(),
     portal: portalEnum('portal'),
+    yearFrom: integer('year_from'),
+    yearTo: integer('year_to'),
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },

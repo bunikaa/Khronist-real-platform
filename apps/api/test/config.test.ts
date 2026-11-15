@@ -171,6 +171,7 @@ describe('guest access settings', () => {
     const config = loadConfig({ ...base, CORS_ORIGINS: '' })
     expect(config.CORS_ORIGINS).toEqual([])
     expect(config.GUEST_RECOGNITIONS_PER_DAY).toBe(300)
+    expect(config.API_KEY_RECOGNITIONS_PER_DAY).toBe(1000)
     expect(config.MODEL_CALLS_PER_DAY).toBe(2000)
   })
 

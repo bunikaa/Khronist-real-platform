@@ -36,6 +36,13 @@
       "when": 1794749558301,
       "tag": "0004_admin_corpus",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794750822338,
+      "tag": "0005_document_years",
+      "breakpoints": true
     }
   ]
 }

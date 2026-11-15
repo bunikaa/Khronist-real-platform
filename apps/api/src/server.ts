@@ -41,6 +41,7 @@ const app = await buildApp({
   clientIpHeader: config.CLIENT_IP_HEADER,
   corsOrigins: config.CORS_ORIGINS,
   guestRecognitionsPerDay: config.GUEST_RECOGNITIONS_PER_DAY,
+  apiKeyRecognitionsPerDay: config.API_KEY_RECOGNITIONS_PER_DAY,
   isShuttingDown: () => closing,
   providers: { llm: llmStatus(config), htr: reader?.kind ?? 'down' },
   checkDb: async () => {

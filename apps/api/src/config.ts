@@ -1,6 +1,10 @@
 import type { HealthResponse } from '@khronist/contracts'
 import { z } from 'zod'
-import { defaultGuestRecognitionsPerDay, defaultModelCallsPerDay } from './lib/limits.ts'
+import {
+  defaultApiKeyRecognitionsPerDay,
+  defaultGuestRecognitionsPerDay,
+  defaultModelCallsPerDay,
+} from './lib/limits.ts'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 const readerModel = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
@@ -50,6 +54,10 @@ const configSchema = z
     GUEST_RECOGNITIONS_PER_DAY: z.preprocess(
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
+    ),
+    API_KEY_RECOGNITIONS_PER_DAY: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).default(defaultApiKeyRecognitionsPerDay),
     ),
     MODEL_CALLS_PER_DAY: z.preprocess(
       emptyToUndefined,

@@ -56,12 +56,19 @@ export type DailyAllowance = { allowed: boolean; retryAfterSeconds: number }
 
 export type RecognitionClient = {
   key: string
+  trusted: boolean
   consumeDailyRead: () => Promise<DailyAllowance>
 }
 
 const wholePage: Box = { x: 0, y: 0, w: 1, h: 1 }
 
-const findOrCreatePage = async (db: Database, shelfmark: Shelfmark): Promise<string> => {
+type PageMetadata = Pick<CreateRecognitionRequest, 'document'>
+
+const findOrCreatePage = async (
+  db: Database,
+  shelfmark: Shelfmark,
+  metadata: PageMetadata | undefined,
+): Promise<string> => {
   await db
     .insert(documents)
     .values({
@@ -99,15 +106,44 @@ const findOrCreatePage = async (db: Database, shelfmark: Shelfmark): Promise<str
       .where(and(eq(pages.documentId, document.id), identity.match))
       .limit(1)
 
-  const [existing] = await lookup()
-  if (existing) return existing.id
-  await db
-    .insert(pages)
-    .values({ documentId: document.id, folio: identity.folio, imageNo: identity.imageNo })
-    .onConflictDoNothing()
-  const [created] = await lookup()
-  if (!created) throw new Error('page was not created')
-  return created.id
+  let [page] = await lookup()
+  if (!page) {
+    await db
+      .insert(pages)
+      .values({ documentId: document.id, folio: identity.folio, imageNo: identity.imageNo })
+      .onConflictDoNothing()
+    ;[page] = await lookup()
+  }
+  if (!page) throw new Error('page was not created')
+  if (metadata) await saveMetadata(db, document.id, page.id, shelfmark, metadata)
+  return page.id
+}
+
+const saveMetadata = async (
+  db: Database,
+  documentId: string,
+  pageId: string,
+  shelfmark: Shelfmark,
+  metadata: PageMetadata,
+) => {
+  const documentFields = {
+    ...(shelfmark.portal !== undefined && { portal: shelfmark.portal }),
+    ...(metadata.document && {
+      yearFrom: metadata.document.yearFrom,
+      yearTo: metadata.document.yearTo,
+    }),
+  }
+  if (Object.keys(documentFields).length > 0) {
+    await db.update(documents).set(documentFields).where(eq(documents.id, documentId))
+  }
+  const pageFields = {
+    ...(shelfmark.image !== undefined &&
+      shelfmark.folio !== undefined && { folio: shelfmark.folio }),
+    ...(shelfmark.portalUrl !== undefined && { sourceUrl: shelfmark.portalUrl }),
+  }
+  if (Object.keys(pageFields).length > 0) {
+    await db.update(pages).set(pageFields).where(eq(pages.id, pageId))
+  }
 }
 
 const findRegion = async (db: Database, imageHash: string) => {
@@ -187,11 +223,12 @@ export const createRecognition = async (
     throw new ApiError(400, 'bad_image', 'Хеш не збігається із зображенням')
   }
 
+  const metadata = client.trusted ? { document: request.document } : undefined
   const known = await findRegion(db, image.sha256)
   const cached = known && (await findLatestTranscription(db, known.id))
   if (known && cached) {
-    if (request.shelfmark && known.pageId === null) {
-      const pageId = await findOrCreatePage(db, request.shelfmark)
+    if (request.shelfmark && (known.pageId === null || metadata)) {
+      const pageId = await findOrCreatePage(db, request.shelfmark, metadata)
       await db
         .update(regions)
         .set({ pageId })
@@ -248,7 +285,9 @@ export const createRecognition = async (
       )
     }
 
-    const pageId = request.shelfmark ? await findOrCreatePage(db, request.shelfmark) : null
+    const pageId = request.shelfmark
+      ? await findOrCreatePage(db, request.shelfmark, metadata)
+      : null
     const region = await findOrCreateRegion(db, image.sha256, request.box ?? wholePage, pageId)
 
     let recognitionId: string

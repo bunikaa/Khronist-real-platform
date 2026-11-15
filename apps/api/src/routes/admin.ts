@@ -10,6 +10,7 @@ import {
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Database } from '../db/client.ts'
+import { bearerToken } from '../lib/bearer.ts'
 import { ApiError } from '../lib/errors.ts'
 import { maxAdminBodyBytes } from '../lib/limits.ts'
 import { syncChunks, upsertSources, upsertSynonyms } from '../services/corpus.ts'
@@ -22,9 +23,6 @@ export type AdminDeps = {
 }
 
 const digest = (value: string) => createHash('sha256').update(value).digest()
-
-const bearerToken = (header: string | undefined) =>
-  header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
 
 export const adminRoutes =
   (deps: AdminDeps): FastifyPluginAsyncZod =>
