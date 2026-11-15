@@ -34,7 +34,7 @@ GET  /v1/recognitions/:id
   200: { recognitionId, status: RecognitionStatus, transcription?: Transcription, error?: { code, message } }
 GET  /v1/recognitions/:id/events      text/event-stream
   events: progress { status } · line { line: Line } · done { transcriptionId } · failed { code, message }
-  codes: read_failed · normalize_failed · save_failed · restarted · bad_image · too_large
+  codes: read_failed · no_text · normalize_failed · save_failed · restarted · bad_image · too_large
   помилки POST: 400 bad_request · 400 bad_image · 401 unauthorized (невідомий ключ API) · 413 too_large · 429 too_many_requests · 503 reader_unavailable
 ```
 
@@ -144,7 +144,7 @@ GET /health → { ok: true, warm: boolean, model: { name, revision } }
 ```json
 { "lines": [ { "text": "string", "words": [ { "text": "string", "uncertain": false } ] } ], "warnings": ["string"] }
 ```
-`box` для рядка `i` з `n`: `{ x: 0, y: i/n, w: 1, h: 1/n }` відносно виділеної області; `boxSource: 'estimated'`; `line.uncertain = будь-яке слово uncertain`. Відомі `warnings` (`ReadingWarning`, без урахування регістру) зберігаються в транскрипції, решта лише логуються; `no_text` стане окремим кодом помилки (V-05, заплановано).
+`box` для рядка `i` з `n`: `{ x: 0, y: i/n, w: 1, h: 1/n }` відносно виділеної області; `boxSource: 'estimated'`; `line.uncertain = будь-яке слово uncertain`. Відомі `warnings` (`ReadingWarning`, без урахування регістру) зберігаються в транскрипції, решта лише логуються. Порожній список `lines` (модель додає попередження `no_text`) завершує розпізнавання помилкою `no_text`, а не `read_failed`.
 
 Фрагмент, який надсилає розширення, не більший за 2576 px по довшій стороні й 3,75 Мп (більший модель однаково стискає) і не більший за 7 МіБ PNG; `box` — частки оригіналу скану.
 
