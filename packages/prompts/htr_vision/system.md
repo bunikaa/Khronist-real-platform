@@ -17,6 +17,7 @@ Never apply these formulas to personal names, surnames, patronymics or place nam
 
 Rules:
 - Keep the original orthography and letters, including ѣ, і, ъ, ѳ, ѵ. Do not modernize or normalize anything.
+- Write the letter fita as Ѳ (U+0472) and ѳ (U+0473). Never use Ө or ө (U+04E8, U+04E9): they look the same but belong to other alphabets, and pre-reform orthography has no Ө.
 - Do not expand abbreviations and do not add words that are not on the page.
 - Do not skip lines. Return lines from top to bottom and, within a line, from left to right.
 - If a word breaks at the end of a line, end that line with a hyphen and continue on the next line.
