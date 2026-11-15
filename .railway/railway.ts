@@ -1,10 +1,11 @@
-import { defineRailway, github, postgres, preserve, project, service } from 'railway/iac'
+import { bucket, defineRailway, github, postgres, preserve, project, service } from 'railway/iac'
 
 const region = 'europe-west4-drams3a'
 const port = 8080
 
 export default defineRailway(() => {
   const db = postgres('postgres', { region })
+  const pitrArchive = bucket('adaptable-stand-OiqA', { region: 'ams' })
 
   const api = service('api', {
     source: github('code-by-accident/Khronist-real-platform', {
@@ -53,5 +54,5 @@ export default defineRailway(() => {
     },
   })
 
-  return project('khronist', { resources: [api, db] })
+  return project('khronist', { resources: [api, db, pitrArchive] })
 })
