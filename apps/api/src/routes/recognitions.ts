@@ -8,6 +8,7 @@ import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { failureEvent } from '../jobs/recognize.ts'
+import { bearerToken } from '../lib/bearer.ts'
 import { ApiError } from '../lib/errors.ts'
 import {
   guestRecognitionsPerMinute,
@@ -24,6 +25,7 @@ import {
   replayEvents,
   type RecognitionDeps,
 } from '../services/recognitions.ts'
+import { findApiKeyId, isApiKey } from '../services/api-keys.ts'
 
 const idParams = z.object({ id: z.uuid() })
 
@@ -35,6 +37,7 @@ const encode = (event: RecognitionEvent): string =>
 
 export type RecognitionRouteOptions = {
   guestPerDay: number
+  apiKeyPerDay: number
   clientKey: (request: FastifyRequest) => string
 }
 
@@ -47,7 +50,32 @@ export const recognitionRoutes =
       for (const close of [...openStreams]) close()
     })
 
-    const dailyReads = app.createRateLimit({ max: options.guestPerDay, timeWindow: '1 day' })
+    const apiKeyIds = new WeakMap<FastifyRequest, string>()
+    const identifyApiKey = async (request: FastifyRequest) => {
+      const token = bearerToken(request.headers.authorization)
+      if (!isApiKey(token)) return
+      const id = await findApiKeyId(deps.db, token)
+      if (!id) throw new ApiError(401, 'unauthorized', 'Невідомий ключ API')
+      apiKeyIds.set(request, id)
+    }
+    const clientOf = (request: FastifyRequest) => {
+      const id = apiKeyIds.get(request)
+      return id === undefined ? options.clientKey(request) : `api-key:${id}`
+    }
+
+    const guestDailyReads = app.createRateLimit({ max: options.guestPerDay, timeWindow: '1 day' })
+    const apiKeyDailyReads = app.createRateLimit({
+      max: options.apiKeyPerDay,
+      timeWindow: '1 day',
+      keyGenerator: clientOf,
+    })
+    const postsPerMinute = app.rateLimit({
+      max: guestRecognitionsPerMinute,
+      timeWindow: '1 minute',
+      keyGenerator: clientOf,
+      errorResponseBuilder: () =>
+        new ApiError(429, 'too_many_requests', 'Забагато запитів, спробуйте за хвилину'),
+    })
     const readsPerMinute = app.rateLimit({
       max: recognitionReadsPerMinute,
       timeWindow: '1 minute',
@@ -57,22 +85,18 @@ export const recognitionRoutes =
       '/v1/recognitions',
       {
         bodyLimit: maxBodyBytes,
-        config: {
-          rateLimit: {
-            max: guestRecognitionsPerMinute,
-            timeWindow: '1 minute',
-            errorResponseBuilder: () =>
-              new ApiError(429, 'too_many_requests', 'Забагато запитів, спробуйте за хвилину'),
-          },
-        },
+        onRequest: [identifyApiKey, postsPerMinute],
         schema: {
           body: createRecognitionRequestSchema,
           response: { 201: createRecognitionResponseSchema },
         },
       },
       async (request, reply) => {
+        const trusted = apiKeyIds.has(request)
+        const dailyReads = trusted ? apiKeyDailyReads : guestDailyReads
         const created = await createRecognition(deps, request.body, {
-          key: options.clientKey(request),
+          key: clientOf(request),
+          trusted,
           consumeDailyRead: async () => {
             const limit = await dailyReads(request)
             return limit.isAllowed

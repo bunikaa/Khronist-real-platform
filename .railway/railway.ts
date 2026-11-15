@@ -37,6 +37,7 @@ export default defineRailway(() => {
       DATABASE_URL: db.env.DATABASE_URL,
       CLIENT_IP_HEADER: 'x-real-ip',
       GUEST_RECOGNITIONS_PER_DAY: '300',
+      API_KEY_RECOGNITIONS_PER_DAY: '1000',
       MODEL_CALLS_PER_DAY: '2000',
       HTR_MODEL_PRIMARY: 'claude-sonnet-5-5',
       HTR_MODEL_FALLBACK: 'gemini-3.6-flash',

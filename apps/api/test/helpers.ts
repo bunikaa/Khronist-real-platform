@@ -128,6 +128,7 @@ export type TestAppOptions = {
   clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
+  apiKeyRecognitionsPerDay?: number
   adminApiKey?: string
 }
 
@@ -142,6 +143,7 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     clientIpHeader: options.clientIpHeader,
     corsOrigins: options.corsOrigins,
     guestRecognitionsPerDay: options.guestRecognitionsPerDay,
+    apiKeyRecognitionsPerDay: options.apiKeyRecognitionsPerDay,
     isShuttingDown: options.isShuttingDown,
     ...(options.adminApiKey !== undefined && {
       admin: { db: database.db, apiKey: options.adminApiKey, modelCallsPerDay: 2000 },

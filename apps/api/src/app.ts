@@ -10,7 +10,7 @@ import {
 } from 'fastify-type-provider-zod'
 import { createAuth, type AuthOptions } from './auth/index.ts'
 import { ApiError } from './lib/errors.ts'
-import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
+import { defaultApiKeyRecognitionsPerDay, defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
@@ -24,6 +24,7 @@ export type AppDeps = HealthDeps & {
   clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
+  apiKeyRecognitionsPerDay?: number
   isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
   auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'>
@@ -137,6 +138,7 @@ export const buildApp = async (deps: AppDeps) => {
         { ...deps.recognitions, log: app.log },
         {
           guestPerDay: deps.guestRecognitionsPerDay ?? defaultGuestRecognitionsPerDay,
+          apiKeyPerDay: deps.apiKeyRecognitionsPerDay ?? defaultApiKeyRecognitionsPerDay,
           clientKey,
         },
       ),
