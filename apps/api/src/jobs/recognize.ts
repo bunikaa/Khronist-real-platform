@@ -90,6 +90,13 @@ class JobCancelledError extends Error {
   }
 }
 
+class NoTextError extends Error {
+  constructor() {
+    super('the reader found no text in the fragment')
+    this.name = 'NoTextError'
+  }
+}
+
 const isActive = (id: string) =>
   and(eq(recognitions.id, id), inArray(recognitions.status, [...activeRecognitionStatuses]))
 
@@ -166,7 +173,7 @@ const readSchema = z.array(lineSchema)
 
 const checkLines = (raw: Line[]): Line[] => {
   const lines = readSchema.parse(raw)
-  if (lines.length === 0) throw new Error('the reader returned no lines')
+  if (lines.length === 0) throw new NoTextError()
   lines.forEach((line, index) => {
     if (line.idx !== index) throw new Error(`line ${index} has index ${line.idx}`)
   })
@@ -306,17 +313,16 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
       entities,
     })
   } catch (error) {
-    const code = failureCodeFor[stage]
+    const code = error instanceof NoTextError ? 'no_text' : failureCodeFor[stage]
     const closedElsewhere =
       error instanceof JobCancelledError ||
       !(await markFailed(db, recognitionId, code).catch((markError: unknown) => {
         log.error({ err: markError }, 'could not record the failure')
         return true
       }))
-    log.error(
-      { err: error, stage },
-      closedElsewhere ? 'recognition cancelled' : 'recognition failed',
-    )
+    if (closedElsewhere) log.error({ err: error, stage }, 'recognition cancelled')
+    else if (code === 'no_text') log.info({ stage }, 'recognition found no text')
+    else log.error({ err: error, stage }, 'recognition failed')
     const event = closedElsewhere
       ? await storedFailureEvent(db, recognitionId).catch(() => failureEvent('restarted'))
       : failureEvent(code)

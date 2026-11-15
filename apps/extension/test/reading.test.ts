@@ -54,6 +54,15 @@ describe('finished', () => {
     })
   })
 
+  it('shows the server message and reading tips when the fragment has no text', () => {
+    const message = 'На фрагменті не знайдено тексту. Виділіть ділянку із записом'
+    expect(failedWith('no_text', message)).toEqual({
+      phase: 'failed',
+      ...source,
+      failure: { kind: 'unreadable', message },
+    })
+  })
+
   it('offers a plain retry after a restart, a failed save or a failed normalization', () => {
     for (const code of ['restarted', 'save_failed', 'normalize_failed']) {
       const state = failedWith(code, 'причина')

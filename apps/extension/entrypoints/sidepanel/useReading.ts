@@ -36,7 +36,7 @@ const retryCodes = new Set([
 const sizeCodes = new Set(['too_large', 'bad_image'])
 
 const failureFor = (code: string | undefined, message: string): Failure => {
-  if (code === 'read_failed') return { kind: 'unreadable', message }
+  if (code === 'read_failed' || code === 'no_text') return { kind: 'unreadable', message }
   if (code !== undefined && sizeCodes.has(code))
     return { kind: 'size', message: strings.read.tooLarge }
   if (code !== undefined && retryCodes.has(code)) return { kind: 'retry', message }
