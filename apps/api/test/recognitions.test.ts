@@ -808,9 +808,13 @@ describe('recognitions', () => {
       expect(state.transcription).toBeUndefined()
     })
 
-    it('treats an empty reading as read_failed', async () => {
+    it('treats an empty reading as no_text', async () => {
       const state = await failedState({ reader: emptyReader })
-      expect(state.error.code).toBe('read_failed')
+      expect(state.error).toEqual({
+        code: 'no_text',
+        message: 'На фрагменті не знайдено тексту. Виділіть ділянку із записом',
+      })
+      expect(state.transcription).toBeUndefined()
     })
 
     it('rejects a reading with an impossible box as read_failed', async () => {
@@ -996,6 +1000,22 @@ describe('recognitions', () => {
       expect(parseSse(res.body).at(-1)).toEqual({
         event: 'failed',
         data: { code: 'read_failed', message: 'Не вдалося прочитати фрагмент' },
+      })
+      await app.close()
+    })
+
+    it('reports an empty reading as no_text to a live stream', async () => {
+      const { app, hub, queue } = await createTestApp(database, { reader: emptyReader })
+      const events: RecognitionEvent[] = []
+      const created = await post(app, recognitionBody(nextPng()))
+      hub.subscribe(created.json().recognitionId, (event) => events.push(event))
+      await queue.onIdle()
+      expect(events.at(-1)).toEqual({
+        event: 'failed',
+        data: {
+          code: 'no_text',
+          message: 'На фрагменті не знайдено тексту. Виділіть ділянку із записом',
+        },
       })
       await app.close()
     })
