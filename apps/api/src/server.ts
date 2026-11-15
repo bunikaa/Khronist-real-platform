@@ -4,12 +4,14 @@ import { llmStatus, loadConfig, type Config } from './config.ts'
 import { createDatabase } from './db/client.ts'
 import { createEventHub } from './jobs/events.ts'
 import { createJobQueue } from './jobs/queue.ts'
-import { recoverInterruptedRecognitions } from './jobs/recognize.ts'
+import { failStaleRecognitions } from './jobs/recognize.ts'
+import { closeOwnRecognitions } from './jobs/shutdown.ts'
+import { defaultDrainMs, staleSweepMs } from './lib/limits.ts'
+import { createCallBudget } from './services/budget.ts'
 import { selectHtrReader } from './services/htr/index.ts'
-import { passthroughNormalizer } from './services/normalize.ts'
+import { noEntities, passthroughNormalizer } from './services/normalize.ts'
 
-const drainTimeoutMs = 10_000
-const exitTimeoutMs = 20_000
+const closeMarginMs = 10_000
 
 const readConfig = (): Config => {
   try {
@@ -21,19 +23,23 @@ const readConfig = (): Config => {
 }
 
 const config = readConfig()
+const drainMs =
+  config.RAILWAY_DEPLOYMENT_DRAINING_SECONDS === undefined
+    ? defaultDrainMs
+    : Math.max(config.RAILWAY_DEPLOYMENT_DRAINING_SECONDS * 1000 - closeMarginMs, 1000)
 const { db, client } = createDatabase(config.DATABASE_URL)
-const reader = selectHtrReader(config, {
-  onRead: (details) => app.log.info(details, 'fragment read'),
-  onFailure: (details, message) => app.log.warn(details, message),
-})
+const budget = createCallBudget(db, config.MODEL_CALLS_PER_DAY)
+const reader = selectHtrReader(config, budget)
 const hub = createEventHub()
 const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
+let closing = false
 
 const app = await buildApp({
   logLevel: config.LOG_LEVEL,
   clientIpHeader: config.CLIENT_IP_HEADER,
   corsOrigins: config.CORS_ORIGINS,
   guestRecognitionsPerDay: config.GUEST_RECOGNITIONS_PER_DAY,
+  isShuttingDown: () => closing,
   providers: { llm: llmStatus(config), htr: reader?.kind ?? 'down' },
   checkDb: async () => {
     await db.execute(sql`select 1`)
@@ -43,34 +49,42 @@ const app = await buildApp({
     db,
     reader,
     normalizer: passthroughNormalizer,
+    entities: noEntities,
+    budget,
     hub,
     queue,
   },
 })
 
 try {
-  const recovered = await recoverInterruptedRecognitions(db)
-  if (recovered > 0) app.log.warn({ recovered }, 'marked interrupted recognitions as failed')
+  const recovered = await failStaleRecognitions(db, { code: 'restarted' })
+  if (recovered > 0) app.log.warn({ recovered }, 'marked stale recognitions as failed')
 } catch (error) {
-  app.log.error(error, 'could not recover interrupted recognitions')
+  app.log.error(error, 'could not recover stale recognitions')
   await client.end({ timeout: 1 }).catch(() => undefined)
   process.exit(1)
 }
 
-let closing = false
+const sweep = setInterval(() => {
+  failStaleRecognitions(db, { code: 'restarted' }).then(
+    (closed) => {
+      if (closed > 0) app.log.warn({ closed }, 'marked stale recognitions as failed')
+    },
+    (error: unknown) => app.log.error(error, 'could not close stale recognitions'),
+  )
+}, staleSweepMs)
+sweep.unref()
 
 const shutdown = async (signal: string) => {
   if (closing) process.exit(1)
   closing = true
-  app.log.info({ signal }, 'shutting down')
-  setTimeout(() => process.exit(1), exitTimeoutMs).unref()
+  clearInterval(sweep)
+  app.log.info({ signal, drainMs }, 'shutting down')
+  setTimeout(() => process.exit(1), drainMs + closeMarginMs - 1000).unref()
   try {
-    queue.stop()
+    const closed = await closeOwnRecognitions({ db, hub, queue, drainMs })
+    if (closed.dropped + closed.cut > 0) app.log.warn(closed, 'closed unfinished recognitions')
     await app.close()
-    await Promise.race([
-      queue.onIdle(),
-      new Promise((resolve) => setTimeout(resolve, drainTimeoutMs)),
-    ])
     await client.end({ timeout: 5 })
     process.exit(0)
   } catch (error) {

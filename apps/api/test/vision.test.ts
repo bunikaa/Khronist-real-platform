@@ -1,13 +1,23 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { htrVisionOutputSchema } from '@khronist/contracts'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { hasKeyFor, loadConfig } from '../src/config.ts'
 import { selectHtrReader } from '../src/services/htr/index.ts'
 import { createVisionReader } from '../src/services/htr/vision.ts'
 import { createAnthropicProvider, type AnthropicMessages } from '../src/services/llm/anthropic.ts'
 import { createGeminiProvider, type GeminiInteractions } from '../src/services/llm/gemini.ts'
-import { LlmOutputError, withFallback, type LlmProvider } from '../src/services/llm/index.ts'
+import { readPrimaryLimitMs, readTimeoutMs } from '../src/lib/limits.ts'
+import { runWithTimeout } from '../src/lib/timeout.ts'
+import {
+  LlmLimitError,
+  LlmOutputError,
+  withCallBudget,
+  withFallback,
+  type LlmProvider,
+} from '../src/services/llm/index.ts'
 import type { ProviderFactory } from '../src/services/llm/select.ts'
+import { unlimitedBudget } from './helpers.ts'
 
 const output = {
   lines: [
@@ -40,7 +50,13 @@ const fakeMessages = (...replies: unknown[]) => {
 }
 
 const request = { system: 's', content: [], schema: z.object({ a: z.number() }), maxTokens: 10 }
-const noLog = () => undefined
+const limitMs = 20_000
+const recordingLog = () => {
+  const entries: { level: string; details: object; message: string }[] = []
+  const at = (level: string) => (details: object, message: string) =>
+    void entries.push({ level, details, message })
+  return { entries, log: { info: at('info'), warn: at('warn') } }
+}
 
 describe('anthropic provider', () => {
   const provider = (messages: AnthropicMessages) =>
@@ -82,6 +98,18 @@ describe('anthropic provider', () => {
     }
   })
 
+  it('turns rate and billing refusals into limit errors', async () => {
+    for (const status of [402, 429]) {
+      const create = vi
+        .fn()
+        .mockRejectedValue(Anthropic.APIError.generate(status, undefined, 'limit', new Headers()))
+      const failure = await provider({ create } as unknown as AnthropicMessages)
+        .complete(request)
+        .catch((error: unknown) => error)
+      expect(failure, String(status)).toBeInstanceOf(LlmLimitError)
+    }
+  })
+
   it('reads only the answer after a server-side handover and names the model that gave it', async () => {
     const handedOver = {
       model: 'claude-test',
@@ -117,9 +145,9 @@ describe('withFallback', () => {
 
   it('retries the same model once after invalid output', async () => {
     const primary = fake(new LlmOutputError('bad'), ok)
-    await expect(withFallback(primary.provider, undefined, noLog).complete(request)).resolves.toBe(
-      ok,
-    )
+    await expect(
+      withFallback(primary.provider, undefined, limitMs).complete(request),
+    ).resolves.toBe(ok)
     expect(primary.complete).toHaveBeenCalledTimes(2)
   })
 
@@ -127,7 +155,7 @@ describe('withFallback', () => {
     const primary = fake(new Error('503'))
     const fallback = fake(ok)
     await expect(
-      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+      withFallback(primary.provider, fallback.provider, limitMs).complete(request),
     ).resolves.toBe(ok)
     expect(primary.complete).toHaveBeenCalledTimes(1)
   })
@@ -136,7 +164,7 @@ describe('withFallback', () => {
     const primary = fake(new LlmOutputError('a'), new LlmOutputError('b'))
     const fallback = fake(ok)
     await expect(
-      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+      withFallback(primary.provider, fallback.provider, limitMs).complete(request),
     ).resolves.toBe(ok)
   })
 
@@ -146,7 +174,7 @@ describe('withFallback', () => {
     const primary = fake(new LlmOutputError('late'))
     const fallback = fake(ok)
     await expect(
-      withFallback(primary.provider, fallback.provider, noLog).complete({
+      withFallback(primary.provider, fallback.provider, limitMs).complete({
         ...request,
         signal: controller.signal,
       }),
@@ -164,14 +192,12 @@ describe('withFallback', () => {
         }),
     } as unknown as LlmProvider
     const fallback = fake(ok)
-    await expect(
-      withFallback(hanging, fallback.provider, noLog, 10).complete(request),
-    ).resolves.toBe(ok)
+    await expect(withFallback(hanging, fallback.provider, 10).complete(request)).resolves.toBe(ok)
   })
 
   it('does not limit the only model when there is no fallback', async () => {
     const primary = fake(ok)
-    await withFallback(primary.provider, undefined, noLog, 10).complete(request)
+    await withFallback(primary.provider, undefined, 10).complete(request)
     expect(primary.complete.mock.calls[0]?.[0].signal).toBeUndefined()
   })
 
@@ -179,16 +205,105 @@ describe('withFallback', () => {
     const primary = fake(new Error('503'))
     const fallback = fake(new LlmOutputError('bad'), ok)
     await expect(
-      withFallback(primary.provider, fallback.provider, noLog).complete(request),
+      withFallback(primary.provider, fallback.provider, limitMs).complete(request),
     ).resolves.toBe(ok)
     expect(fallback.complete).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not move to the fallback after a rate or billing refusal', async () => {
+    const primary = fake(new LlmLimitError('429'))
+    const fallback = fake(ok)
+    await expect(
+      withFallback(primary.provider, fallback.provider, limitMs).complete(request),
+    ).rejects.toBeInstanceOf(LlmLimitError)
+    expect(fallback.complete).not.toHaveBeenCalled()
+  })
+
+  it('logs the retry and the fallback with the request log', async () => {
+    const primary = fake(new LlmOutputError('a'), new Error('503'))
+    const fallback = fake(ok)
+    const { entries, log } = recordingLog()
+    await withFallback(primary.provider, fallback.provider, limitMs).complete({ ...request, log })
+    expect(entries.map((entry) => entry.message)).toEqual([
+      'invalid model output, retrying',
+      'primary model failed, using the fallback',
+    ])
   })
 
   it('throws the error when there is no fallback', async () => {
     const primary = fake(new Error('503'))
     await expect(
-      withFallback(primary.provider, undefined, noLog).complete(request),
+      withFallback(primary.provider, undefined, limitMs).complete(request),
     ).rejects.toThrow('503')
+  })
+})
+
+describe('reading budget', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const vision = {
+    lines: [{ text: 'оба', words: [{ text: 'оба', uncertain: false }] }],
+    warnings: [],
+  }
+  const hanging = {
+    name: 'claude',
+    complete: (r: { signal?: AbortSignal }) =>
+      new Promise((_, reject) => {
+        r.signal?.addEventListener('abort', () => reject(new Error('hung')))
+      }),
+  } as unknown as LlmProvider
+  const answeringAfter = (ms: number) =>
+    ({
+      name: 'gemini',
+      complete: () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                value: vision,
+                model: 'gemini',
+                usage: { inputTokens: 0, outputTokens: 0 },
+              }),
+            ms,
+          ),
+        ),
+    }) as unknown as LlmProvider
+  const readThrough = (fallback: LlmProvider) => {
+    const reader = createVisionReader(withFallback(hanging, fallback, readPrimaryLimitMs))
+    return runWithTimeout(
+      (signal) => reader.read({ image: Buffer.from('png'), signal }),
+      readTimeoutMs,
+      'reading',
+    )
+  }
+
+  it('reads through the fallback that answers in 40 s while the primary hangs', async () => {
+    vi.useFakeTimers()
+    const result = readThrough(answeringAfter(40_000))
+    await vi.advanceTimersByTimeAsync(readPrimaryLimitMs + 40_000)
+    await expect(result).resolves.toMatchObject({ reader: 'gemini' })
+  })
+
+  it('gives up when the fallback is slower than the reading deadline', async () => {
+    vi.useFakeTimers()
+    const settled = readThrough(answeringAfter(readTimeoutMs)).catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(readTimeoutMs)
+    expect(await settled).toBeInstanceOf(Error)
+  })
+
+  it('spends one call of the budget per model call and refuses when it is spent', async () => {
+    let left = 1
+    const budget = {
+      spend: async () => left-- > 0,
+      available: async () => left > 0,
+    }
+    const complete = vi.fn().mockResolvedValue({ value: 1, model: 'm', usage: {} })
+    const limited = withCallBudget({ name: 'm', complete } as unknown as LlmProvider, budget)
+    await limited.complete(request)
+    await expect(limited.complete(request)).rejects.toBeInstanceOf(LlmLimitError)
+    expect(complete).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -199,12 +314,13 @@ describe('vision reader', () => {
       model: 'm',
       usage: { inputTokens: 1, outputTokens: 2 },
     })
-    const onRead = vi.fn()
-    const reader = createVisionReader({ name: 'm', complete } as unknown as LlmProvider, onRead)
-    const { lines, reader: answeredBy } = await reader.read({
-      image: Buffer.from('png'),
-      hints: { period: '19' },
-    })
+    const { entries, log } = recordingLog()
+    const reader = createVisionReader({ name: 'm', complete } as unknown as LlmProvider)
+    const {
+      lines,
+      warnings,
+      reader: answeredBy,
+    } = await reader.read({ image: Buffer.from('png'), hints: { period: '19' }, log })
 
     expect(reader.kind).toBe('vision')
     expect(answeredBy).toBe('m')
@@ -215,15 +331,34 @@ describe('vision reader', () => {
     expect(sent.content[0].base64).toBe(Buffer.from('png').toString('base64'))
     expect(sent.content[1].text).toContain('Century: 19')
     expect(sent.content[1].text).toContain('Language: unknown')
-    expect(onRead).toHaveBeenCalledWith(
-      expect.objectContaining({ lines: 2, warnings: ['cut_off_right'] }),
-    )
+    expect(warnings).toEqual(['cut_off_right'])
+    expect(sent.log).toBe(log)
+    expect(entries).toEqual([
+      {
+        level: 'info',
+        details: expect.objectContaining({ lines: 2, warnings: ['cut_off_right'] }),
+        message: 'fragment read',
+      },
+    ])
+  })
+
+  it('keeps known warnings in any case once and drops the rest', async () => {
+    const complete = vi.fn().mockResolvedValue({
+      value: htrVisionOutputSchema.parse({
+        ...output,
+        warnings: ['Faint_Ink', 'faint_ink', 'no_text', 'smudge'],
+      }),
+      model: 'm',
+      usage: { inputTokens: 1, outputTokens: 2 },
+    })
+    const reader = createVisionReader({ name: 'm', complete } as unknown as LlmProvider)
+    expect((await reader.read({ image: Buffer.from('png') })).warnings).toEqual(['faint_ink'])
   })
 
   const readReply = (lines: unknown) => {
     const { messages } = fakeMessages(reply(JSON.stringify({ lines })))
     const llm = createAnthropicProvider({ messages, model: 'claude-test', effort: 'low' })
-    return createVisionReader(llm, noLog).read({ image: Buffer.from('png') })
+    return createVisionReader(llm).read({ image: Buffer.from('png') })
   }
 
   it.each([
@@ -248,17 +383,18 @@ describe('vision reader', () => {
 
 describe('reader selection', () => {
   const base = { DATABASE_URL: 'postgres://u:p@localhost:5432/db' }
-  const logs = { onRead: noLog, onFailure: noLog }
 
   it('uses fixtures first, then vision with a key, and nothing without one', () => {
     expect(
-      selectHtrReader(loadConfig({ ...base, LLM_FIXTURES: '1', ANTHROPIC_API_KEY: 'k' }), logs)
-        ?.kind,
+      selectHtrReader(
+        loadConfig({ ...base, LLM_FIXTURES: '1', ANTHROPIC_API_KEY: 'k' }),
+        unlimitedBudget,
+      )?.kind,
     ).toBe('fixture')
-    expect(selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), logs)?.kind).toBe(
-      'vision',
-    )
-    expect(selectHtrReader(loadConfig(base), logs)).toBeUndefined()
+    expect(
+      selectHtrReader(loadConfig({ ...base, ANTHROPIC_API_KEY: 'k' }), unlimitedBudget)?.kind,
+    ).toBe('vision')
+    expect(selectHtrReader(loadConfig(base), unlimitedBudget)).toBeUndefined()
   })
 
   it('refuses a model that has no connected provider', () => {
@@ -294,7 +430,9 @@ describe('reader selection', () => {
     HTR_MODEL_FALLBACK: 'gemini-x',
   }
   const readWith = (env: NodeJS.ProcessEnv, broken?: string[]) =>
-    selectHtrReader(loadConfig(env), logs, providers(broken))?.read({ image: Buffer.from('png') })
+    selectHtrReader(loadConfig(env), unlimitedBudget, providers(broken))?.read({
+      image: Buffer.from('png'),
+    })
 
   it('reads with the primary model while it works', async () => {
     expect((await readWith(both))?.reader).toBe('claude-sonnet-5-5')
@@ -302,6 +440,14 @@ describe('reader selection', () => {
 
   it('wires in the fallback and records it as the reader when the primary fails', async () => {
     expect((await readWith(both, ['claude-sonnet-5-5']))?.reader).toBe('gemini-x')
+  })
+
+  it('does not call the fallback when the daily budget is spent', async () => {
+    const spent = { spend: async () => false, available: async () => false }
+    const read = selectHtrReader(loadConfig(both), spent, providers())?.read({
+      image: Buffer.from('png'),
+    })
+    await expect(read).rejects.toBeInstanceOf(LlmLimitError)
   })
 
   it('reads through the fallback alone when only its key is set', async () => {

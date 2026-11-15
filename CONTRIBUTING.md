@@ -22,15 +22,15 @@ git switch -c feat/short-name
 
 | Коли          | Що запускається                            | Де                               |
 | ------------- | ------------------------------------------ | -------------------------------- |
-| перед комітом | `pnpm lint`, `pnpm typecheck`, `pnpm test` | локально, `.githooks/pre-commit` |
+| перед комітом | `pnpm lint`, `pnpm typecheck`, `pnpm test`; якщо в коміті є файли `services/knowledge` — ще `uv run ruff check`, `ruff format --check`, `pytest` | локально, `.githooks/pre-commit` |
 | перед пушем   | заборона прямого пушу в `main`             | локально, `.githooks/pre-push`   |
-| на кожному PR | те саме й `pnpm format:check`; міграції та запуск на справжньому PostgreSQL | GitHub Actions, задачі `check` і `runtime` |
+| на кожному PR | те саме й `pnpm format:check`; міграції та запуск на справжньому PostgreSQL; перевірки `services/knowledge` | GitHub Actions, задачі `check`, `runtime` і `knowledge` |
 
 Хуки вмикає `pnpm install`. Перевірка: `git config core.hooksPath` має вивести `.githooks`.
 
 Прапорець `--no-verify` обходить хуки, але не CI. Не використовуйте його, щоб приховати падіння тестів.
 
-У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check` і `runtime`, без force-push і видалення гілки. Хуки поки не перевіряють `services/*`: там перед комітом запускайте `uv run ruff check && uv run ruff format --check && uv run pytest`. На PR це робить задача CI `knowledge`.
+У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check` і `runtime`, без force-push і видалення гілки. Задачу `knowledge` ще треба додати в обов'язкові перевірки (`docs/decisions.md`, 15 листопада); доти стежте, щоб вона була зеленою.
 
 ## Правила коду
 

@@ -1,6 +1,6 @@
 import type { HealthResponse } from '@khronist/contracts'
 import { z } from 'zod'
-import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
+import { defaultGuestRecognitionsPerDay, defaultModelCallsPerDay } from './lib/limits.ts'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 const readerModel = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
@@ -50,6 +50,14 @@ const configSchema = z
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
     ),
+    MODEL_CALLS_PER_DAY: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).default(defaultModelCallsPerDay),
+    ),
+    RAILWAY_DEPLOYMENT_DRAINING_SECONDS: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(0).optional(),
+    ),
     DATABASE_URL: databaseUrl,
     JOBS_CONCURRENCY: z.preprocess(
       emptyToUndefined,
@@ -70,6 +78,13 @@ const configSchema = z
     message: 'LLM_FIXTURES must not be enabled in production',
     path: ['LLM_FIXTURES'],
   })
+  .refine(
+    (config) =>
+      config.NODE_ENV !== 'production' ||
+      config.LLM_FIXTURES ||
+      hasKeyFor(config, config.HTR_MODEL_PRIMARY),
+    { message: 'the primary model has no API key', path: ['HTR_MODEL_PRIMARY'] },
+  )
   .refine(
     (config) =>
       config.HTR_MODEL_FALLBACK === undefined || hasKeyFor(config, config.HTR_MODEL_FALLBACK),

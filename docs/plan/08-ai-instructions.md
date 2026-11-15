@@ -33,7 +33,7 @@
 - Репозиторій приватний до 13 листопада 2026.
 
 ## Команди
-`pnpm dev` · `pnpm db:migrate` · `pnpm db:seed` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python scripts/ingest.py`, `uv run python eval/run_qa.py`, `uv run python eval/run_htr_eval.py`
+`pnpm dev` · `pnpm db:migrate` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python eval/run_htr_eval.py` (`scripts/ingest.py` і `eval/run_qa.py` ще не створено)
 ```
 
 ## `apps/api/CLAUDE.md`
@@ -46,8 +46,10 @@
 - Читання рукопису — лише через `src/services/htr`; реалізація обирається за `HTR_URL`. LLM — лише через `src/services/llm`; промпти беруться з `@khronist/prompts`, тексти промптів у коді не пишуться.
 - Будь-яка відповідь із пояснення або чату без валідних `citations` — це `answer: null`. Цю перевірку робить код, не промпт.
 - Пошук по корпусу — повнотекст + `pg_trgm` + `synonyms`; ембедингів не додавати.
-- Тести: юніт для `calendar`, `citation`, парсерів, перевірки citations; інтеграційні для маршрутів проти тестової БД з фікстурами LLM у `test/fixtures`.
+- Тести: юніт для `calendar`, `citation`, парсерів, перевірки citations; інтеграційні для маршрутів проти PGlite з фальшивими ридерами й провайдерами (`test/helpers.ts`).
 ```
+
+Тексти нижче — початкові версії. Актуальні лежать у репозиторії: `CLAUDE.md` у корені й у зонах `apps/api`, `apps/extension`, `packages/prompts`, `services/knowledge`, а `AGENTS.md` вказує на них (рішення 15 листопада).
 
 ## `apps/extension/CLAUDE.md`
 

@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { recognitions, regions } from '../src/db/schema.ts'
-import { passthroughNormalizer } from '../src/services/normalize.ts'
 import { insertTranscriptionVersion } from '../src/services/transcriptions.ts'
 import {
   createRecordingReader,
@@ -106,7 +105,9 @@ describe('recognition races and faults', () => {
           regionId: region.id,
           reader,
           lines,
-          normalized: await passthroughNormalizer.normalize(lines),
+          warnings: [],
+          normalized: null,
+          entities: [],
         })
       },
     })

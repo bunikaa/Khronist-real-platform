@@ -30,10 +30,10 @@
 | `Button` | Button (Kind, Size) | `kind`: `primary` · `outline` · `ghost`; `size`: `sm` (28 px, панель) · `md` (36 px, робоче місце) |
 | `ActionBar` | ActionBar (State) | `children`: кнопки стану. Панель 48 px із лінією згори; набір кнопок задає екран, рівно одна primary |
 | `PanelHeader` | PanelHeader | `shelfmark?`: шифр відкритого скану (`Shelfmark` з контрактів); без нього — лише логотип. Шифр обрізається з кінця першої частини, номер аркуша або зображення лишається видимим. Меню користувача з'явиться разом із входом |
-| `SelectionOverlay` | ScanLineBox (Tone=Draft) | `onSelect(rect)`: прямокутник у координатах вікна, `onCancel()`: Esc. Накриває вікно, малює рамку пунктиром accent із заливкою accent-soft. Окремого макета накладки немає, вигляд узято з `ScanLineBox` |
+| `SelectionOverlay` | ScanLineBox (Tone=Draft) | `onSelect(rect)`: прямокутник у координатах вікна, лише якщо обидві сторони не менші за 24 px (інакше накладка просить обвести весь запис), `onCancel()`: Esc. Накриває вікно, малює рамку пунктиром accent із заливкою accent-soft. Окремого макета накладки немає, вигляд узято з `ScanLineBox` |
 | `SectionLabel` | SectionLabel | `children`: назва секції; великими літерами, `label/section`, ink-muted |
 | `StatusBar` | StatusBar (Type) | `type`: `info` · `success` · `warning` · `error` (іконки info, check-circle, alert-circle, wifi-off у кольорі стану); `message`: одне речення; `action` і `onAction`: одна дія |
-| `TranscriptionLine` | TranscriptionLine (State, Confidence) | `line`: рядок із контрактів. Номер з 01, текст `mono/transcription`; непевні слова підкреслені кольором warning з підказкою «Модель не впевнена в цьому слові» (якщо модель не дала слів — увесь рядок). Hover — фон base-300. Стани Editing і Changed з'являться разом із редагуванням |
+| `TranscriptionLine` | TranscriptionLine (State, Confidence) | `line`: рядок із контрактів. Номер з 01, текст `mono/transcription`; непевні слова мають колір тексту base-content і пунктир warning під ним (контраст ≥ 4,5:1), підказку «Модель не впевнена в цьому слові» й прихований для очей текст «(непевно)» для читачів екрана (якщо модель не дала слів — увесь рядок). Ті самі позначки дає `LineWords` для нормалізованих рядків. Hover — фон base-300. Стани Editing і Changed з'являться разом із редагуванням |
 
 Одна primary-кнопка на екран; outline — вторинна дія; ghost — дії в панелі дій.
 

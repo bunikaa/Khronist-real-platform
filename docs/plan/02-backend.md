@@ -14,10 +14,10 @@
 | Драйвер БД | postgres (postgres.js) | 4.x | найшвидший для Node |
 | Фонові задачі | p-queue | 9.x | черга в процесі з обмеженням паралельності; стан — у таблиці `recognitions` |
 | Ліміти для гостей | @fastify/rate-limit | 10.x | в пам'яті процесу; одного інстансу достатньо |
-| Авторизація | Better Auth | 1.7.x | magic link, сесії, адаптер Drizzle, маршрути `/api/auth/*` |
-| Листи | Resend | SDK 6.x | magic link; безкоштовно до 3 000 листів на місяць |
+| Авторизація | Better Auth | 1.7.x | вхід кодом із листа (`emailOTP`), токен сесії (`bearer`), адаптер Drizzle, маршрути `/api/auth/*` |
+| Листи | Resend | SDK 6.x | листи з кодом входу; безкоштовно до 3 000 листів на місяць |
 | LLM | @anthropic-ai/sdk, @google/genai | 1.x / 2.x | обидва з підтримкою зображень; за єдиним адаптером `LlmProvider` |
-| MCP | @modelcontextprotocol/sdk | 1.32.x | сервер зі stdio і Streamable HTTP |
+| MCP | @modelcontextprotocol/sdk | 1.32.x | stdio-сервер для Claude Desktop |
 | Логи | pino | 10.x | JSON-логи, вбудований у Fastify |
 | Тести | Vitest | 5.x | юніт і інтеграційні проти тестової БД |
 
@@ -84,8 +84,8 @@ line_words            id, line_id, idx, text, uncertain boolean, confidence
 entities              id, transcription_id, type (person|place|term|date), text, normalized,
                       wikidata_id, start, end, extra jsonb       (extra: дата нового стилю, сучасна назва)
 edits                 id, transcription_id, line_idx, before, after, author_id, created_at
-sources               id, title, url, licence, kind (dictionary|encyclopedia|wikidata|publication), period
-chunks                id, source_id, text, text_hash, topic, type (term|place|date|unit|abbr), period, tsv tsvector
+sources               id, title, url (унікальний), licence, kind (dictionary|encyclopedia|wikidata|publication), period_from, period_to   (міграція — V-08)
+chunks                id, source_id, article_key, idx, text, topic, type (term|place|date|unit|abbr), period_from, period_to, wikidata_id, tsv tsvector   (міграція — V-08)
 synonyms              id, term, variant, type                       (словник варіантів написання, з ML-команди)
 notes                 id, user_id, transcription_id, excerpt, note, citation, created_at   (should)
 api_keys              id, user_id, key_hash, name, created_at     (для MCP, скриптів, інгестії)
@@ -97,9 +97,9 @@ api_keys              id, user_id, key_hash, name, created_at     (для MCP, �
 
 ## 4. Авторизація
 
-Better Auth із плагіном magic link. Для вебу — cookie-сесія; для розширення — та сама сесія через `credentials: 'include'` із дозволеним origin `chrome-extension://<id>` у CORS, резервно — bearer-токен сесії. Для MCP, інгестії та скриптів — `api_keys` з хешем, заголовок `Authorization: Bearer`.
+Better Auth із плагінами `emailOTP` і `bearer` (рішення 15 листопада). Для вебу — cookie-сесія. Розширення не користується ні cookie, ні CORS (ID розпакованого розширення різний на кожній машині): панель надсилає код із листа в `POST /api/auth/sign-in/email-otp`, бере токен сесії із заголовка `set-auth-token`, зберігає його в `chrome.storage.session` і шле в `Authorization: Bearer`. Для MCP, пакетної обробки й інгестії — `api_keys` з хешем, заголовок `Authorization: Bearer`, власний ліміт ключа. Деталі — `07-contracts.md`, розділ 2 «Вхід і ключі».
 
-Читання, пояснення й чат доступні без входу (ліміт для гостей: 60 розпізнавань і 60 запитань на день на IP через `@fastify/rate-limit`). Підтвердження, редагування й нотатник — лише з входом. Підпис підтвердження — `users.name` або псевдонім.
+Читання, пояснення й чат доступні без входу; ліміти гостя й спільний денний бюджет викликів моделей — `07-contracts.md`, розділ 2. Редагування й нотатник — лише з входом, підтвердження — лише адресам зі списку `VERIFIER_EMAILS`. Підпис підтвердження — `transcriptions.verified_signature`, поряд з іменем акаунта.
 
 ## 5. Читання фрагмента: фонова задача в процесі
 
@@ -112,8 +112,8 @@ POST /v1/recognitions
 job recognize(recognitionId):
   1. status=reading;   htr.read(image, hints)         → рядки зі словами й позначками непевності;
                                                          box: від HTR-сервісу — реальний; від мультимодальної моделі — рівні смуги, box_source=estimated
-  2. status=normalizing; llm.normalize(lines, context) → normalized_text, розкриті скорочення
-  3. llm.extractEntities(normalized, lines)            → entities зі спанами
+  2. status=normalizing; llm.normalize(lines, context) → рядки сучасною орфографією, розкриті скорочення
+  3. llm.extractEntities(normalizedText)               → entities, спани рахує API
   4. calendar.convert(dates)                           → extra.newStyle, день тижня
   5. збереження transcription, lines, words, entities; transcriptions.reader = назва моделі або сервісу
   6. status=done; події через EventEmitter: progress, line, done | failed
@@ -122,9 +122,9 @@ GET /v1/recognitions/:id/events  (SSE): події з EventEmitter, heartbeat к
 GET /v1/recognitions/:id          поточний стан для повторного відкриття панелі
 ```
 
-`htr/index.ts` обирає реалізацію за env: `HTR_URL` порожній → `vision.ts` (мультимодальна модель за промптом `htr_vision` з `packages/prompts`, structured output); заданий → `remote.ts` за контрактом `07`, розділ 3, з однією спробою `vision.ts` при помилці. Так ML-команда вмикає трек B однією змінною середовища без змін у коді.
+`htr/index.ts` обирає реалізацію за env: `HTR_URL` порожній → `vision.ts` (мультимодальна модель за промптом `htr_vision` з `packages/prompts`, structured output); заданий → `remote.ts` за контрактом `07`, розділ 3, з однією спробою `vision.ts` при помилці (заплановано для треку B; поки непорожній `HTR_URL` зупиняє сервер на старті). Так ML-команда вмикатиме трек B однією змінною середовища без змін у коді.
 
-Таймаути: читання 30 с, нормалізація 20 с. При помилці основної моделі — одна спроба резервної; при помилці резервної — `failed` з кодом `read_failed`, панель показує стан E3. Паралельність черги — `JOBS_CONCURRENCY` (стартово 4). При рестарті процесу задачі зі статусом `queued`/`reading`/`normalizing` старші за 2 хв позначаються `failed` з кодом `restarted`; клієнт пропонує повторити.
+Таймаути (рішення 15 листопада): читання 75 с, з них основна модель 15 с, решта — резервній; нормалізація 25 с; сутності 20 с. При помилці основної моделі — одна спроба резервної (крім помилок ліміту й білінгу); при помилці резервної — `failed` з кодом `read_failed`, панель показує стан E3. Збій нормалізації зберігає прочитані рядки, збій сутностей — транскрипцію без сутностей. Паралельність черги — `JOBS_CONCURRENCY` (стартово 4). При зупинці екземпляр закриває свої незавершені задачі кодом `restarted` і повідомляє їхні потоки; при старті закриваються лише активні задачі, старші за 10 хвилин, бо під час деплою старий екземпляр ще працює. Клієнт пропонує повторити.
 
 ## 6. Мовна модель: єдиний адаптер
 
@@ -139,13 +139,13 @@ interface LlmProvider {
 }
 ```
 
-`index.ts` обирає Anthropic (`LLM_MODEL_PRIMARY`; актуальну назву моделі із зором звірити в документації Anthropic перед стартом) і при помилці або перевищенні ліміту переключається на Gemini (`LLM_MODEL_FALLBACK`). Для читання рукопису може бути окрема пара `HTR_MODEL_PRIMARY` / `HTR_MODEL_FALLBACK`: ML-команда обирає їх за CER 8 листопада. Промпти беруться з `packages/prompts`. Structured output — через JSON-схему з Zod; відповідь валідується, при невалідному JSON — одна повторна спроба.
+`index.ts` обирає Anthropic (`LLM_MODEL_PRIMARY`; актуальну назву моделі із зором звірити в документації Anthropic перед стартом) і при помилці переключається на Gemini (`LLM_MODEL_FALLBACK`), крім помилок ліміту й білінгу (429, 402): вони на резерв не перемикають, а кожен виклик витрачає спільний денний бюджет `MODEL_CALLS_PER_DAY`. Для читання рукопису може бути окрема пара `HTR_MODEL_PRIMARY` / `HTR_MODEL_FALLBACK`: ML-команда обирає їх за CER 8 листопада. Промпти беруться з `packages/prompts`. Structured output — через JSON-схему з Zod; відповідь валідується, при невалідному JSON — одна повторна спроба.
 
-Правило чесності реалізоване кодом: пояснення й відповіді чату повертають `citations: [{ chunkId, sourceId }]`; якщо масив порожній або посилання на неіснуючі чанки, API повертає `answer: null, reason: "no_sources"`, і клієнт показує «У довідковому корпусі немає відповіді».
+Правило чесності реалізоване кодом: пояснення й відповіді чату повертають `citations` (`Citation` і в чаті `RecordCitation`, `07-contracts.md`, розділ 1); якщо цитат немає або хоч одна не проходить перевірку (`07-contracts.md`, розділи 10–11), API повертає `answer: null, reason: "no_sources"`, і клієнт показує «У довідковому корпусі немає відповіді».
 
 ## 7. Пошук по корпусу (retrieval)
 
-`retrieval.ts`: запит → розширення словником варіантів (`synonyms`) → `websearch_to_tsquery('simple', …)` по `chunks.tsv` з `ts_rank` + `similarity()` по `chunks.text` для варіантів написання, яких немає у словнику → злиття, top-6 у промпт. Фільтри: `type` для пояснення топоніма або дати; `period` збігається або порожній. Поріг: якщо найкращий `ts_rank` нижчий за `RETRIEVAL_MIN_RANK` (стартово 0,05, підбирає ML-команда на `eval/qa.jsonl`), відповідь — «не знаю» без виклику LLM.
+`retrieval.ts`: запит → розширення словником варіантів (`synonyms`) → `websearch_to_tsquery('simple', …)` по `chunks.tsv` з `ts_rank` + `similarity()` по `chunks.text` для варіантів написання, яких немає у словнику → злиття, top-6 у промпт. Фільтри: `type` для пояснення топоніма або дати; століття запиту в межах `periodFrom`…`periodTo` чанка або період не вказано. Поріг: якщо найкращий `ts_rank` нижчий за `RETRIEVAL_MIN_RANK` (стартово 0,05, підбирає ML-команда на `eval/qa.jsonl`), «Пояснити» й чат без запису відповідають «не знаю» без виклику LLM; чат із записом викликає модель і з нулем чанків. Запит чату — останнє й попереднє запитання користувача.
 
 ## 8. Пошук Commons
 
@@ -153,7 +153,7 @@ interface LlmProvider {
 
 ## 9. MCP-сервер (`apps/mcp`)
 
-Тонкий адаптер над REST API без власної логіки. Три інструменти: `transcribe`, `explain`, `search_sources`. Транспорт: stdio-бінарник для Claude Desktop (основний для демо) і Streamable HTTP на Railway (`/mcp`) для віддалених клієнтів. Авторизація — API-ключ. Логуються назва інструменту й тривалість, без вмісту зображень. Для демо підготувати `claude_desktop_config.json` зі шляхом до бінарника й ключем.
+Тонкий адаптер над REST API без власної логіки. Три інструменти: `transcribe`, `explain`, `search_sources`. Транспорт: stdio-бінарник для Claude Desktop; віддаленого HTTP-транспорту в MVP немає (рішення 15 листопада). Авторизація — ключ API з власним лімітом. Логуються назва інструменту й тривалість, без вмісту зображень. Для демо підготувати `claude_desktop_config.json` зі шляхом до бінарника й ключем.
 
 ## 10. Тести
 

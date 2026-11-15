@@ -1,4 +1,5 @@
 import { useEffect, useState, type PointerEvent } from 'react'
+import { strings } from './strings.uk.ts'
 
 export type SelectionRect = {
   left: number
@@ -23,9 +24,15 @@ export const rectBetween = (a: Point, b: Point): SelectionRect => ({
   height: Math.abs(a.y - b.y),
 })
 
+export const minSelectionSize = 24
+
+export const isLargeEnough = (rect: SelectionRect): boolean =>
+  rect.width >= minSelectionSize && rect.height >= minSelectionSize
+
 export const SelectionOverlay = ({ onSelect, onCancel }: SelectionOverlayProps) => {
   const [start, setStart] = useState<Point>()
   const [rect, setRect] = useState<SelectionRect>()
+  const [tooSmall, setTooSmall] = useState(false)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -39,6 +46,7 @@ export const SelectionOverlay = ({ onSelect, onCancel }: SelectionOverlayProps) 
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = pointerPoint(event)
+    setTooSmall(false)
     setStart(point)
     setRect(rectBetween(point, point))
   }
@@ -52,7 +60,8 @@ export const SelectionOverlay = ({ onSelect, onCancel }: SelectionOverlayProps) 
     const selected = rectBetween(start, pointerPoint(event))
     setStart(undefined)
     setRect(undefined)
-    if (selected.width > 0 && selected.height > 0) onSelect(selected)
+    if (isLargeEnough(selected)) onSelect(selected)
+    else setTooSmall(true)
   }
 
   return (
@@ -67,6 +76,14 @@ export const SelectionOverlay = ({ onSelect, onCancel }: SelectionOverlayProps) 
           className="absolute rounded-[2px] border-[1.25px] border-dashed border-primary bg-accent-soft"
           style={rect}
         />
+      )}
+      {tooSmall && (
+        <p
+          role="status"
+          className="absolute top-4 left-1/2 -translate-x-1/2 rounded bg-neutral px-3 py-2 text-neutral-content"
+        >
+          {strings.read.selectionTooSmall}
+        </p>
       )}
     </div>
   )

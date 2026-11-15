@@ -1,16 +1,20 @@
+from collections import Counter
+
+import pytest
+
 from khronist_knowledge.htr_eval import (
     char_errors,
     clean,
-    historic_letters,
+    legible_pair,
+    letter_confusions,
     modernize,
     score_flags,
     score_names,
-    without_illegible,
 )
 
 
 def test_clean_composes_and_collapses_spaces() -> None:
-    assert clean(" йван \n  село ") == "йван село"
+    assert clean(" йван \n  село ") == "йван село"
 
 
 def test_modernize_replaces_historic_letters_and_final_hard_sign() -> None:
@@ -21,8 +25,29 @@ def test_modernize_keeps_hard_sign_inside_a_word() -> None:
     assert modernize("объявленіе") == "объявление"
 
 
-def test_without_illegible_drops_markers() -> None:
-    assert without_illegible("Села [нрзб] Борщаговки") == "Села Борщаговки"
+def test_legible_pair_drops_illegible_words_with_their_reading() -> None:
+    assert legible_pair("Села [нрзб] Борщаговки", "Села Ивана Борщаговки") == (
+        "Села Борщаговки",
+        "Села Борщаговки",
+    )
+
+
+def test_legible_pair_drops_every_word_read_in_place_of_one_illegible() -> None:
+    assert legible_pair("Села [нрзб] Борщаговки", "Села Ивана Петра Борщаговки") == (
+        "Села Борщаговки",
+        "Села Борщаговки",
+    )
+
+
+def test_letter_confusions_ignore_surrounding_spaces() -> None:
+    assert letter_confusions(" ъ", "ъ") == Counter({("ъ", "ъ"): 1})
+
+
+def test_legible_pair_keeps_words_the_reference_could_read() -> None:
+    assert legible_pair("Села Борщаговки", "Села Борщаговки жители") == (
+        "Села Борщаговки",
+        "Села Борщаговки жители",
+    )
 
 
 def test_char_errors_counts_edits() -> None:
@@ -49,5 +74,16 @@ def test_score_flags_matches_flags_with_errors() -> None:
     assert (score.flagged, score.wrong, score.flagged_and_wrong) == (2, 1, 1)
 
 
-def test_historic_letters_counts_both_cases() -> None:
-    assert historic_letters("Ѳеодоръ ѳ ѣ") == {"ѣ": 1, "і": 0, "ъ": 1, "ѳ": 2, "ѵ": 0}
+def test_score_flags_rejects_flags_that_do_not_match_the_words() -> None:
+    with pytest.raises(ValueError, match="one uncertainty flag per word"):
+        score_flags("Села Борщаговки", "Села Борщаговки", [False])
+
+
+def test_letter_confusions_pairs_historic_letters_by_alignment() -> None:
+    confusions = letter_confusions("Ѳеодоръ вѣра", "Өеодор вѣра")
+    assert confusions == {("ѳ", "ө"): 1, ("ъ", ""): 1, ("ѣ", "ѣ"): 1}
+
+
+def test_letter_confusions_counts_historic_letters_the_reading_added() -> None:
+    assert letter_confusions("Иван", "Іван") == {("и", "і"): 1}
+    assert letter_confusions("", "ъ") == {("", "ъ"): 1}

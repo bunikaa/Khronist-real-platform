@@ -9,15 +9,39 @@ import type {
 import { strings } from '@khronist/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiFailure, readRecognition } from '../../api/client.ts'
-import type { Fragment } from '../../messages.ts'
+import type { Fragment, FragmentFailedMessage } from '../../messages.ts'
 
-export type Failure = { kind: 'unreadable' | 'offline' | 'rejected'; message: string }
+export type Failure = {
+  kind: 'unreadable' | 'retry' | 'size' | 'offline' | 'rejected'
+  message: string
+}
+
+type Source = { fragment: Fragment; shelfmark: Shelfmark | null }
 
 export type Reading =
   | { phase: 'idle' }
-  | { phase: 'reading'; fragment: Fragment; status: RecognitionStatus; lines: Line[] }
-  | { phase: 'done'; transcription: Transcription }
-  | { phase: 'failed'; fragment: Fragment; failure: Failure }
+  | ({ phase: 'reading'; status: RecognitionStatus; lines: Line[] } & Source)
+  | ({ phase: 'done'; transcription: Transcription } & Source)
+  | { phase: 'failed'; fragment?: Fragment; shelfmark: Shelfmark | null; failure: Failure }
+
+const retryCodes = new Set([
+  'restarted',
+  'save_failed',
+  'normalize_failed',
+  'reader_unavailable',
+  'shutting_down',
+  'internal_error',
+  'stalled',
+])
+const sizeCodes = new Set(['too_large', 'bad_image'])
+
+const failureFor = (code: string | undefined, message: string): Failure => {
+  if (code === 'read_failed') return { kind: 'unreadable', message }
+  if (code !== undefined && sizeCodes.has(code))
+    return { kind: 'size', message: strings.read.tooLarge }
+  if (code !== undefined && retryCodes.has(code)) return { kind: 'retry', message }
+  return { kind: 'rejected', message }
+}
 
 export const applyEvent = (
   reading: Extract<Reading, { phase: 'reading' }>,
@@ -32,19 +56,19 @@ export const applyEvent = (
   return reading
 }
 
-export const finished = (fragment: Fragment, state: RecognitionState): Reading => {
+export const finished = (source: Source, state: RecognitionState): Reading => {
   if (state.status === 'done' && state.transcription) {
-    return { phase: 'done', transcription: state.transcription }
+    return { phase: 'done', ...source, transcription: state.transcription }
   }
   return {
     phase: 'failed',
-    fragment,
-    failure: { kind: 'unreadable', message: state.error?.message ?? strings.read.badResponse },
+    ...source,
+    failure: failureFor(state.error?.code, state.error?.message ?? strings.read.badResponse),
   }
 }
 
 export const failureOf = (error: unknown): Failure => {
-  if (error instanceof ApiFailure) return { kind: 'rejected', message: error.message }
+  if (error instanceof ApiFailure) return failureFor(error.code, error.message)
   if (error instanceof TypeError) return { kind: 'offline', message: strings.read.offline }
   return { kind: 'rejected', message: strings.read.badResponse }
 }
@@ -52,12 +76,15 @@ export const failureOf = (error: unknown): Failure => {
 export const useReading = () => {
   const [reading, setReading] = useState<Reading>({ phase: 'idle' })
   const controller = useRef<AbortController>(undefined)
+  const last = useRef<Source>(undefined)
 
   const start = useCallback((fragment: Fragment, shelfmark: Shelfmark | null) => {
     controller.current?.abort()
     const current = new AbortController()
     controller.current = current
-    setReading({ phase: 'reading', fragment, status: 'queued', lines: [] })
+    const source = { fragment, shelfmark }
+    last.current = source
+    setReading({ phase: 'reading', ...source, status: 'queued', lines: [] })
 
     const onEvent = (event: RecognitionEvent) => {
       if (current.signal.aborted) return
@@ -78,14 +105,33 @@ export const useReading = () => {
       onEvent,
     ).then(
       (state) => {
-        if (!current.signal.aborted) setReading(finished(fragment, state))
+        if (!current.signal.aborted) setReading(finished(source, state))
       },
       (error: unknown) => {
         if (!current.signal.aborted)
-          setReading({ phase: 'failed', fragment, failure: failureOf(error) })
+          setReading({ phase: 'failed', ...source, failure: failureOf(error) })
       },
     )
   }, [])
+
+  const retry = useCallback(() => {
+    if (last.current) start(last.current.fragment, last.current.shelfmark)
+  }, [start])
+
+  const failSelection = useCallback(
+    (reason: FragmentFailedMessage['reason'], shelfmark: Shelfmark | null) => {
+      setReading((previous) =>
+        previous.phase === 'reading'
+          ? previous
+          : {
+              phase: 'failed',
+              shelfmark,
+              failure: { kind: 'rejected', message: strings.read.fragmentFailed[reason] },
+            },
+      )
+    },
+    [],
+  )
 
   const cancel = useCallback(() => {
     controller.current?.abort()
@@ -94,5 +140,5 @@ export const useReading = () => {
 
   useEffect(() => () => controller.current?.abort(), [])
 
-  return { reading, start, cancel }
+  return { reading, start, retry, failSelection, cancel }
 }

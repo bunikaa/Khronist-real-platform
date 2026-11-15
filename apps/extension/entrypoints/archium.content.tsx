@@ -7,6 +7,7 @@ import { defineContentScript } from 'wxt/utils/define-content-script'
 import {
   pageRequestSchema,
   selectionCommandSchema,
+  type FragmentFailedMessage,
   type FragmentMessage,
   type PageMessage,
 } from '../messages.ts'
@@ -32,10 +33,11 @@ export default defineContentScript({
     const currentPage = (): PageMessage => ({
       type: 'page',
       shelfmark: readArchiumShelfmark(document, new URL(location.href)),
+      scan: findArchiumScan(document) !== null,
       selecting: overlay.mounted !== undefined,
     })
 
-    const send = (message: PageMessage | FragmentMessage) => {
+    const send = (message: PageMessage | FragmentMessage | FragmentFailedMessage) => {
       if (ctx.isInvalid) return
       browser.runtime.sendMessage(message).catch(() => undefined)
     }
@@ -61,18 +63,28 @@ export default defineContentScript({
       publish()
     }
 
+    const fail = (reason: FragmentFailedMessage['reason']) =>
+      send({ type: 'fragment-failed', reason, shelfmark: currentPage().shelfmark })
+
     function select(selection: SelectionRect) {
+      stopSelection()
       const scan = findArchiumScan(document)
-      if (!scan?.complete || scan.naturalWidth === 0) return
+      if (!scan?.complete || scan.naturalWidth === 0) {
+        fail('not_loaded')
+        return
+      }
       const region = scanRegion(selection, scan.getBoundingClientRect(), {
         width: scan.naturalWidth,
         height: scan.naturalHeight,
       })
-      if (!region) return
-      stopSelection()
+      if (!region) {
+        fail('outside')
+        return
+      }
       const { shelfmark } = currentPage()
-      void cropFragment(scan, region).then((fragment) =>
-        send({ type: 'fragment', fragment, shelfmark }),
+      cropFragment(scan, region).then(
+        (fragment) => send({ type: 'fragment', fragment, shelfmark }),
+        () => fail('crop'),
       )
     }
 

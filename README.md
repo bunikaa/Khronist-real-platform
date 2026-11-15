@@ -2,7 +2,7 @@
 
 AI-компаньйон для дослідників українських архівів: розширення Chrome читає рукописні скани на архівних порталах, пояснює терміни й дати з джерелами, а підтверджені людьми транскрипції потрапляють у відкритий шар Commons (CC BY 4.0).
 
-Зараз у репозиторії працює API: https://api.khronist.org (Railway, опис інфраструктури — `.railway/railway.ts`), і є каркас розширення Chrome (бічна панель без функцій читання). Вебзастосунок, MCP-сервер і `services/*` ще не створені.
+Зараз у репозиторії працює API: https://api.khronist.org (Railway, опис інфраструктури — `.railway/railway.ts`). Розширення Chrome читає виділені фрагменти сканів у переглядачі ARCHIUM (`archium.cdiak.archives.gov.ua`) через бічну панель. `services/knowledge` містить довідковий корпус і оцінку читання. Вебзастосунку й MCP-сервера ще немає.
 
 ## Що потрібно встановити
 
@@ -11,7 +11,7 @@ AI-компаньйон для дослідників українських а�
 | Node.js          | 24 або новіша                           | увесь TypeScript-код                        |
 | pnpm             | 12.16.1 (`npm install -g pnpm@12.16.1`) | залежності й команди                        |
 | Docker Desktop   | будь-яка актуальна                      | локальний PostgreSQL 18                     |
-| uv і Python 3.12 | актуальний uv                           | лише для `services/*`, коли вони з'являться |
+| uv і Python 3.12 | актуальний uv                           | для `services/knowledge`                    |
 | GitHub CLI       | необов'язково                           | PR із термінала                             |
 
 У Windows uv і GitHub CLI ставляться так: `winget install astral-sh.uv` і `winget install GitHub.cli`. Після цього треба перезапустити термінал і редактор, інакше команд не буде в `PATH`.
@@ -35,7 +35,7 @@ pnpm dev
 - `htr: "fixture"`: читання фікстурне, бо в `.env.example` стоїть `LLM_FIXTURES=1`. Будь-яке зображення дає той самий демонстраційний текст, а гроші не витрачаються.
 - `llm: "degraded"`: немає ключа API. Для роботи з фікстурами це нормально.
 
-Для справжнього читання задайте `ANTHROPIC_API_KEY` і приберіть `LLM_FIXTURES=1`. Спершу зітріть локальну базу (`docker compose -f infra/docker-compose.yml down -v`, потім знову `up -d` і `pnpm db:migrate`), бо кеш віддає фікстурні транскрипції як справжні.
+Розширення, запущене через `pnpm --filter @khronist/extension dev`, ходить у цей локальний API, а не в прод. Для справжнього читання задайте `ANTHROPIC_API_KEY` і приберіть `LLM_FIXTURES=1`. Спершу зітріть локальну базу (`docker compose -f infra/docker-compose.yml down -v`, потім знову `up -d` і `pnpm db:migrate`), бо кеш віддає фікстурні транскрипції як справжні.
 
 ## Команди
 
@@ -60,6 +60,7 @@ pnpm dev
 | `packages/contracts` | Zod-схеми й типи                                          | Владислав і ML-команда |
 | `packages/prompts`   | промпти                                                   | ML-команда             |
 | `packages/config`    | спільні налаштування                                      | Владислав              |
+| `services/knowledge` | корпус, словник варіантів, оцінка читання ([README](services/knowledge/README.md)) | Анна і Катерина |
 | `infra`              | локальний PostgreSQL                                      | Владислав              |
 | `.railway`           | сервіс API і база на Railway                              | Владислав              |
 | `docs`               | план, контекст, рішення                                   | уся команда            |

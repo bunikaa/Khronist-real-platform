@@ -1,6 +1,6 @@
 import type { Line, RecognitionEvent, Transcription } from '@khronist/contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiFailure, readRecognition } from '../api/client.ts'
+import { ApiFailure, maxReconnects, readRecognition, reconnectDelayMs } from '../api/client.ts'
 import { parseEventBlock, readEvents } from '../api/events.ts'
 
 const line: Line = {
@@ -84,7 +84,10 @@ const request = {
 }
 
 describe('readRecognition', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
 
   it('returns a cached transcription without opening the event stream', async () => {
     const fetch = vi
@@ -128,6 +131,52 @@ describe('readRecognition', () => {
 
     expect(events.map((event) => event.event)).toEqual(['progress', 'line', 'done'])
     expect(state.status).toBe('done')
+  })
+
+  it('stops when the stream ends with a failure even if the state still says reading', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ recognitionId, status: 'queued' }, 201))
+      .mockResolvedValueOnce(json({ recognitionId, status: 'reading' }))
+      .mockResolvedValueOnce(
+        new Response(
+          streamOf('event: failed\ndata: {"code":"restarted","message":"Перезапущено"}\n\n'),
+        ),
+      )
+      .mockResolvedValue(json({ recognitionId, status: 'reading' }))
+    vi.stubGlobal('fetch', fetch)
+
+    const state = await readRecognition(request, new AbortController().signal, () => undefined)
+
+    expect(state).toEqual({
+      recognitionId,
+      status: 'failed',
+      error: { code: 'restarted', message: 'Перезапущено' },
+    })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('waits between reconnects and gives up after a limited number of them', async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn(async (url: string) =>
+      url.endsWith('/events')
+        ? new Response(streamOf(': ping\n\n'))
+        : url.endsWith('/v1/recognitions')
+          ? json({ recognitionId, status: 'queued' }, 201)
+          : json({ recognitionId, status: 'reading' }),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const settled = readRecognition(request, new AbortController().signal, () => undefined).catch(
+      (error: unknown) => error,
+    )
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs - 1)
+    const streams = () => fetch.mock.calls.filter(([url]) => url.endsWith('/events')).length
+    expect(streams()).toBe(1)
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs * (maxReconnects + 1))
+
+    expect(await settled).toMatchObject({ code: 'stalled' })
+    expect(streams()).toBe(maxReconnects + 1)
   })
 
   it('turns an API error into ApiFailure with the server message', async () => {

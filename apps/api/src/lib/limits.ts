@@ -1,2 +1,18 @@
 export const maxBodyBytes = 12 * 1024 * 1024
-export const defaultGuestRecognitionsPerDay = 60
+export const defaultGuestRecognitionsPerDay = 300
+export const defaultModelCallsPerDay = 2000
+export const guestRecognitionsPerMinute = 10
+export const activeRecognitionsPerClient = 3
+export const maxBacklog = 50
+export const recognitionReadsPerMinute = 120
+export const streamsPerClient = 5
+export const maxOpenStreams = 300
+export const streamRetryAfterSeconds = 10
+
+export const readPrimaryLimitMs = 15_000
+export const readTimeoutMs = 75_000
+export const normalizeTimeoutMs = 25_000
+export const entitiesTimeoutMs = 20_000
+export const staleAfterMs = 10 * 60_000
+export const staleSweepMs = 60_000
+export const defaultDrainMs = 10_000

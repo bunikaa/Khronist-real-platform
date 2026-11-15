@@ -86,7 +86,21 @@ describe('production safety', () => {
     expect(loadConfig({ ...base, NODE_ENV: 'development', LLM_FIXTURES: '1' }).LLM_FIXTURES).toBe(
       true,
     )
-    expect(loadConfig({ ...base, NODE_ENV: 'production' }).LLM_FIXTURES).toBe(false)
+    expect(
+      loadConfig({ ...base, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' }).LLM_FIXTURES,
+    ).toBe(false)
+  })
+
+  it('refuses to start production without a key for the primary model', () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/HTR_MODEL_PRIMARY/)
+    expect(() =>
+      loadConfig({
+        ...base,
+        NODE_ENV: 'production',
+        HTR_MODEL_PRIMARY: 'gemini-x',
+        ANTHROPIC_API_KEY: 'a',
+      }),
+    ).toThrow(/HTR_MODEL_PRIMARY/)
   })
 
   it('reads the header that carries the client address', () => {
@@ -100,10 +114,19 @@ describe('production safety', () => {
 })
 
 describe('guest access settings', () => {
-  it('allows no origins and sixty recognitions by default', () => {
+  it('allows no origins, three hundred readings and two thousand model calls by default', () => {
     const config = loadConfig({ ...base, CORS_ORIGINS: '' })
     expect(config.CORS_ORIGINS).toEqual([])
-    expect(config.GUEST_RECOGNITIONS_PER_DAY).toBe(60)
+    expect(config.GUEST_RECOGNITIONS_PER_DAY).toBe(300)
+    expect(config.MODEL_CALLS_PER_DAY).toBe(2000)
+  })
+
+  it('reads the draining window of the deployment', () => {
+    expect(loadConfig(base).RAILWAY_DEPLOYMENT_DRAINING_SECONDS).toBeUndefined()
+    expect(
+      loadConfig({ ...base, RAILWAY_DEPLOYMENT_DRAINING_SECONDS: '150' })
+        .RAILWAY_DEPLOYMENT_DRAINING_SECONDS,
+    ).toBe(150)
   })
 
   it('splits origins including an extension origin', () => {

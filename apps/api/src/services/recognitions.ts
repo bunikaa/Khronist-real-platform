@@ -16,6 +16,8 @@ import {
   regions,
   transcriptions,
 } from '../db/schema.ts'
+import type { EventHub } from '../jobs/events.ts'
+import type { JobQueue } from '../jobs/queue.ts'
 import {
   failStaleRecognitions,
   failureEvent,
@@ -24,40 +26,40 @@ import {
   runRecognition,
   type JobLogger,
 } from '../jobs/recognize.ts'
-import type { EventHub } from '../jobs/events.ts'
-import type { JobQueue } from '../jobs/queue.ts'
 import { ApiError, isUniqueViolation } from '../lib/errors.ts'
 import { decodePng } from '../lib/image.ts'
+import { activeRecognitionsPerClient, maxBacklog } from '../lib/limits.ts'
 import type { HtrReader } from './htr/index.ts'
-import type { Normalizer } from './normalize.ts'
+import type { CallBudget } from './llm/index.ts'
+import type { EntityExtractor, Normalizer } from './normalize.ts'
 import { loadTranscription } from './transcriptions.ts'
 
 export type RecognitionDeps = {
   db: Database
   reader: HtrReader | undefined
   normalizer: Normalizer
+  entities: EntityExtractor
+  budget: CallBudget
   hub: EventHub
   queue: JobQueue
   log: JobLogger
-  readTimeoutMs?: number
-  normalizeTimeoutMs?: number
-  heartbeatMs?: number
-  maxBacklog?: number
-  staleAfterMs?: number
-  maxStreamMs?: number
+  readTimeoutMs?: number | undefined
+  normalizeTimeoutMs?: number | undefined
+  entitiesTimeoutMs?: number | undefined
+  heartbeatMs?: number | undefined
+  maxBacklog?: number | undefined
+  staleAfterMs?: number | undefined
+  maxStreamMs?: number | undefined
+}
+
+export type DailyAllowance = { allowed: boolean; retryAfterSeconds: number }
+
+export type RecognitionClient = {
+  key: string
+  consumeDailyRead: () => Promise<DailyAllowance>
 }
 
 const wholePage: Box = { x: 0, y: 0, w: 1, h: 1 }
-
-const isTrustedPortalHost = (hostname: string): boolean =>
-  hostname === 'searcharchives.net.ua' || hostname.endsWith('.gov.ua')
-
-const assertTrustedPortal = (shelfmark: Shelfmark) => {
-  if (shelfmark.portalUrl === undefined) return
-  if (!isTrustedPortalHost(new URL(shelfmark.portalUrl).hostname)) {
-    throw new ApiError(400, 'bad_request', 'Недопустиме посилання на портал')
-  }
-}
 
 const findOrCreatePage = async (db: Database, shelfmark: Shelfmark): Promise<string> => {
   await db
@@ -67,7 +69,6 @@ const findOrCreatePage = async (db: Database, shelfmark: Shelfmark): Promise<str
       fond: shelfmark.fond,
       opys: shelfmark.opys,
       sprava: shelfmark.sprava,
-      portal: shelfmark.portal ?? null,
     })
     .onConflictDoNothing()
   const [document] = await db
@@ -86,38 +87,32 @@ const findOrCreatePage = async (db: Database, shelfmark: Shelfmark): Promise<str
 
   const identity =
     shelfmark.image !== undefined
-      ? eq(pages.imageNo, shelfmark.image)
+      ? { imageNo: shelfmark.image, folio: null, match: eq(pages.imageNo, shelfmark.image) }
       : shelfmark.folio !== undefined
-        ? eq(pages.folio, shelfmark.folio)
+        ? { imageNo: null, folio: shelfmark.folio, match: eq(pages.folio, shelfmark.folio) }
         : undefined
   if (!identity) throw new ApiError(400, 'bad_request', 'Потрібен номер аркуша або зображення')
-  const match = and(eq(pages.documentId, document.id), identity)
-  const lookup = () => db.select({ id: pages.id }).from(pages).where(match).limit(1)
+  const lookup = () =>
+    db
+      .select({ id: pages.id })
+      .from(pages)
+      .where(and(eq(pages.documentId, document.id), identity.match))
+      .limit(1)
 
   const [existing] = await lookup()
   if (existing) return existing.id
-
-  let folio = shelfmark.folio ?? null
-  if (folio !== null && shelfmark.image !== undefined) {
-    const [taken] = await db
-      .select({ id: pages.id })
-      .from(pages)
-      .where(and(eq(pages.documentId, document.id), eq(pages.folio, folio)))
-      .limit(1)
-    if (taken) folio = null
-  }
   await db
     .insert(pages)
-    .values({
-      documentId: document.id,
-      folio,
-      imageNo: shelfmark.image ?? null,
-      sourceUrl: shelfmark.portalUrl ?? null,
-    })
+    .values({ documentId: document.id, folio: identity.folio, imageNo: identity.imageNo })
     .onConflictDoNothing()
   const [created] = await lookup()
   if (!created) throw new Error('page was not created')
   return created.id
+}
+
+const findRegion = async (db: Database, imageHash: string) => {
+  const [region] = await db.select().from(regions).where(eq(regions.imageHash, imageHash)).limit(1)
+  return region
 }
 
 const findOrCreateRegion = async (
@@ -136,7 +131,7 @@ const findOrCreateRegion = async (
       .set({ pageId })
       .where(and(eq(regions.imageHash, imageHash), isNull(regions.pageId)))
   }
-  const [region] = await db.select().from(regions).where(eq(regions.imageHash, imageHash)).limit(1)
+  const region = await findRegion(db, imageHash)
   if (!region) throw new Error('region was not created')
   return region
 }
@@ -179,77 +174,127 @@ const answerFromCache = async (
   return { recognitionId: done.id, status: 'cached', transcriptionId }
 }
 
+const unavailable = () => new ApiError(503, 'reader_unavailable', 'Читання тимчасово недоступне')
+
 export const createRecognition = async (
   deps: RecognitionDeps,
   request: CreateRecognitionRequest,
+  client: RecognitionClient,
 ): Promise<CreateRecognitionResponse> => {
   const { db, queue } = deps
   const image = decodePng(request.image.base64Png)
   if (image.sha256 !== request.imageHash) {
     throw new ApiError(400, 'bad_image', 'Хеш не збігається із зображенням')
   }
-  if (request.shelfmark) assertTrustedPortal(request.shelfmark)
 
-  const pageId = request.shelfmark ? await findOrCreatePage(db, request.shelfmark) : null
-  const region = await findOrCreateRegion(db, image.sha256, request.box ?? wholePage, pageId)
-
-  const cached = await findLatestTranscription(db, region.id)
-  if (cached) return answerFromCache(db, region.id, request.source, cached.id)
+  const known = await findRegion(db, image.sha256)
+  const cached = known && (await findLatestTranscription(db, known.id))
+  if (known && cached) {
+    if (request.shelfmark && known.pageId === null) {
+      const pageId = await findOrCreatePage(db, request.shelfmark)
+      await db
+        .update(regions)
+        .set({ pageId })
+        .where(and(eq(regions.id, known.id), isNull(regions.pageId)))
+    }
+    return answerFromCache(db, known.id, request.source, cached.id)
+  }
 
   const reader = deps.reader
-  if (!reader) throw new ApiError(503, 'reader_unavailable', 'Читання тимчасово недоступне')
+  if (!reader || !(await deps.budget.available())) throw unavailable()
 
-  await failStaleRecognitions(db, region.id, deps.staleAfterMs ?? 10 * 60_000)
-  const running = await findActiveRecognition(db, region.id)
-  if (running) return { recognitionId: running.id, status: 'queued' }
+  if (known) {
+    await failStaleRecognitions(db, {
+      regionId: known.id,
+      code: 'read_failed',
+      olderThanMs: deps.staleAfterMs,
+    })
+    const running = await findActiveRecognition(db, known.id)
+    if (running) return { recognitionId: running.id, status: 'queued' }
+  }
 
-  if (!queue.reserve(deps.maxBacklog ?? 50)) {
+  const slot = queue.reserve(client.key, {
+    total: deps.maxBacklog ?? maxBacklog,
+    perOwner: activeRecognitionsPerClient,
+  })
+  if (slot === 'stopped') {
+    throw new ApiError(
+      503,
+      'shutting_down',
+      'Сервер перезапускається, спробуйте за кілька секунд',
+      5,
+    )
+  }
+  if (slot === 'full') {
     throw new ApiError(429, 'too_many_requests', 'Забагато запитів у черзі, спробуйте за хвилину')
   }
-
-  let recognitionId: string
-  try {
-    const [inserted] = await db
-      .insert(recognitions)
-      .values({ regionId: region.id, source: request.source })
-      .returning({ id: recognitions.id })
-    if (!inserted) throw new Error('recognition was not recorded')
-    recognitionId = inserted.id
-  } catch (error) {
-    queue.release()
-    if (!isUniqueViolation(error)) throw error
-    const winner = await findActiveRecognition(db, region.id)
-    if (winner) return { recognitionId: winner.id, status: 'queued' }
-    const finished = await findLatestTranscription(db, region.id)
-    if (finished) return answerFromCache(db, region.id, request.source, finished.id)
-    throw error
+  if (slot === 'busy') {
+    throw new ApiError(
+      429,
+      'too_many_requests',
+      'Забагато одночасних розпізнавань, дочекайтеся результату',
+    )
   }
 
+  let started = false
   try {
-    const finishedMeanwhile = await findLatestTranscription(db, region.id)
+    const daily = await client.consumeDailyRead()
+    if (!daily.allowed) {
+      throw new ApiError(
+        429,
+        'too_many_requests',
+        'Денний ліміт розпізнавань вичерпано, спробуйте завтра',
+        daily.retryAfterSeconds,
+      )
+    }
+
+    const pageId = request.shelfmark ? await findOrCreatePage(db, request.shelfmark) : null
+    const region = await findOrCreateRegion(db, image.sha256, request.box ?? wholePage, pageId)
+
+    let recognitionId: string
+    try {
+      const [inserted] = await db
+        .insert(recognitions)
+        .values({ regionId: region.id, source: request.source })
+        .returning({ id: recognitions.id })
+      if (!inserted) throw new Error('recognition was not recorded')
+      recognitionId = inserted.id
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error
+      const winner = await findActiveRecognition(db, region.id)
+      if (winner) return { recognitionId: winner.id, status: 'queued' }
+      const finished = await findLatestTranscription(db, region.id)
+      if (finished) return answerFromCache(db, region.id, request.source, finished.id)
+      throw error
+    }
+
+    const finishedMeanwhile = await findLatestTranscription(db, region.id).catch(
+      async (error: unknown) => {
+        await markFailed(db, recognitionId, 'read_failed').catch((markError: unknown) =>
+          deps.log.error({ err: markError, recognitionId }, 'could not record the failure'),
+        )
+        throw error
+      },
+    )
     if (finishedMeanwhile) {
       await db
         .update(recognitions)
         .set({ status: 'done', transcriptionId: finishedMeanwhile.id, finishedAt: new Date() })
         .where(and(eq(recognitions.id, recognitionId), eq(recognitions.status, 'queued')))
-      queue.release()
       return { recognitionId, status: 'cached', transcriptionId: finishedMeanwhile.id }
     }
-  } catch (error) {
-    queue.release()
-    await markFailed(db, recognitionId, 'read_failed').catch((markError: unknown) =>
-      deps.log.error({ err: markError, recognitionId }, 'could not record the failure'),
-    )
-    throw error
-  }
 
-  queue.add(() =>
-    runRecognition(
-      { ...deps, reader },
-      { recognitionId, image: image.bytes, hints: request.hints },
-    ),
-  )
-  return { recognitionId, status: 'queued' }
+    slot.run(recognitionId, (signal) =>
+      runRecognition(
+        { ...deps, reader },
+        { recognitionId, image: image.bytes, hints: request.hints, signal },
+      ),
+    )
+    started = true
+    return { recognitionId, status: 'queued' }
+  } finally {
+    if (!started) slot.release()
+  }
 }
 
 export const findRecognition = async (db: Database, id: string) => {

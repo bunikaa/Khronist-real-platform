@@ -1,13 +1,46 @@
+import re
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 ArticleType = Literal["term", "place", "date", "unit", "abbr"]
 SourceKind = Literal["dictionary", "encyclopedia", "wikidata", "publication"]
+Licence = Literal["суспільне надбання", "CC BY-SA 4.0"]
 
 NonEmpty = Field(min_length=1)
+
+CENTURY = re.compile(r"^(X{0,3})(IX|IV|V?I{0,3})$")
+UNITS = {"": 0, "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9}
+PERIOD_SEPARATOR = re.compile(r"\s*[–-]\s*")
+
+
+def century(roman: str) -> int:
+    match = CENTURY.match(roman)
+    value = 10 * len(match.group(1)) + UNITS[match.group(2)] if match else 0
+    if value == 0:
+        raise ValueError(f"{roman!r} is not a century in Roman numerals")
+    return value
+
+
+def period_range(period: str) -> tuple[int, int]:
+    parts = PERIOD_SEPARATOR.split(period.strip())
+    if len(parts) > 2:
+        raise ValueError("period must be one century or a range of two")
+    start, end = century(parts[0]), century(parts[-1])
+    if start > end:
+        raise ValueError("the period range must go from the earlier century to the later one")
+    return start, end
 
 
 class ArticleMeta(BaseModel):
@@ -20,8 +53,43 @@ class ArticleMeta(BaseModel):
     source_title: str = NonEmpty
     source_url: AnyHttpUrl
     source_kind: SourceKind
-    licence: str = NonEmpty
+    licence: Licence
     wikidata_id: str | None = Field(default=None, pattern=r"^Q[1-9][0-9]*$")
+
+    @field_validator("period")
+    @classmethod
+    def check_period(cls, period: str) -> str:
+        period_range(period)
+        return period
+
+    @field_validator("source_url")
+    @classmethod
+    def check_https(cls, url: AnyHttpUrl) -> AnyHttpUrl:
+        if url.scheme != "https":
+            raise ValueError("source_url must use https")
+        return url
+
+    @model_validator(mode="after")
+    def check_variants(self) -> "ArticleMeta":
+        seen = {self.term.strip().casefold()}
+        for variant in self.variants:
+            key = variant.strip().casefold()
+            if not key:
+                raise ValueError("variants must not be empty")
+            if key in seen:
+                raise ValueError(f"variant {variant!r} repeats the term or another variant")
+            seen.add(key)
+        return self
+
+    @computed_field
+    @property
+    def period_from(self) -> int:
+        return period_range(self.period)[0]
+
+    @computed_field
+    @property
+    def period_to(self) -> int:
+        return period_range(self.period)[1]
 
 
 class Article(BaseModel):
@@ -48,11 +116,21 @@ def parse_article(path: Path) -> Article:
     if not isinstance(meta, dict):
         raise CorpusError(f"{path}: front matter must be a mapping")
     text = "\n".join(lines[end + 1 :]).strip()
-    return Article(path=path, meta=ArticleMeta.model_validate(meta), text=text)
+    try:
+        return Article(path=path, meta=ArticleMeta.model_validate(meta), text=text)
+    except ValidationError as error:
+        raise CorpusError(f"{path}: {error}") from error
 
 
 def load_corpus(directory: Path) -> list[Article]:
+    if not directory.is_dir():
+        raise CorpusError(f"{directory}: corpus directory does not exist")
+    nested = sorted(path for path in directory.rglob("*.md") if path.parent != directory)
+    if nested:
+        raise CorpusError(f"{nested[0]}: articles must lie directly in {directory}")
     articles = [parse_article(path) for path in sorted(directory.glob("*.md"))]
+    if not articles:
+        raise CorpusError(f"{directory}: corpus has no articles")
     seen: dict[tuple[str, str], Path] = {}
     for article in articles:
         key = (article.meta.type, article.meta.term.casefold())

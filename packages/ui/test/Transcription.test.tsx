@@ -17,20 +17,21 @@ const line: Line = {
 }
 
 describe('TranscriptionLine', () => {
-  it('numbers the line from one and underlines only the uncertain words', () => {
+  it('numbers the line from one and marks only the uncertain words with a dotted line', () => {
     const html = renderToStaticMarkup(<TranscriptionLine line={line} />)
 
     expect(html).toContain('>02</span>')
     expect(html).toContain(
-      'Коваленко и <span class="text-warning underline" title="Модель не впевнена в цьому слові">законная</span>',
+      'Коваленко и <span class="underline decoration-warning decoration-dotted decoration-2 underline-offset-2" title="Модель не впевнена в цьому слові">законная<span class="sr-only select-none"> (непевно)</span></span>',
     )
+    expect(html).not.toContain('text-warning')
   })
 
   it('underlines the whole line when the model gave no words', () => {
     const html = renderToStaticMarkup(<TranscriptionLine line={{ ...line, words: [] }} />)
 
     expect(html).toContain(
-      'title="Модель не впевнена в цьому слові">Коваленко и законная жена его</span>',
+      'title="Модель не впевнена в цьому слові">Коваленко и законная жена его<span class="sr-only select-none">',
     )
   })
 })
@@ -58,6 +59,13 @@ describe('strings', () => {
     expect(strings.read.transcriptionLines(3)).toBe('Транскрипція · 3 рядки')
     expect(strings.read.transcriptionLines(5)).toBe('Транскрипція · 5 рядків')
     expect(strings.read.transcriptionLines(21)).toBe('Транскрипція · 21 рядок')
+  })
+
+  it('names the shortcut only when Chrome assigned one', () => {
+    expect(strings.read.promptBody('Alt+Shift+X')).toContain('Alt + Shift + X')
+    expect(strings.read.promptBody(undefined)).toBe(
+      'Натисніть кнопку нижче, потім обведіть запис на аркуші.',
+    )
   })
 
   it('groups pixel sizes like the Figma caption', () => {

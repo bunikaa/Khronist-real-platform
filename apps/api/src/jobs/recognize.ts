@@ -1,8 +1,10 @@
 import {
   lineSchema,
   recognitionFailureCodeSchema,
+  type Entity,
   type Hints,
   type Line,
+  type NormalizeOutput,
   type RecognitionEvent,
   type RecognitionFailureCode,
 } from '@khronist/contracts'
@@ -10,10 +12,16 @@ import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Database } from '../db/client.ts'
 import { activeRecognitionStatuses, recognitions } from '../db/schema.ts'
+import {
+  entitiesTimeoutMs,
+  normalizeTimeoutMs,
+  readTimeoutMs,
+  staleAfterMs,
+} from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { HtrReader } from '../services/htr/index.ts'
-import type { Normalized, Normalizer } from '../services/normalize.ts'
-import { insertTranscriptionVersion } from '../services/transcriptions.ts'
+import type { EntityExtractor, Normalizer } from '../services/normalize.ts'
+import { insertTranscriptionVersion, normalizedTextOf } from '../services/transcriptions.ts'
 import type { EventHub } from './events.ts'
 
 const failureMessages: Record<RecognitionFailureCode, string> = {
@@ -38,24 +46,32 @@ export const failureOf = (row: StoredFailure) => {
   return { code, message: row.errorMessage ?? failureMessages[code] }
 }
 
+type LogFn = (details: object, message: string) => void
+
 export type JobLogger = {
-  error: (details: unknown, message?: string) => void
+  info: LogFn
+  warn: LogFn
+  error: LogFn
+  child: (bindings: { recognitionId: string }) => JobLogger
 }
 
 export type JobDeps = {
   db: Database
   reader: HtrReader
   normalizer: Normalizer
+  entities: EntityExtractor
   hub: EventHub
   log: JobLogger
-  readTimeoutMs?: number
-  normalizeTimeoutMs?: number
+  readTimeoutMs?: number | undefined
+  normalizeTimeoutMs?: number | undefined
+  entitiesTimeoutMs?: number | undefined
 }
 
 export type RecognitionJob = {
   recognitionId: string
   image: Buffer
   hints?: Hints | undefined
+  signal?: AbortSignal | undefined
 }
 
 type Stage = 'read' | 'normalize' | 'save'
@@ -89,6 +105,13 @@ const setStatus = async (db: Database, id: string, status: 'reading' | 'normaliz
   if (rows.length === 0) throw new JobCancelledError()
 }
 
+const failedValues = (code: RecognitionFailureCode) => ({
+  status: 'failed' as const,
+  errorCode: code,
+  errorMessage: failureMessages[code],
+  finishedAt: new Date(),
+})
+
 export const markFailed = async (
   db: Database,
   id: string,
@@ -96,15 +119,46 @@ export const markFailed = async (
 ): Promise<boolean> => {
   const rows = await db
     .update(recognitions)
-    .set({
-      status: 'failed',
-      errorCode: code,
-      errorMessage: failureMessages[code],
-      finishedAt: new Date(),
-    })
+    .set(failedValues(code))
     .where(isActive(id))
     .returning({ id: recognitions.id })
   return rows.length > 0
+}
+
+export const failRecognitions = async (
+  db: Database,
+  ids: string[],
+  code: RecognitionFailureCode,
+): Promise<string[]> => {
+  if (ids.length === 0) return []
+  const rows = await db
+    .update(recognitions)
+    .set(failedValues(code))
+    .where(
+      and(
+        inArray(recognitions.id, ids),
+        inArray(recognitions.status, [...activeRecognitionStatuses]),
+      ),
+    )
+    .returning({ id: recognitions.id })
+  return rows.map((row) => row.id)
+}
+
+type StaleScope = { code: RecognitionFailureCode; regionId?: string; olderThanMs?: number }
+
+export const failStaleRecognitions = async (db: Database, scope: StaleScope): Promise<number> => {
+  const rows = await db
+    .update(recognitions)
+    .set(failedValues(scope.code))
+    .where(
+      and(
+        scope.regionId === undefined ? undefined : eq(recognitions.regionId, scope.regionId),
+        inArray(recognitions.status, [...activeRecognitionStatuses]),
+        lt(recognitions.createdAt, new Date(Date.now() - (scope.olderThanMs ?? staleAfterMs))),
+      ),
+    )
+    .returning({ id: recognitions.id })
+  return rows.length
 }
 
 const readSchema = z.array(lineSchema)
@@ -118,22 +172,46 @@ const checkLines = (raw: Line[]): Line[] => {
   return lines
 }
 
-const checkNormalized = (normalized: Normalized): Normalized => {
-  for (const entity of normalized.entities) {
-    const insideText = entity.end <= normalized.normalizedText.length
-    if (entity.end <= entity.start || !insideText) {
+const checkNormalized = (lines: Line[], output: NormalizeOutput): NormalizeOutput => {
+  if (output.lines.length !== lines.length) {
+    throw new Error(`normalization returned ${output.lines.length} of ${lines.length} lines`)
+  }
+  output.lines.forEach((line, index) => {
+    const read = lines[index]?.words ?? []
+    if (line.words.map((word) => word.text).join(' ') !== line.text) {
+      throw new Error(`the words of normalized line ${index} do not add up to its text`)
+    }
+    if (line.words.length !== read.length) {
+      throw new Error(`normalized line ${index} has ${line.words.length} of ${read.length} words`)
+    }
+    if (read.some((word, at) => word.uncertain && !line.words[at]?.uncertain)) {
+      throw new Error(`normalized line ${index} lost an uncertain word`)
+    }
+  })
+  return output
+}
+
+const checkEntities = (text: string, found: Entity[]): Entity[] => {
+  for (const entity of found) {
+    if (entity.end <= entity.start || entity.end > text.length) {
       throw new Error(`entity "${entity.text}" has an invalid span ${entity.start}-${entity.end}`)
     }
   }
-  return normalized
+  return found
+}
+
+type ReadingToSave = {
+  reader: string
+  lines: Line[]
+  warnings: Awaited<ReturnType<HtrReader['read']>>['warnings']
+  normalized: NormalizeOutput | null
+  entities: Entity[]
 }
 
 const saveTranscription = async (
   db: Database,
   recognitionId: string,
-  reader: string,
-  lines: Line[],
-  normalized: Normalized,
+  reading: ReadingToSave,
 ): Promise<string> =>
   db.transaction(async (tx) => {
     const [recognition] = await tx
@@ -145,9 +223,7 @@ const saveTranscription = async (
 
     const transcriptionId = await insertTranscriptionVersion(tx, {
       regionId: recognition.regionId,
-      reader,
-      lines,
-      normalized,
+      ...reading,
     })
 
     const closed = await tx
@@ -175,8 +251,9 @@ const storedFailureEvent = async (db: Database, id: string): Promise<Recognition
 }
 
 export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promise<void> => {
-  const { db, reader, normalizer, hub, log } = deps
-  const { recognitionId } = job
+  const { db, reader, normalizer, hub } = deps
+  const { recognitionId, hints, signal: stopped } = job
+  const log = deps.log.child({ recognitionId })
   let stage: Stage = 'read'
   let transcriptionId: string
   try {
@@ -184,9 +261,10 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     hub.publish(recognitionId, { event: 'progress', data: { status: 'reading' } })
 
     const read = await runWithTimeout(
-      (signal) => reader.read({ image: job.image, hints: job.hints, signal }),
-      deps.readTimeoutMs ?? 30_000,
+      (signal) => reader.read({ image: job.image, hints, signal, log }),
+      deps.readTimeoutMs ?? readTimeoutMs,
       'reading',
+      stopped,
     )
     const lines = checkLines(read.lines)
     for (const line of lines) hub.publish(recognitionId, { event: 'line', data: { line } })
@@ -194,26 +272,48 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     stage = 'normalize'
     await setStatus(db, recognitionId, 'normalizing')
     hub.publish(recognitionId, { event: 'progress', data: { status: 'normalizing' } })
-    const normalized = checkNormalized(
-      await runWithTimeout(
-        (signal) => normalizer.normalize(lines, job.hints, signal),
-        deps.normalizeTimeoutMs ?? 20_000,
-        'normalization',
-      ),
+    const normalized = await runWithTimeout(
+      (signal) => normalizer.normalize(lines, hints, signal),
+      deps.normalizeTimeoutMs ?? normalizeTimeoutMs,
+      'normalization',
+      stopped,
     )
+      .then((output) => output && checkNormalized(lines, output))
+      .catch((error: unknown) => {
+        log.warn({ err: error }, 'normalization failed, keeping the lines as read')
+        return null
+      })
+    const normalizedText = normalizedTextOf(lines, normalized)
+    const entities = await runWithTimeout(
+      (signal) => deps.entities.extract(normalizedText, hints, signal),
+      deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
+      'entities',
+      stopped,
+    )
+      .then((found) => checkEntities(normalizedText, found))
+      .catch((error: unknown) => {
+        log.warn({ err: error }, 'entities failed, saving the transcription without them')
+        return []
+      })
 
     stage = 'save'
-    transcriptionId = await saveTranscription(db, recognitionId, read.reader, lines, normalized)
+    transcriptionId = await saveTranscription(db, recognitionId, {
+      reader: read.reader,
+      lines,
+      warnings: read.warnings,
+      normalized,
+      entities,
+    })
   } catch (error) {
     const code = failureCodeFor[stage]
     const closedElsewhere =
       error instanceof JobCancelledError ||
       !(await markFailed(db, recognitionId, code).catch((markError: unknown) => {
-        log.error({ err: markError, recognitionId }, 'could not record the failure')
+        log.error({ err: markError }, 'could not record the failure')
         return true
       }))
     log.error(
-      { err: error, recognitionId, stage },
+      { err: error, stage },
       closedElsewhere ? 'recognition cancelled' : 'recognition failed',
     )
     const event = closedElsewhere
@@ -222,43 +322,6 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     hub.publish(recognitionId, event)
     return
   }
+  log.info({ transcriptionId }, 'recognition done')
   hub.publish(recognitionId, { event: 'done', data: { transcriptionId } })
-}
-
-export const recoverInterruptedRecognitions = async (db: Database): Promise<number> => {
-  const rows = await db
-    .update(recognitions)
-    .set({
-      status: 'failed',
-      errorCode: 'restarted',
-      errorMessage: failureMessages.restarted,
-      finishedAt: new Date(),
-    })
-    .where(inArray(recognitions.status, [...activeRecognitionStatuses]))
-    .returning({ id: recognitions.id })
-  return rows.length
-}
-
-export const failStaleRecognitions = async (
-  db: Database,
-  regionId: string,
-  staleAfterMs: number,
-): Promise<number> => {
-  const rows = await db
-    .update(recognitions)
-    .set({
-      status: 'failed',
-      errorCode: 'read_failed',
-      errorMessage: failureMessages.read_failed,
-      finishedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(recognitions.regionId, regionId),
-        inArray(recognitions.status, [...activeRecognitionStatuses]),
-        lt(recognitions.createdAt, new Date(Date.now() - staleAfterMs)),
-      ),
-    )
-    .returning({ id: recognitions.id })
-  return rows.length
 }

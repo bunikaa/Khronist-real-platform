@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { createHash } from 'node:crypto'
+import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { buildApp } from '../src/app.ts'
@@ -8,10 +9,17 @@ import { migrationsFolder } from '../src/db/migrate.ts'
 import * as schema from '../src/db/schema.ts'
 import { createEventHub } from '../src/jobs/events.ts'
 import { createJobQueue } from '../src/jobs/queue.ts'
+import type { JobLogger } from '../src/jobs/recognize.ts'
 import { pngEnd } from '../src/lib/image.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader, ReadInput } from '../src/services/htr/index.ts'
-import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
+import type { CallBudget } from '../src/services/llm/index.ts'
+import {
+  noEntities,
+  passthroughNormalizer,
+  type EntityExtractor,
+  type Normalizer,
+} from '../src/services/normalize.ts'
 
 export const createTestDatabase = async () => {
   const client = new PGlite({ extensions: { pg_trgm } })
@@ -21,6 +29,26 @@ export const createTestDatabase = async () => {
 }
 
 export type TestDatabase = Awaited<ReturnType<typeof createTestDatabase>>
+
+export const resetDatabase = async ({ db }: TestDatabase) => {
+  const tables = await db.execute<{ tablename: string }>(
+    sql`select tablename from pg_tables where schemaname = 'public'`,
+  )
+  const names = tables.rows.map((row) => `"${row.tablename}"`).join(', ')
+  await db.execute(sql.raw(`truncate table ${names} restart identity cascade`))
+}
+
+export const silentLog: JobLogger = {
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  child: () => silentLog,
+}
+
+export const unlimitedBudget: CallBudget = {
+  spend: async () => true,
+  available: async () => true,
+}
 
 export const makePng = (width: number, height: number): Buffer => {
   const header = Buffer.alloc(33)
@@ -81,14 +109,18 @@ export const failingReader = (message: string): HtrReader => ({
 
 export const emptyReader: HtrReader = {
   kind: 'fixture',
-  read: async () => ({ lines: [], reader: 'empty' }),
+  read: async () => ({ lines: [], warnings: [], reader: 'empty' }),
 }
 
 export type TestAppOptions = {
   reader?: HtrReader | undefined
   normalizer?: Normalizer
+  entities?: EntityExtractor
+  budget?: CallBudget
+  isShuttingDown?: () => boolean
   readTimeoutMs?: number
   normalizeTimeoutMs?: number
+  entitiesTimeoutMs?: number
   maxBacklog?: number
   staleAfterMs?: number
   maxStreamMs?: number
@@ -109,15 +141,19 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     clientIpHeader: options.clientIpHeader,
     corsOrigins: options.corsOrigins,
     guestRecognitionsPerDay: options.guestRecognitionsPerDay,
+    isShuttingDown: options.isShuttingDown,
     recognitions: {
       db: database.db,
       reader,
       normalizer: options.normalizer ?? passthroughNormalizer,
+      entities: options.entities ?? noEntities,
+      budget: options.budget ?? unlimitedBudget,
       hub,
       queue,
       heartbeatMs: options.heartbeatMs ?? 20,
       readTimeoutMs: options.readTimeoutMs,
       normalizeTimeoutMs: options.normalizeTimeoutMs,
+      entitiesTimeoutMs: options.entitiesTimeoutMs,
       maxBacklog: options.maxBacklog,
       staleAfterMs: options.staleAfterMs,
       maxStreamMs: options.maxStreamMs,

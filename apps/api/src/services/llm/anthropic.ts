@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Config } from '../../config.ts'
-import { parseOutput, toJsonSchema, type LlmProvider, type LlmRequest } from './index.ts'
+import {
+  asLimitError,
+  parseOutput,
+  toJsonSchema,
+  type LlmProvider,
+  type LlmRequest,
+} from './index.ts'
 
 export type AnthropicMessages = Pick<Anthropic['beta']['messages'], 'create'>
 
@@ -11,7 +17,7 @@ type AnthropicOptions = {
 }
 
 export const createAnthropicMessages = (apiKey: string): AnthropicMessages =>
-  new Anthropic({ apiKey, maxRetries: 1 }).beta.messages
+  new Anthropic({ apiKey, maxRetries: 0 }).beta.messages
 
 const toContent = <T>(request: LlmRequest<T>): Anthropic.Beta.BetaContentBlockParam[] =>
   request.content.map((part) =>
@@ -38,21 +44,25 @@ const servedBy = (message: Anthropic.Beta.BetaMessage): string =>
 export const createAnthropicProvider = (options: AnthropicOptions): LlmProvider => ({
   name: options.model,
   complete: async (request) => {
-    const message = await options.messages.create(
-      {
-        model: options.model,
-        max_tokens: request.maxTokens,
-        system: request.system,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: {
-          effort: options.effort,
-          format: { type: 'json_schema', schema: toJsonSchema(request.schema) },
+    const message = await options.messages
+      .create(
+        {
+          model: options.model,
+          max_tokens: request.maxTokens,
+          system: request.system,
+          betas: ['server-side-fallback-2026-07-01'],
+          fallbacks: 'default',
+          output_config: {
+            effort: options.effort,
+            format: { type: 'json_schema', schema: toJsonSchema(request.schema) },
+          },
+          messages: [{ role: 'user', content: toContent(request) }],
         },
-        messages: [{ role: 'user', content: toContent(request) }],
-      },
-      { signal: request.signal },
-    )
+        { signal: request.signal },
+      )
+      .catch((error: unknown) => {
+        throw asLimitError(error)
+      })
     if (message.stop_reason !== 'end_turn') {
       throw new Error(`the model stopped early: ${message.stop_reason}`)
     }

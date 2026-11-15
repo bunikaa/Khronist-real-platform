@@ -3,3 +3,9 @@ set -e
 pnpm lint
 pnpm typecheck
 pnpm test
+if git diff --cached --name-only | grep -q '^services/knowledge/'; then
+  cd services/knowledge
+  uv run ruff check
+  uv run ruff format --check
+  uv run pytest
+fi

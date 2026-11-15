@@ -23,10 +23,8 @@ apps/extension/
 ├── wxt.config.ts            manifest: side_panel, permissions (activeTab, scripting, storage, sidePanel), host_permissions для порталу
 ├── entrypoints/
 │   ├── background.ts        відкриття панелі за хоткеєм, обмін повідомленнями, captureVisibleTab як резерв
-│   ├── content/             content script для searcharchives.net.ua:
-│   │   ├── index.ts         ін'єкція накладки, парсинг шифру, пошук зображення скану
-│   │   ├── overlay.tsx      режим виділення, смуги або рамки рядків, бейдж «уже прочитано»
-│   │   └── portal/          адаптери порталів: searcharchives.ts (інтерфейс PortalAdapter; archium — після фіналу)
+│   ├── archium.content.tsx  content script для ARCHIUM: накладка виділення, шифр, вирізання фрагмента
+│   └── (portal/, scan/, api/ поруч із entrypoints: адаптер ARCHIUM, вирізання, клієнт API)
 │   └── sidepanel/           React-застосунок панелі
 │       ├── App.tsx          оболонка: PanelHeader, Tabs, StatusBar, Content, ActionBar
 │       ├── screens/         ReadTab, AskTab, FirstRun, Login, Profile; NotesTab — should
@@ -47,9 +45,9 @@ interface PortalAdapter {
 }
 ```
 
-Шифр читаємо з URL і DOM за правилами з `docs/portal-searcharchives.md` (В документує 2–3 листопада). Якщо шифр не розпізнано — панель пропонує ввести вручну; читання й пояснення працюють, підтвердження — ні.
+Шифр читаємо з DOM переглядача ARCHIUM за правилами з `docs/portal-searcharchives.md`, розділ 6. Якщо шифр не розпізнано — читання й пояснення працюють без нього; ручний ввід шифру з'явиться разом із підтвердженням, яке без шифру неможливе.
 
-**Захоплення області.** Накладка малює прямокутник поверх зображення; content script вирізає фрагмент через `OffscreenCanvas` з оригінального `<img>` (якщо CORS дозволяє; перевірити 2–3 листопада) або просить background зробити `chrome.tabs.captureVisibleTab` і вирізати з нього. Фрагмент масштабується до ширини не менше 1200 px, якщо джерело дозволяє. Координати зберігаються в частках від розміру зображення. Хеш фрагмента (SHA-256 від PNG) рахується на клієнті.
+**Захоплення області.** Накладка малює прямокутник поверх зображення; content script вирізає фрагмент через `OffscreenCanvas` з оригінального `<img>` (якщо CORS дозволяє; перевірити 2–3 листопада) або просить background зробити `chrome.tabs.captureVisibleTab` і вирізати з нього. Фрагмент, більший за 2576 px по довшій стороні або 3,75 Мп, зменшується, а PNG — до менше ніж 7 МіБ (рішення 15 листопада); менший надсилається як є. Координати зберігаються в частках від розміру оригіналу. Хеш фрагмента (SHA-256 від PNG) рахується на клієнті.
 
 **Потік даних.** Панель викликає `POST /v1/recognitions`, отримує `recognitionId`, підписується на `GET /v1/recognitions/:id/events` через `EventSource`; події оновлюють store, рядки з'являються по одному. Наведення на рядок у панелі шле повідомлення content script для підсвітки на скані, і навпаки.
 
@@ -59,7 +57,7 @@ interface PortalAdapter {
 
 **Гаряча клавіша.** `Alt+Shift+X` через `commands` у маніфесті; повторне натискання при відкритій панелі вмикає режим виділення.
 
-**Авторизація в розширенні.** Magic link відкривається у вкладці вебу, після входу cookie-сесія стає доступною розширенню через `fetch` з `credentials: 'include'` до API-домену (CORS з `chrome-extension://<id>`). Резерв — панель запитує bearer-токен сесії й зберігає в `chrome.storage.session`.
+**Авторизація в розширенні.** Код із листа (Better Auth `emailOTP`): панель надсилає пошту, користувач вводить 6 цифр, панель отримує токен сесії із заголовка `set-auth-token`, тримає його в `chrome.storage.session` і шле в `Authorization: Bearer`. Cookie й CORS розширенню не потрібні: API доступний через `host_permissions` (рішення 14 і 15 листопада).
 
 ## 3. Веб-застосунок (`apps/web`)
 
@@ -69,7 +67,7 @@ Vite SPA на піддомені (`app.khronist.org`). Для MVP обов'яз�
 
 ## 4. Дизайн-система в коді (`packages/ui`)
 
-Переносимо з Figma один до одного: змінні → CSS custom properties та тема daisyUI, текстові стилі → класи-утиліти, компоненти → React-компоненти з тими самими іменами й варіантами: Button(kind, size), Tab(state), StatusBar(type), PageStatusBadge(status), TranscriptionLine(state, uncertain), EntityChip(type, state), FactPair, SourceRef, OldLettersBar, ScanLineBox(tone), PanelHeader, ActionBar(state), EmptyState, ChatMessage(kind), ChatComposer, ExplainSheet, CitationSheet, ConfirmDialog, Input(state); NoteItem — should. Токени й значення — у `10-project-context.md`, розділ 10. Темна тема не входить у MVP.
+Переносимо з Figma один до одного: змінні → CSS custom properties та тема daisyUI, текстові стилі → класи-утиліти, компоненти → React-компоненти з тими самими іменами й варіантами: Button(kind, size), Tab(state), StatusBar(type), PageStatusBadge(status), TranscriptionLine(state, uncertain), EntityChip(type, state), FactPair, SourceRef, OldLettersBar, ScanLineBox(tone), PanelHeader, ActionBar(state), EmptyState, ChatMessage(kind), ChatComposer, ExplainSheet, CitationSheet, ConfirmDialog, Input(state); NoteItem — should. Токени й значення — у `docs/project-context.md`, розділ 10. Темна тема не входить у MVP.
 
 Шрифти — `@fontsource/inter`, `@fontsource/jetbrains-mono`, `@fontsource/source-serif-4`; у розширенні пакуються в бандл (CSP розширення забороняє зовнішні).
 
