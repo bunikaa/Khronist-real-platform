@@ -2,7 +2,7 @@ import json
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import jiwer
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -221,17 +221,19 @@ def render(
     references: dict[str, Reference],
     results: dict[str, ModelTotals],
     sources: list[str],
+    reference_path: str,
     reference_reader: str | None,
 ) -> str:
     ref_chars = sum(len(r.text) for r in references.values())
     ref_names = sum(len(r.names) for r in references.values())
     ref_illegible = sum(r.text.count(ILLEGIBLE) for r in references.values())
+    reference_readme = (PurePosixPath(reference_path).parent / "README.md").as_posix()
     cer = "Розбіжність" if reference_reader else "CER"
     wer = "Розбіжність слів" if reference_reader else "WER"
     out = [
         "# Оцінка читання",
         "",
-        f"Еталон: `eval/reference/lines.jsonl` (походження — `eval/reference/README.md`), "
+        f"Еталон: `{reference_path}` (походження — `{reference_readme}`), "
         f"{len(references)} фрагментів, {ref_chars} символів, {ref_names} різних імен, "
         f"`{ILLEGIBLE}` в еталоні: {ref_illegible}.",
         "Читання: " + ", ".join(f"`{s}`" for s in sources) + ".",

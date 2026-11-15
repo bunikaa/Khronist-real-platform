@@ -87,7 +87,17 @@ def test_spreads_a_word_flag_over_its_parts() -> None:
 
 def test_report_names_the_reference_reader(tmp_path: Path) -> None:
     results = evaluate(REFERENCES, load_readings([write(tmp_path, reading("a"))]))
-    report = render(REFERENCES, results, ["r.jsonl"], "claude-opus-5-5")
+    report = render(
+        REFERENCES, results, ["r.jsonl"], "eval/reference/lines.jsonl", "claude-opus-5-5"
+    )
     assert "розбіжність з читанням `claude-opus-5-5`" in report
     assert "| Розбіжність strict | Розбіжність norm |" in report
     assert "## Плутанини історичних літер" in report
+
+
+def test_report_names_the_human_reference_it_was_given(tmp_path: Path) -> None:
+    results = evaluate(REFERENCES, load_readings([write(tmp_path, reading("a"))]))
+    report = render(REFERENCES, results, ["r.jsonl"], "eval/gold/lines.jsonl", None)
+    assert "Еталон: `eval/gold/lines.jsonl` (походження — `eval/gold/README.md`)" in report
+    assert "eval/reference" not in report
+    assert "| CER strict | CER norm |" in report

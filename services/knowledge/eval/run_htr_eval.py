@@ -26,7 +26,7 @@ def main() -> None:
     sources = [path.as_posix() for path in args.readings]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
-        render(references, results, sources, args.reference_reader),
+        render(references, results, sources, args.reference.as_posix(), args.reference_reader),
         encoding="utf-8",
         newline="\n",
     )
