@@ -30,7 +30,7 @@ git switch -c feat/short-name
 
 Прапорець `--no-verify` обходить хуки, але не CI. Не використовуйте його, щоб приховати падіння тестів.
 
-У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check` і `runtime`, без force-push і видалення гілки. Задачу `knowledge` ще треба додати в обов'язкові перевірки (`docs/decisions.md`, 15 листопада); доти стежте, щоб вона була зеленою.
+У `main` діє ruleset GitHub: зміни лише через PR, злиття після зелених `check`, `runtime` і `knowledge`, без force-push і видалення гілки.
 
 ## Правила коду
 
