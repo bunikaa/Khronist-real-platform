@@ -1,10 +1,11 @@
 import { loadProviderNotes } from '@khronist/prompts'
-import { appendFileSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadConfig } from '../src/config.ts'
 import { createProvider } from '../src/services/llm/select.ts'
-import { createVisionReader, type VisionReadLog } from '../src/services/htr/vision.ts'
+import { createVisionReader } from '../src/services/htr/vision.ts'
+import type { LlmUsage } from '../src/services/llm/index.ts'
 
 const { values } = parseArgs({
   options: {
@@ -19,6 +20,11 @@ if (!model || !fragments || !out) {
     'usage: read-fragments --model <name> --fragments <dir of png> --out <file.jsonl>',
   )
 }
+if (existsSync(out)) {
+  throw new Error(
+    `${out} already exists: choose a new --out file so readings are not counted twice`,
+  )
+}
 
 const config = loadConfig()
 const provider = createProvider(config, {
@@ -28,8 +34,15 @@ const provider = createProvider(config, {
 })
 if (!provider) throw new Error(`no API key for ${model}`)
 
-const logs: VisionReadLog[] = []
-const reader = createVisionReader(provider, (details) => logs.push(details))
+type ReadDetails = { durationMs?: number; usage?: LlmUsage; warnings?: string[] }
+const logs: ReadDetails[] = []
+const log = {
+  info: (details: ReadDetails) => {
+    logs.push(details)
+  },
+  warn: (details: object, message: string) => console.warn(message, details),
+}
+const reader = createVisionReader(provider)
 const settings = model.startsWith('gemini-')
   ? { thinkingLevel: 'low' }
   : { effort: config.HTR_EFFORT }
@@ -44,16 +57,17 @@ for (const file of files) {
   try {
     const { lines, reader: servedBy } = await reader.read({
       image: readFileSync(join(fragments, file)),
+      log,
     })
-    const log = logs.pop()
+    const details = logs.pop()
     const record = {
       fragment,
       model,
       reader: servedBy,
       settings,
-      durationMs: log?.durationMs ?? Date.now() - startedAt,
-      usage: log?.usage,
-      warnings: log?.warnings ?? [],
+      durationMs: details?.durationMs ?? Date.now() - startedAt,
+      usage: details?.usage,
+      warnings: details?.warnings ?? [],
       lines: lines.map(({ text, words }) => ({ text, words })),
     }
     appendFileSync(out, `${JSON.stringify(record)}\n`)

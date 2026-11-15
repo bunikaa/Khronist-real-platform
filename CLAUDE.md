@@ -28,4 +28,4 @@
 - Репозиторій публічний з 14 листопада 2026, код під Apache-2.0 (`LICENSE`).
 
 ## Команди
-`pnpm dev` · `pnpm db:generate` · `pnpm db:migrate` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python scripts/ingest.py`, `uv run python eval/run_qa.py`, `uv run python eval/run_htr_eval.py`
+`pnpm dev` · `pnpm db:generate` · `pnpm db:migrate` · `pnpm test` · `pnpm --filter extension zip` · у `services/knowledge`: `uv run python eval/run_htr_eval.py` (`scripts/ingest.py` і `eval/run_qa.py` ще не створено)

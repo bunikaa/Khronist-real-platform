@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 
 import jiwer
@@ -16,10 +17,6 @@ def clean(text: str) -> str:
 
 def modernize(text: str) -> str:
     return clean(FINAL_HARD_SIGN.sub("", clean(text).translate(MODERN_EQUIVALENTS)))
-
-
-def without_illegible(text: str) -> str:
-    return clean(text.replace(ILLEGIBLE, " "))
 
 
 def char_errors(reference: str, hypothesis: str) -> int:
@@ -54,6 +51,22 @@ def align_words(reference: str, hypothesis: str) -> list[AlignedWord]:
     return aligned
 
 
+def legible_pair(reference: str, hypothesis: str) -> tuple[str, str]:
+    aligned = align_words(reference, hypothesis)
+    dropped = {index for index, word in enumerate(aligned) if word.reference == ILLEGIBLE}
+    for index in sorted(dropped):
+        for step in (-1, 1):
+            near = index + step
+            while 0 <= near < len(aligned) and aligned[near].reference is None:
+                dropped.add(near)
+                near += step
+    kept = [word for index, word in enumerate(aligned) if index not in dropped]
+    return (
+        " ".join(word.reference for word in kept if word.reference is not None),
+        " ".join(word.hypothesis for word in kept if word.hypothesis is not None),
+    )
+
+
 @dataclass(frozen=True)
 class NameScore:
     characters: int
@@ -78,6 +91,8 @@ class FlagScore:
 
 
 def score_flags(reference: str, hypothesis: str, uncertain: list[bool]) -> FlagScore:
+    if len(uncertain) != len(hypothesis.split()):
+        raise ValueError("there must be one uncertainty flag per word of the hypothesis")
     flagged = wrong = both = 0
     for word in align_words(reference, hypothesis):
         if word.hypothesis_index is None:
@@ -90,6 +105,24 @@ def score_flags(reference: str, hypothesis: str, uncertain: list[bool]) -> FlagS
     return FlagScore(flagged, wrong, both)
 
 
-def historic_letters(text: str) -> dict[str, int]:
-    lower = text.lower()
-    return {letter: lower.count(letter) for letter in HISTORIC_LETTERS}
+MISSING = ""
+
+
+def letter_confusions(reference: str, hypothesis: str) -> Counter[tuple[str, str]]:
+    ref = clean(reference).lower()
+    hyp = clean(hypothesis).lower()
+    pairs: list[tuple[str, str]] = []
+    if not ref or not hyp:
+        pairs = [(c, MISSING) for c in ref] + [(MISSING, c) for c in hyp]
+    else:
+        for chunk in jiwer.process_characters(ref, hyp).alignments[0]:
+            refs = ref[chunk.ref_start_idx : chunk.ref_end_idx]
+            hyps = hyp[chunk.hyp_start_idx : chunk.hyp_end_idx]
+            if chunk.type in ("equal", "substitute"):
+                pairs += list(zip(refs, hyps, strict=True))
+            elif chunk.type == "delete":
+                pairs += [(c, MISSING) for c in refs]
+            else:
+                pairs += [(MISSING, c) for c in hyps]
+    historic = set(HISTORIC_LETTERS)
+    return Counter((r, h) for r, h in pairs if r in historic or h in historic)

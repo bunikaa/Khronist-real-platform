@@ -1,6 +1,14 @@
 import { boxSchema } from '@khronist/contracts'
 import { describe, expect, it } from 'vitest'
-import { regionBox, scanRegion, sha256Hex, toBase64 } from '../scan/fragment.ts'
+import {
+  fittedSize,
+  maxModelPixels,
+  maxModelSide,
+  regionBox,
+  scanRegion,
+  sha256Hex,
+  toBase64,
+} from '../scan/fragment.ts'
 
 const natural = { width: 3000, height: 2481 }
 const shown = { left: 100, top: 50, width: 1000, height: 827 }
@@ -35,6 +43,23 @@ describe('scanRegion', () => {
     expect(
       scanRegion({ left: 200, top: 150, width: 300, height: 100 }, { ...shown, width: 0 }, natural),
     ).toBeNull()
+  })
+})
+
+describe('fittedSize', () => {
+  it('keeps a fragment the model sees without downscaling', () => {
+    expect(fittedSize({ width: 1400, height: 600 })).toEqual({ width: 1400, height: 600 })
+  })
+
+  it('shrinks a whole spread to the long side and pixel count the model reads in full', () => {
+    const size = fittedSize(natural)
+    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(maxModelSide)
+    expect(size.width * size.height).toBeLessThanOrEqual(maxModelPixels)
+    expect(size.width / size.height).toBeCloseTo(natural.width / natural.height, 2)
+  })
+
+  it('shrinks further when asked to fit a smaller file', () => {
+    expect(fittedSize({ width: 2000, height: 1000 }, 0.5)).toEqual({ width: 1000, height: 500 })
   })
 })
 

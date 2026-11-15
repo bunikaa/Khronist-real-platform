@@ -24,21 +24,26 @@
 | Змінна | Де потрібна | Опис |
 | --- | --- | --- |
 | `DATABASE_URL` | api | postgres.js URL |
-| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | |
-| `RESEND_API_KEY`, `MAIL_FROM` | api | magic link |
+| `NODE_ENV`, `PORT`, `HOST`, `LOG_LEVEL` | api | середовище й сервер |
+| `CLIENT_IP_HEADER` | api | на Railway `x-real-ip` |
+| `GUEST_RECOGNITIONS_PER_DAY`, `MODEL_CALLS_PER_DAY` | api | 300 нових читань гостя на добу, 2000 викликів моделей на добу |
+| `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | api, Railway | вікно дренажу, на проді 150 |
+| `LLM_FIXTURES`, `HTR_EFFORT` | api | фікстурне читання; глибина читання |
+| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | заплановано (V-15) |
+| `RESEND_API_KEY`, `MAIL_FROM` | api | листи з кодом входу, заплановано (V-15) |
+| `VERIFIER_EMAILS` | api | хто може підтверджувати, заплановано (V-17) |
 | `ANTHROPIC_API_KEY`, `LLM_MODEL_PRIMARY`, `HTR_MODEL_PRIMARY` | api | назви моделей звірити в документації Anthropic; читання може використовувати іншу модель, ніж текстові задачі |
 | `GOOGLE_API_KEY`, `LLM_MODEL_FALLBACK`, `HTR_MODEL_FALLBACK` | api | резерв |
 | `HTR_URL`, `HTR_API_KEY` | api | порожні за замовчуванням; задаються лише при перемиканні на трек B |
 | `JOBS_CONCURRENCY`, `RETRIEVAL_MIN_RANK` | api | 4 і 0,05 стартово |
 | `ADMIN_API_KEY` | api, services/knowledge | інгестія корпусу |
-| `CORS_ORIGINS` | api | веб-домен і `chrome-extension://<id>` |
-| `PUBLIC_API_URL` | extension, web | базовий URL API |
+| `CORS_ORIGINS` | api | веб-домен; розширенню не потрібен (`host_permissions`) |
 | `KHRONIST_API_URL`, `KHRONIST_API_KEY` | services/knowledge, scripts | оцінка й пакетна обробка |
 | `HF_TOKEN` | Modal secret (трек B) | завантаження ваг моделі |
 
 ## 3. Локальна розробка
 
-`infra/docker-compose.yml`: `postgres:18` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api, extension, web), `pnpm db:migrate`, `pnpm db:seed` (демо-документ і 3 аркуші з фікстурними транскрипціями). Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): повертає записані відповіді з `test/fixtures`, щоб фронтенд розроблявся без витрат.
+`infra/docker-compose.yml`: `postgres:18` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api й extension; web — коли з'явиться), `pnpm db:migrate`. Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): читання повертає записаний фрагмент з `apps/api/src/services/htr/fixture.ts`, щоб фронтенд розроблявся без витрат. Розширення з `wxt dev` ходить на `http://localhost:3000`, зібране — на `https://api.khronist.org`.
 
 ## 4. CI/CD (GitHub Actions)
 

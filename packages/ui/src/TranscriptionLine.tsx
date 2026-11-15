@@ -2,34 +2,36 @@ import type { Line } from '@khronist/contracts'
 import { Fragment } from 'react'
 import { strings } from './strings.uk.ts'
 
-type TranscriptionLineProps = {
-  line: Line
+type Words = { text: string; uncertain: boolean }[]
+
+type LineWordsProps = {
+  text: string
+  uncertain: boolean
+  words: Words
 }
 
-const uncertainClass = 'text-warning underline'
+const Uncertain = ({ text }: { text: string }) => (
+  <span
+    className="underline decoration-warning decoration-dotted decoration-2 underline-offset-2"
+    title={strings.read.uncertainWord}
+  >
+    {text}
+    <span className="sr-only select-none"> ({strings.read.uncertainMark})</span>
+  </span>
+)
 
-const LineText = ({ line }: TranscriptionLineProps) => {
-  if (line.words.length === 0) {
-    return line.uncertain ? (
-      <span className={uncertainClass} title={strings.read.uncertainWord}>
-        {line.text}
-      </span>
-    ) : (
-      line.text
-    )
-  }
-  return line.words.map((word, index) => (
+export const LineWords = ({ text, uncertain, words }: LineWordsProps) => {
+  if (words.length === 0) return uncertain ? <Uncertain text={text} /> : text
+  return words.map((word, index) => (
     <Fragment key={index}>
       {index > 0 && ' '}
-      {word.uncertain ? (
-        <span className={uncertainClass} title={strings.read.uncertainWord}>
-          {word.text}
-        </span>
-      ) : (
-        word.text
-      )}
+      {word.uncertain ? <Uncertain text={word.text} /> : word.text}
     </Fragment>
   ))
+}
+
+type TranscriptionLineProps = {
+  line: Line
 }
 
 export const TranscriptionLine = ({ line }: TranscriptionLineProps) => (
@@ -38,7 +40,7 @@ export const TranscriptionLine = ({ line }: TranscriptionLineProps) => (
       {String(line.idx + 1).padStart(2, '0')}
     </span>
     <span className="min-w-0 flex-1 font-mono text-mono-transcription">
-      <LineText line={line} />
+      <LineWords text={line.text} uncertain={line.uncertain} words={line.words} />
     </span>
   </li>
 )

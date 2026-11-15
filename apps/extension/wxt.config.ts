@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'wxt'
-import { apiOrigin } from './api/origin.ts'
+import { apiOriginFor } from './api/origin.ts'
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
@@ -8,9 +8,9 @@ export default defineConfig({
   vite: () => ({
     plugins: [tailwindcss()],
   }),
-  manifest: {
+  manifest: ({ mode }) => ({
     name: 'Хроніст',
-    host_permissions: [`${apiOrigin}/*`],
+    host_permissions: [`${apiOriginFor(mode)}/*`],
     action: {
       default_title: 'Відкрити Хроніст',
     },
@@ -20,5 +20,5 @@ export default defineConfig({
         description: 'Відкрити панель Хроніста, повторно — виділити фрагмент',
       },
     },
-  },
+  }),
 })

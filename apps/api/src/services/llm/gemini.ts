@@ -1,5 +1,11 @@
 import { GoogleGenAI } from '@google/genai'
-import { parseOutput, toJsonSchema, type LlmProvider, type LlmRequest } from './index.ts'
+import {
+  asLimitError,
+  parseOutput,
+  toJsonSchema,
+  type LlmProvider,
+  type LlmRequest,
+} from './index.ts'
 
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high'
 
@@ -25,26 +31,30 @@ const toInput = <T>(request: LlmRequest<T>) =>
 export const createGeminiProvider = (options: GeminiOptions): LlmProvider => ({
   name: options.model,
   complete: async (request) => {
-    const interaction = await options.interactions.create(
-      {
-        model: options.model,
-        store: false,
-        system_instruction: options.notes
-          ? `${request.system}\n\n${options.notes}`
-          : request.system,
-        input: toInput(request),
-        generation_config: {
-          max_output_tokens: request.maxTokens,
-          thinking_level: options.thinkingLevel,
+    const interaction = await options.interactions
+      .create(
+        {
+          model: options.model,
+          store: false,
+          system_instruction: options.notes
+            ? `${request.system}\n\n${options.notes}`
+            : request.system,
+          input: toInput(request),
+          generation_config: {
+            max_output_tokens: request.maxTokens,
+            thinking_level: options.thinkingLevel,
+          },
+          response_format: {
+            type: 'text',
+            mime_type: 'application/json',
+            schema: toJsonSchema(request.schema),
+          },
         },
-        response_format: {
-          type: 'text',
-          mime_type: 'application/json',
-          schema: toJsonSchema(request.schema),
-        },
-      },
-      { signal: request.signal ?? null, retries: { strategy: 'none' } },
-    )
+        { signal: request.signal ?? null, retries: { strategy: 'none' } },
+      )
+      .catch((error: unknown) => {
+        throw asLimitError(error)
+      })
     if (interaction.status !== 'completed') {
       throw new Error(`the model stopped early: ${interaction.status}`)
     }

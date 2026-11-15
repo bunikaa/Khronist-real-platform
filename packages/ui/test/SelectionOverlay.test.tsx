@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ActionBar, Button } from '../src/index.ts'
-import { rectBetween } from '../src/SelectionOverlay.tsx'
+import { isLargeEnough, rectBetween } from '../src/SelectionOverlay.tsx'
 
 describe('rectBetween', () => {
   it('builds the same rectangle whichever way the pointer was dragged', () => {
@@ -9,6 +9,14 @@ describe('rectBetween', () => {
 
     expect(rectBetween({ x: 10, y: 20 }, { x: 100, y: 60 })).toEqual(expected)
     expect(rectBetween({ x: 100, y: 60 }, { x: 10, y: 20 })).toEqual(expected)
+  })
+})
+
+describe('isLargeEnough', () => {
+  it('refuses a selection smaller than 24 px on either side, such as a shaky click', () => {
+    expect(isLargeEnough({ left: 0, top: 0, width: 2, height: 2 })).toBe(false)
+    expect(isLargeEnough({ left: 0, top: 0, width: 300, height: 23 })).toBe(false)
+    expect(isLargeEnough({ left: 0, top: 0, width: 24, height: 24 })).toBe(true)
   })
 })
 

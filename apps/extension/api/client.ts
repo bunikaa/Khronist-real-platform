@@ -7,6 +7,7 @@ import {
   type RecognitionEvent,
   type RecognitionState,
 } from '@khronist/contracts'
+import { strings } from '@khronist/ui'
 import { readEvents } from './events.ts'
 import { apiOrigin } from './origin.ts'
 
@@ -23,7 +24,7 @@ const failureOf = async (response: Response): Promise<ApiFailure> => {
   const parsed = errorSchema.safeParse(await response.json().catch(() => null))
   return parsed.success
     ? new ApiFailure(parsed.data.error.code, parsed.data.error.message)
-    : new ApiFailure('internal_error', 'Внутрішня помилка сервера')
+    : new ApiFailure('internal_error', strings.read.badResponse)
 }
 
 const send = async (path: string, init: RequestInit): Promise<Response> => {
@@ -66,16 +67,43 @@ export async function* recognitionEvents(
 
 const isFinished = (state: RecognitionState) => state.status === 'done' || state.status === 'failed'
 
+export const reconnectDelayMs = 3000
+export const maxReconnects = 20
+
+const pause = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+
 export const readRecognition = async (
   body: CreateRecognitionRequest,
   signal: AbortSignal,
   onEvent: (event: RecognitionEvent) => void,
 ): Promise<RecognitionState> => {
-  const created = await createRecognition(body, signal)
-  let state = await getRecognition(created.recognitionId, signal)
-  while (!isFinished(state)) {
-    for await (const event of recognitionEvents(created.recognitionId, signal)) onEvent(event)
-    state = await getRecognition(created.recognitionId, signal)
+  const { recognitionId } = await createRecognition(body, signal)
+  let state = await getRecognition(recognitionId, signal)
+  for (let reconnects = 0; !isFinished(state); reconnects += 1) {
+    if (reconnects > maxReconnects) throw new ApiFailure('stalled', strings.read.stalled)
+    if (reconnects > 0) await pause(reconnectDelayMs, signal)
+    let last: RecognitionEvent | undefined
+    for await (const event of recognitionEvents(recognitionId, signal)) {
+      onEvent(event)
+      last = event
+    }
+    if (last?.event === 'failed') return { recognitionId, status: 'failed', error: last.data }
+    state = await getRecognition(recognitionId, signal)
   }
   return state
 }

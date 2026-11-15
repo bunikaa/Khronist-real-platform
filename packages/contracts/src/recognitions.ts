@@ -4,10 +4,15 @@ import {
   entitySchema,
   hintsSchema,
   lineSchema,
+  readingWarningSchema,
   recognitionStatusSchema,
   shelfmarkSchema,
   transcriptionStatusSchema,
+  withoutControlCharacters,
 } from './common.ts'
+import { normalizeOutputSchema } from './normalize.ts'
+
+export const yearSchema = z.number().int().min(1000).max(2100)
 
 export const transcriptionSchema = z.object({
   id: z.uuid(),
@@ -18,10 +23,14 @@ export const transcriptionSchema = z.object({
   status: transcriptionStatusSchema,
   lines: z.array(lineSchema),
   normalizedText: z.string(),
+  normalizedLines: normalizeOutputSchema.shape.lines.optional(),
+  expansions: normalizeOutputSchema.shape.expansions.optional(),
   entities: z.array(entitySchema),
+  warnings: z.array(readingWarningSchema).optional(),
   reader: z.string(),
   author: z.object({ name: z.string() }).optional(),
   verifiedBy: z.object({ name: z.string() }).optional(),
+  verifiedSignature: z.string().optional(),
   verifiedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
 })
@@ -34,6 +43,10 @@ export const createRecognitionRequestSchema = z.object({
   imageHash: z.string().regex(/^[a-f0-9]{64}$/),
   source: z.enum(['extension', 'web', 'mcp', 'batch']),
   hints: hintsSchema.optional(),
+  document: z
+    .object({ yearFrom: yearSchema, yearTo: yearSchema })
+    .refine((years) => years.yearFrom <= years.yearTo, { message: 'yearFrom after yearTo' })
+    .optional(),
 })
 export type CreateRecognitionRequest = z.infer<typeof createRecognitionRequestSchema>
 
@@ -73,11 +86,37 @@ export const recognitionEventSchema = z.discriminatedUnion('event', [
 ])
 export type RecognitionEvent = z.infer<typeof recognitionEventSchema>
 
+export const maxPatchedLines = 200
+export const maxLineLength = 500
+export const maxSignatureLength = 80
+
 export const patchLinesRequestSchema = z.object({
   baseVersion: z.number().int().min(1),
-  lines: z.array(z.object({ idx: z.number().int().min(0), text: z.string() })).min(1),
+  lines: z
+    .array(
+      z.object({
+        idx: z.number().int().min(0),
+        text: z
+          .string()
+          .max(maxLineLength)
+          .refine((text) => !/[\r\n]/.test(text), { message: 'a line has no line breaks' }),
+      }),
+    )
+    .min(1)
+    .max(maxPatchedLines)
+    .refine((lines) => new Set(lines.map((line) => line.idx)).size === lines.length, {
+      message: 'each line index appears once',
+    }),
 })
 export type PatchLinesRequest = z.infer<typeof patchLinesRequestSchema>
 
-export const verifyRequestSchema = z.object({ signature: z.string().min(1).optional() })
+export const verifyRequestSchema = z.object({
+  signature: z
+    .string()
+    .trim()
+    .min(1)
+    .max(maxSignatureLength)
+    .refine(withoutControlCharacters, { message: 'control character' })
+    .optional(),
+})
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>

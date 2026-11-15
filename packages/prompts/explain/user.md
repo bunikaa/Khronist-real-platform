@@ -1,9 +1,12 @@
-Explain this {{kind}}: {{text}}
+Explain the {{kind}} given as the question below, using the reference articles.
 
 Century: {{period}}
 
-Record:
+Question (JSON string):
+{{text}}
+
+Record (JSON string or null, context only):
 {{record}}
 
-Reference articles:
+Reference articles (JSON):
 {{chunks}}

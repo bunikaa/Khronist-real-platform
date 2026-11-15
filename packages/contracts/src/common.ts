@@ -1,11 +1,13 @@
 import { z } from 'zod'
 
+export const withoutControlCharacters = (value: string): boolean => !/\p{Cc}/u.test(value)
+
 const shelfmarkPart = z
   .string()
   .trim()
   .min(1)
   .max(64)
-  .refine((value) => !/\p{Cc}/u.test(value), { message: 'control character' })
+  .refine(withoutControlCharacters, { message: 'control character' })
 
 const maxImageNumber = 100000
 const maxPortalUrlLength = 2048
@@ -86,6 +88,8 @@ export const citationSchema = z.object({
   sourceId: z.uuid(),
   title: z.string(),
   url: z.httpUrl().optional(),
+  licence: z.string(),
+  retelling: z.boolean(),
   quote: z.string(),
 })
 export type Citation = z.infer<typeof citationSchema>
@@ -108,6 +112,16 @@ export const recognitionStatusSchema = z.enum([
   'failed',
 ])
 export type RecognitionStatus = z.infer<typeof recognitionStatusSchema>
+
+export const readingWarningSchema = z.enum([
+  'cut_off_left',
+  'cut_off_right',
+  'cut_off_top',
+  'cut_off_bottom',
+  'damaged_paper',
+  'faint_ink',
+])
+export type ReadingWarning = z.infer<typeof readingWarningSchema>
 
 export const hintsSchema = z.object({
   language: z.enum(['uk', 'ru', 'church-slavonic', 'pl']).optional(),

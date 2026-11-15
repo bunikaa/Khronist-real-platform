@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm'
+import type { NormalizeOutput } from '@khronist/contracts'
 import {
   boolean,
   check,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -197,6 +199,12 @@ export const transcriptions = pgTable(
     status: transcriptionStatusEnum('status').notNull().default('draft'),
     rawText: text('raw_text').notNull(),
     normalizedText: text('normalized_text').notNull().default(''),
+    normalizedLines: jsonb('normalized_lines').$type<NormalizeOutput['lines']>(),
+    expansions: jsonb('expansions').$type<NormalizeOutput['expansions']>(),
+    warnings: text('warnings')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     reader: text('reader').notNull(),
     authorId: text('author_id').references(() => user.id, { onDelete: 'set null' }),
     verifiedBy: text('verified_by').references(() => user.id, { onDelete: 'set null' }),
@@ -385,6 +393,15 @@ export const notes = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('notes_user_idx').on(t.userId)],
+)
+
+export const modelCalls = pgTable(
+  'model_calls',
+  {
+    day: date('day').primaryKey(),
+    calls: integer('calls').notNull().default(0),
+  },
+  (t) => [check('model_calls_nonnegative', sql`${t.calls} >= 0`)],
 )
 
 export const apiKeys = pgTable('api_keys', {

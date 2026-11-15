@@ -18,8 +18,8 @@ const askPage = async (tabId: number): Promise<PageMessage | null> => {
   }
 }
 
-export const useActivePage = (): PageMessage | null => {
-  const [page, setPage] = useState<PageMessage | null>(null)
+export const useActivePage = (): PageMessage | null | undefined => {
+  const [page, setPage] = useState<PageMessage | null>()
 
   useEffect(() => {
     let tabId: number | undefined

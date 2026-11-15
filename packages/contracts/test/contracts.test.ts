@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
+  adminChunksRequestSchema,
+  adminSourcesRequestSchema,
   boxSchema,
+  chatRequestSchema,
   createRecognitionRequestSchema,
-  hasValidAnswer,
+  explainRequestSchema,
   htrVisionOutputSchema,
+  isGroundedQuote,
+  patchLinesRequestSchema,
   searchQuerySchema,
   shelfmarkSchema,
+  verifyRequestSchema,
   visionToLines,
 } from '../src/index.ts'
 
@@ -88,11 +94,140 @@ describe('searchQuerySchema', () => {
   })
 })
 
-describe('hasValidAnswer', () => {
-  it('treats an answer without citations as no answer', () => {
-    expect(hasValidAnswer({ answer: 'текст', citations: [] })).toBe(false)
-    expect(hasValidAnswer({ answer: null, citations: [{}] })).toBe(false)
-    expect(hasValidAnswer({ answer: 'текст', citations: [{}] })).toBe(true)
+describe('isGroundedQuote', () => {
+  const source = 'Восприемники — хрещені батьки, які тримають дитину під час хрещення.'
+
+  it('accepts a quote of three words or fifteen characters at word boundaries', () => {
+    expect(isGroundedQuote('хрещені батьки, які', source)).toBe(true)
+    expect(isGroundedQuote('під час хрещення.', source)).toBe(true)
+  })
+
+  it('rejects a short quote', () => {
+    expect(isGroundedQuote('і', 'дитину і батьків')).toBe(false)
+    expect(isGroundedQuote('хрещені', source)).toBe(false)
+  })
+
+  it('rejects a quote cut inside a word', () => {
+    expect(isGroundedQuote('рещені батьки, які', source)).toBe(false)
+    expect(isGroundedQuote('хрещені батьки, як', source)).toBe(false)
+  })
+
+  it('rejects a quote that is not in the source', () => {
+    expect(isGroundedQuote('хрещені матері, які', source)).toBe(false)
+  })
+})
+
+describe('request limits', () => {
+  it('bounds the text to explain and takes the period from hints', () => {
+    expect(explainRequestSchema.safeParse({ kind: 'term', text: 'x'.repeat(200) }).success).toBe(
+      true,
+    )
+    expect(explainRequestSchema.safeParse({ kind: 'term', text: 'x'.repeat(201) }).success).toBe(
+      false,
+    )
+    expect(
+      explainRequestSchema.safeParse({
+        kind: 'term',
+        text: 'псаломщик',
+        context: { period: 'XIX' },
+      }).success,
+    ).toBe(false)
+    expect(
+      chatRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Хто хрестив?' }],
+        context: { period: '19' },
+      }).success,
+    ).toBe(true)
+  })
+
+  it('bounds the chat history and ends it with a question from the user', () => {
+    const question = { role: 'user' as const, content: 'Хто хрестив?' }
+    const answer = { role: 'assistant' as const, content: 'Священник.' }
+    expect(chatRequestSchema.safeParse({ messages: [question, answer] }).success).toBe(false)
+    expect(chatRequestSchema.safeParse({ messages: Array(21).fill(question) }).success).toBe(false)
+    expect(
+      chatRequestSchema.safeParse({ messages: [{ role: 'user', content: 'x'.repeat(2001) }] })
+        .success,
+    ).toBe(false)
+    expect(
+      chatRequestSchema.safeParse({ messages: [{ role: 'user', content: '  ' }] }).success,
+    ).toBe(false)
+  })
+
+  it('bounds the search query', () => {
+    expect(searchQuerySchema.safeParse({ q: 'x'.repeat(201) }).success).toBe(false)
+  })
+
+  it('takes single-line edits with unique indexes', () => {
+    const line = (idx: number, text = 'Села Борщаговки') => ({ idx, text })
+    expect(patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0)] }).success).toBe(
+      true,
+    )
+    expect(
+      patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0), line(0)] }).success,
+    ).toBe(false)
+    expect(
+      patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0, 'а\nб')] }).success,
+    ).toBe(false)
+    expect(
+      patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0, 'x'.repeat(501))] })
+        .success,
+    ).toBe(false)
+    expect(
+      patchLinesRequestSchema.safeParse({
+        baseVersion: 1,
+        lines: Array.from({ length: 201 }, (_, i) => line(i)),
+      }).success,
+    ).toBe(false)
+  })
+
+  it('bounds the signature and rejects control characters in it', () => {
+    expect(verifyRequestSchema.parse({ signature: ' Олена Коваль ' }).signature).toBe(
+      'Олена Коваль',
+    )
+    expect(verifyRequestSchema.safeParse({ signature: 'x'.repeat(81) }).success).toBe(false)
+    expect(verifyRequestSchema.safeParse({ signature: 'а‮б' }).success).toBe(true)
+    expect(verifyRequestSchema.safeParse({ signature: 'а\u0007б' }).success).toBe(false)
+  })
+})
+
+describe('admin contracts', () => {
+  const chunk = {
+    articleKey: 'psalomshchik',
+    idx: 0,
+    sourceId: '0195f2b4-7c1e-7000-8000-000000000001',
+    text: 'Псаломщик — церковнослужитель.',
+    topic: 'псаломщик',
+    type: 'term',
+    periodFrom: 18,
+    periodTo: 19,
+  }
+
+  it('keys chunks by article and index', () => {
+    expect(
+      adminChunksRequestSchema.safeParse({ items: [chunk, { ...chunk, idx: 1 }] }).success,
+    ).toBe(true)
+    expect(adminChunksRequestSchema.safeParse({ items: [chunk, chunk] }).success).toBe(false)
+  })
+
+  it('rejects an inverted period and a non-https source', () => {
+    expect(
+      adminChunksRequestSchema.safeParse({ items: [{ ...chunk, periodFrom: 20, periodTo: 19 }] })
+        .success,
+    ).toBe(false)
+    const source = {
+      url: 'https://ru.wikisource.org/wiki/ЭСБЕ/Псаломщик',
+      title: 'ЭСБЕ',
+      licence: 'суспільне надбання',
+      kind: 'encyclopedia',
+      periodFrom: 19,
+      periodTo: 19,
+    }
+    expect(adminSourcesRequestSchema.safeParse({ items: [source] }).success).toBe(true)
+    expect(
+      adminSourcesRequestSchema.safeParse({ items: [{ ...source, url: 'http://example.org' }] })
+        .success,
+    ).toBe(false)
   })
 })
 

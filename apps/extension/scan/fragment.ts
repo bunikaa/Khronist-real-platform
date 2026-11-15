@@ -47,13 +47,29 @@ export const sha256Hex = async (bytes: Uint8Array<ArrayBuffer>): Promise<string>
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export const cropFragment = async (
-  scan: HTMLImageElement,
-  region: ScanRegion,
-): Promise<Fragment> => {
-  const canvas = new OffscreenCanvas(region.width, region.height)
+export const maxModelSide = 2576
+export const maxModelPixels = 3_750_000
+const maxPngBytes = 7 * 1024 * 1024
+const shrinkStep = 0.8
+
+export const fittedSize = (region: Size, scale = 1): Size => {
+  const factor =
+    Math.min(
+      1,
+      maxModelSide / Math.max(region.width, region.height),
+      Math.sqrt(maxModelPixels / (region.width * region.height)),
+    ) * scale
+  return {
+    width: Math.max(1, Math.floor(region.width * factor)),
+    height: Math.max(1, Math.floor(region.height * factor)),
+  }
+}
+
+const encodePng = async (scan: HTMLImageElement, region: ScanRegion, size: Size) => {
+  const canvas = new OffscreenCanvas(size.width, size.height)
   const context = canvas.getContext('2d')
   if (!context) throw new Error('2d canvas is unavailable')
+  context.imageSmoothingQuality = 'high'
   context.drawImage(
     scan,
     region.x,
@@ -62,16 +78,30 @@ export const cropFragment = async (
     region.height,
     0,
     0,
-    region.width,
-    region.height,
+    size.width,
+    size.height,
   )
-  const blob = await canvas.convertToBlob({ type: 'image/png' })
+  return canvas.convertToBlob({ type: 'image/png' })
+}
+
+export const cropFragment = async (
+  scan: HTMLImageElement,
+  region: ScanRegion,
+): Promise<Fragment> => {
+  let size = fittedSize(region)
+  let blob = await encodePng(scan, region, size)
+  for (let scale = shrinkStep; blob.size > maxPngBytes; scale *= shrinkStep) {
+    size = fittedSize(region, scale)
+    blob = await encodePng(scan, region, size)
+  }
   const png = new Uint8Array(await blob.arrayBuffer())
+  const scaled = size.width !== region.width || size.height !== region.height
   return {
     base64Png: toBase64(png),
     imageHash: await sha256Hex(png),
     box: regionBox(region, { width: scan.naturalWidth, height: scan.naturalHeight }),
-    width: region.width,
-    height: region.height,
+    width: size.width,
+    height: size.height,
+    ...(scaled && { scaledFrom: { width: region.width, height: region.height } }),
   }
 }

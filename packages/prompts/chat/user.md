@@ -1,10 +1,10 @@
 Century: {{period}}
 
-Record:
+Record (JSON string or null):
 {{record}}
 
-Reference articles:
+Reference articles (JSON):
 {{chunks}}
 
-Conversation:
+Conversation (JSON):
 {{messages}}

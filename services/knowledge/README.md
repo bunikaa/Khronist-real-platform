@@ -19,14 +19,20 @@ uv run python eval/prepare_fragments.py
 pnpm --filter @khronist/api read-fragments --model claude-sonnet-5-5 \
   --fragments ../../services/knowledge/eval/.cache/fragments --out <readings.jsonl>
 uv run python eval/run_htr_eval.py --reference eval/reference/lines.jsonl \
+  --reference-reader claude-opus-5-5 \
   --readings <readings.jsonl> ... --out eval/results/<дата>-htr.md
 ```
 
-Шляхи для `read-fragments` — абсолютні або від `apps/api`. Протокол метрик — `docs/decisions.md`, 14 листопада; походження еталона — `eval/reference/README.md`.
+Шляхи для `read-fragments` — абсолютні або від `apps/api`. `read-fragments` не дописує в наявний файл: для кожного прогону — новий `--out`. Протокол метрик — `docs/decisions.md`, 14 листопада; походження еталона — `eval/reference/README.md`.
+
+- `--reference-reader` — модель, яка прочитала еталон, якщо це не людина. Тоді звіт називає метрики розбіжністю з читанням цієї моделі, а не CER. Для золотого набору від людини параметр не передається.
+- `run_htr_eval.py` перевіряє кожен рядок читань, падає на повторному читанні того самого фрагмента тією самою моделлю, а фрагмент еталона без читання рахує невдалим.
+- «Без `[нрзб]`» — слова `[нрзб]` еталона прибираються разом зі словами читання, вирівняними з ними.
+- Плутанини історичних літер рахуються посимвольним вирівнюванням еталона й читання. Якщо в слові моделі є пробіл, його позначка непевності переходить на всі частини.
 
 ## Корпус
 
-Одна стаття — один файл `data/entries/*.md`: YAML-шапка між рядками `---`, далі текст. Формат — `docs/plan/07-contracts.md`, розділ 5; перевіряє його `src/khronist_knowledge/corpus.py`, а тест `test_corpus_entries_are_valid` проганяє всі статті теки.
+Одна стаття — один файл `data/entries/*.md`: YAML-шапка між рядками `---`, далі текст. Формат — `docs/plan/07-contracts.md`, розділ 5; перевіряє його `src/khronist_knowledge/corpus.py`, а тест `test_corpus_entries_are_valid` проганяє всі статті теки й перевіряє, що прочитано кожен файл.
 
 ```yaml
 ---
@@ -43,9 +49,14 @@ licence: CC BY-SA 4.0
 ```
 
 - `type`: `term`, `place`, `date`, `unit`, `abbr`.
+- `variants`: непорожні, без повторів і без самого `term` (без урахування регістру).
+- `period`: століття римськими цифрами (`XIX`) або діапазон двох століть через тире чи дефіс (`XVIII–XIX`), від раннього до пізнього. Інгестія передає його числами: `XVIII–XIX` → `periodFrom: 18`, `periodTo: 19`.
+- `source_url`: лише `https`.
 - `source_kind`: `dictionary`, `encyclopedia`, `wikidata`, `publication`.
+- `licence`: `суспільне надбання` або `CC BY-SA 4.0`.
 - `wikidata_id` необов'язковий, вигляду `Q123`.
 - Терміни не повторюються в межах одного `type` (без урахування регістру).
+- Статті лежать прямо в `data/entries`, без підтек; відсутня чи порожня тека — помилка. Помилка перевірки називає файл.
 
 Кожне твердження статті має бути в джерелі за `source_url`. Без джерела статтю не додаємо.
 

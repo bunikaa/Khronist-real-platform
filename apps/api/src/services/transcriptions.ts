@@ -1,4 +1,12 @@
-import type { Line, Shelfmark, Transcription } from '@khronist/contracts'
+import type {
+  Entity,
+  Line,
+  NormalizeOutput,
+  ReadingWarning,
+  Shelfmark,
+  Transcription,
+} from '@khronist/contracts'
+import { readingWarningSchema } from '@khronist/contracts'
 import { asc, eq, inArray, sql } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
@@ -13,22 +21,26 @@ import {
   transcriptions,
   user,
 } from '../db/schema.ts'
-import type { Normalized } from './normalize.ts'
 
 const extraSchema = z.record(z.string(), z.unknown())
 
-type NewVersion = {
+export type NewVersion = {
   regionId: string
   reader: string
   lines: Line[]
-  normalized: Normalized
+  warnings: ReadingWarning[]
+  normalized: NormalizeOutput | null
+  entities: Entity[]
 }
+
+export const normalizedTextOf = (lines: Line[], normalized: NormalizeOutput | null): string =>
+  (normalized?.lines ?? lines).map((line) => line.text).join('\n')
 
 export const insertTranscriptionVersion = async (
   tx: Database,
   version: NewVersion,
 ): Promise<string> => {
-  const { regionId, reader, lines, normalized } = version
+  const { regionId, reader, lines, warnings, normalized, entities: found } = version
   const [latest] = await tx
     .select({ version: sql<number>`coalesce(max(${transcriptions.version}), 0)` })
     .from(transcriptions)
@@ -40,7 +52,10 @@ export const insertTranscriptionVersion = async (
       regionId,
       version: (latest?.version ?? 0) + 1,
       rawText: lines.map((line) => line.text).join('\n'),
-      normalizedText: normalized.normalizedText,
+      normalizedText: normalizedTextOf(lines, normalized),
+      normalizedLines: normalized?.lines ?? null,
+      expansions: normalized?.expansions ?? null,
+      warnings,
       reader,
     })
     .returning({ id: transcriptions.id })
@@ -72,9 +87,9 @@ export const insertTranscriptionVersion = async (
   )
   if (wordRows.length > 0) await tx.insert(lineWords).values(wordRows)
 
-  if (normalized.entities.length > 0) {
+  if (found.length > 0) {
     await tx.insert(entities).values(
-      normalized.entities.map((entity) => ({
+      found.map((entity) => ({
         transcriptionId: transcription.id,
         type: entity.type,
         text: entity.text,
@@ -182,6 +197,8 @@ export const loadTranscription = async (
       }
     }),
     normalizedText: t.normalizedText,
+    ...(t.normalizedLines && { normalizedLines: t.normalizedLines }),
+    ...(t.expansions && { expansions: t.expansions }),
     entities: entityRows.map((entity) => {
       const extra = extraSchema.safeParse(entity.extra)
       return {
@@ -193,6 +210,12 @@ export const loadTranscription = async (
         ...(entity.wikidataId !== null && { wikidataId: entity.wikidataId }),
         ...(extra.success && { extra: extra.data }),
       }
+    }),
+    ...(t.warnings.length > 0 && {
+      warnings: t.warnings.flatMap((warning) => {
+        const parsed = readingWarningSchema.safeParse(warning)
+        return parsed.success ? [parsed.data] : []
+      }),
     }),
     reader: t.reader,
     ...(author && { author }),

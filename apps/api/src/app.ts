@@ -1,6 +1,7 @@
 import cors from '@fastify/cors'
 import rateLimit, { normalizeIP } from '@fastify/rate-limit'
 import Fastify, { type FastifyRequest } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import { isIP } from 'node:net'
 import {
   serializerCompiler,
@@ -18,8 +19,15 @@ export type AppDeps = HealthDeps & {
   clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
+  isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
 }
+
+const shuttingDown = {
+  code: 'shutting_down',
+  message: 'Сервер перезапускається, спробуйте за кілька секунд',
+}
+const shutdownRetryAfterSeconds = 5
 
 type ErrorDescription = { code: string; message: string }
 
@@ -60,6 +68,9 @@ const clientAddress = (request: FastifyRequest, header: string | undefined): str
 export const buildApp = async (deps: AppDeps) => {
   const app = Fastify({
     logger: { level: deps.logLevel ?? 'info' },
+    requestIdHeader: 'x-railway-request-id',
+    genReqId: () => randomUUID(),
+    return503OnClosing: false,
   }).withTypeProvider<ZodTypeProvider>()
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
@@ -68,6 +79,9 @@ export const buildApp = async (deps: AppDeps) => {
     const status = statusOf(error)
     if (status >= 500) request.log.error(error)
     else request.log.warn({ err: error, status }, 'request rejected')
+    if (error instanceof ApiError && error.retryAfterSeconds !== undefined) {
+      reply.header('retry-after', String(error.retryAfterSeconds))
+    }
     if (status === 429 && !reply.hasHeader('retry-after')) reply.header('retry-after', '60')
     return reply.status(status).send({ error: describe(error, status) })
   })
@@ -83,22 +97,32 @@ export const buildApp = async (deps: AppDeps) => {
     allowedHeaders: ['content-type', 'authorization'],
     exposedHeaders: [
       'retry-after',
+      'x-request-id',
       'x-ratelimit-limit',
       'x-ratelimit-remaining',
       'x-ratelimit-reset',
     ],
   })
-  await app.register(rateLimit, {
-    global: false,
-    keyGenerator: (request) => normalizeIP(clientAddress(request, deps.clientIpHeader)),
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id)
+    if (!deps.isShuttingDown?.()) return
+    reply.header('retry-after', String(shutdownRetryAfterSeconds))
+    return reply.status(503).send({ error: shuttingDown })
   })
+
+  const clientKey = (request: FastifyRequest) =>
+    normalizeIP(clientAddress(request, deps.clientIpHeader))
+  await app.register(rateLimit, { global: false, keyGenerator: clientKey })
 
   await app.register(healthRoutes(deps))
   if (deps.recognitions) {
     await app.register(
       recognitionRoutes(
         { ...deps.recognitions, log: app.log },
-        deps.guestRecognitionsPerDay ?? defaultGuestRecognitionsPerDay,
+        {
+          guestPerDay: deps.guestRecognitionsPerDay ?? defaultGuestRecognitionsPerDay,
+          clientKey,
+        },
       ),
     )
   }
