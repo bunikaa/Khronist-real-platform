@@ -13,6 +13,15 @@ import { ApiError, findPgViolation } from '../lib/errors.ts'
 
 const excluded = (column: string) => sql.raw(`excluded.${column}`)
 
+const corpusWriteLock = 7_310_015
+
+const corpusWriteTimeout = '120s'
+
+export const lockCorpus = async (tx: Database) => {
+  await tx.execute(sql`select set_config('statement_timeout', ${corpusWriteTimeout}, true)`)
+  await tx.execute(sql`select pg_advisory_xact_lock(${corpusWriteLock})`)
+}
+
 const lastByKey = <T>(items: T[], keyOf: (item: T) => string): T[] => [
   ...new Map(items.map((item) => [keyOf(item), item])).values(),
 ]
@@ -43,7 +52,7 @@ type ChunkItem = AdminChunksRequest['items'][number]
 const chunkKey = (chunk: { articleKey: string; idx: number }) => `${chunk.articleKey}#${chunk.idx}`
 
 const chunkFields = (item: ChunkItem) => ({
-  sourceId: item.sourceId,
+  sourceId: item.sourceId.toLowerCase(),
   text: item.text,
   topic: item.topic,
   type: item.type,
@@ -65,6 +74,7 @@ export const syncChunks = async (
 ): Promise<AdminChunksResponse> => {
   try {
     return await db.transaction(async (tx) => {
+      await lockCorpus(tx)
       const stored = await tx
         .select({
           id: chunks.id,
@@ -124,16 +134,12 @@ export const upsertSynonyms = async (
   request: AdminSynonymsRequest,
 ): Promise<AdminSynonymsResponse> =>
   db.transaction(async (tx) => {
+    await lockCorpus(tx)
     const items = lastByKey(request.items, synonymKey)
     const stored = await tx
       .select()
       .from(synonyms)
-      .where(
-        inArray(
-          synonyms.term,
-          items.map((item) => item.term),
-        ),
-      )
+      .where(inArray(synonyms.term, [...new Set(items.map((item) => item.term))]))
     const storedByKey = new Map(stored.map((row) => [synonymKey(row), row]))
 
     const added = items.filter((item) => !storedByKey.has(synonymKey(item)))

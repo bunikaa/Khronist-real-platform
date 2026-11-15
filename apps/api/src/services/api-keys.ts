@@ -3,17 +3,17 @@ import { createHash, randomBytes } from 'node:crypto'
 import type { Database } from '../db/client.ts'
 import { apiKeys } from '../db/schema.ts'
 
-export const apiKeyPrefix = 'khr_'
+const apiKeyPrefix = 'khr_'
 
-const hashApiKey = (key: string) => createHash('sha256').update(key).digest('hex')
+export const hashApiKey = (key: string) => createHash('sha256').update(key).digest('hex')
 
 export const isApiKey = (token: string) => token.startsWith(apiKeyPrefix)
 
-export const findApiKeyId = async (db: Database, key: string): Promise<string | undefined> => {
+export const findApiKeyId = async (db: Database, keyHash: string): Promise<string | undefined> => {
   const [row] = await db
     .select({ id: apiKeys.id })
     .from(apiKeys)
-    .where(eq(apiKeys.keyHash, hashApiKey(key)))
+    .where(eq(apiKeys.keyHash, keyHash))
     .limit(1)
   return row?.id
 }

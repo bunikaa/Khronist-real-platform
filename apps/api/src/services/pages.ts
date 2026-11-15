@@ -1,28 +1,40 @@
-import type { PageLookupQuery, PageLookupResponse } from '@khronist/contracts'
+import type { PageLookupQuery, PageLookupResponse, Shelfmark } from '@khronist/contracts'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import type { Database } from '../db/client.ts'
 import { documents, pages, regions, transcriptions } from '../db/schema.ts'
 import { shelfmarkOf } from './transcriptions.ts'
 
+type SheetIdentity = Pick<Shelfmark, 'archive' | 'fond' | 'opys' | 'sprava' | 'folio' | 'image'>
+
+export const documentMatch = (sheet: SheetIdentity) =>
+  and(
+    eq(documents.archive, sheet.archive),
+    eq(documents.fond, sheet.fond),
+    eq(documents.opys, sheet.opys),
+    eq(documents.sprava, sheet.sprava),
+  )
+
+export const pageIdentity = (sheet: SheetIdentity) => {
+  if (sheet.image !== undefined) {
+    return { imageNo: sheet.image, folio: null, match: eq(pages.imageNo, sheet.image) }
+  }
+  if (sheet.folio !== undefined) {
+    return { imageNo: null, folio: sheet.folio, match: eq(pages.folio, sheet.folio) }
+  }
+  return undefined
+}
+
 export const lookupPage = async (
   db: Database,
   query: PageLookupQuery,
 ): Promise<PageLookupResponse> => {
+  const identity = pageIdentity(query)
+  if (!identity) return {}
   const [found] = await db
     .select({ page: pages, document: documents })
     .from(pages)
     .innerJoin(documents, eq(pages.documentId, documents.id))
-    .where(
-      and(
-        eq(documents.archive, query.archive),
-        eq(documents.fond, query.fond),
-        eq(documents.opys, query.opys),
-        eq(documents.sprava, query.sprava),
-        query.image !== undefined
-          ? eq(pages.imageNo, query.image)
-          : eq(pages.folio, query.folio ?? ''),
-      ),
-    )
+    .where(and(documentMatch(query), identity.match))
     .limit(1)
   if (!found) return {}
 

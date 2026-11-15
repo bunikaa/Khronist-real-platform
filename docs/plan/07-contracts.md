@@ -1,13 +1,13 @@
 # 07 · Контракти між частинами
 
-Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id` і `GET /v1/pages/lookup`; решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
+Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id`, `GET /v1/pages/lookup` і `/v1/admin/*` (з `ADMIN_API_KEY`); решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
 
 Спільні правила: JSON, UTF-8; ідентифікатори — UUID; час — ISO 8601 UTC; координати — частки 0…1 від ширини й висоти зображення (`x`, `y` — лівий верхній кут); помилки — `{ "error": { "code": "snake_case", "message": "людською мовою українською" } }`. Будь-який запит під час зупинки сервера отримує `503 { error: { code: 'shutting_down' } }` із `retry-after`. Кожна відповідь несе `x-request-id` (з `x-railway-request-id`, якщо його поставив Railway).
 
 ## 1. Спільні типи
 
 ```ts
-Shelfmark = { archive: string; fond: string; opys: string; sprava: string; folio?: string; image?: number; portal?: 'archium' | 'own'; portalUrl?: string }   // потрібне хоча б одне з folio, image
+Shelfmark = { archive: string; fond: string; opys: string; sprava: string; folio?: string; image?: number; portal?: 'archium' | 'own'; portalUrl?: string }   // потрібне хоча б одне з folio, image; portalUrl без керуючих символів і одиночних сурогатів
 Box = { x: number; y: number; w: number; h: number }
 Word = { text: string; uncertain: boolean; confidence?: number }            // confidence лише від HTR-сервісу
 Line = { idx: number; text: string; box: Box; boxSource: 'model' | 'estimated'; uncertain: boolean; words: Word[] }
@@ -35,7 +35,7 @@ GET  /v1/recognitions/:id
 GET  /v1/recognitions/:id/events      text/event-stream
   events: progress { status } · line { line: Line } · done { transcriptionId } · failed { code, message }
   codes: read_failed · normalize_failed · save_failed · restarted · bad_image · too_large
-  помилки POST: 400 bad_request · 400 bad_image · 413 too_large · 429 too_many_requests · 503 reader_unavailable
+  помилки POST: 400 bad_request · 400 bad_image · 401 unauthorized (невідомий ключ API) · 413 too_large · 429 too_many_requests · 503 reader_unavailable
 ```
 
 - Від гостя сервер зберігає лише ідентичність аркуша: архів, фонд, опис, справу і номер зображення (або аркуш, якщо зображення немає). `portal`, `portalUrl`, `folio` поряд із номером зображення і `document` гостя не зберігаються: перший запит не може назавжди задати метадані сторінки. Їх задають пакетна обробка з ключем API (V-14) і підтвердження.
@@ -96,10 +96,13 @@ GET  /v1/notes · POST /v1/notes · DELETE /v1/notes/:id      (should; вхід 
 POST /api/auth/email-otp/send-verification-otp   body: { email, type: 'sign-in' }
 POST /api/auth/sign-in/email-otp                  body: { email, otp }   → 200, заголовок set-auth-token: <токен сесії>
 POST /api/auth/sign-out                           Authorization: Bearer <токен сесії>
+GET  /api/auth/get-session                        Authorization: Bearer <токен сесії>   → 200 { session, user } | null
 ```
 
+- Назовні відкрито лише ці чотири маршрути Better Auth; `otp` — 6 цифр. Листи з кодом: 3 на одну адресу з однієї IP-адреси і 10 на адресу загалом за 15 хвилин (адреса без регістру й `+мітки`, у Gmail — без крапок), `SIGN_IN_CODES_PER_DAY` (300) на сервер за UTC-добу; запит, який Better Auth відхилив, ліміту не витрачає. Понад ліміт — `429 too_many_requests` з `retry-after`. У проді (`NODE_ENV=production`) Better Auth окремо пропускає 3 запити на хвилину з IP-адреси. Усі помилки — у форматі контракту; коди перевірки: `invalid_otp`, `otp_expired`, `too_many_attempts`, `invalid_origin`. Токен сесії — лише підписаний, із заголовка `set-auth-token`.
+
 - Better Auth з плагінами `emailOTP` і `bearer`. Розширення не користується cookie й CORS: панель сама надсилає код із листа (6 цифр, діє 5 хвилин), бере токен із `set-auth-token`, зберігає в `chrome.storage.session` (зникає разом із сесією браузера) і надсилає в `Authorization: Bearer`. Сесія діє 7 днів (типове значення Better Auth); вихід — `sign-out` і видалення токена зі сховища. Вебзастосунок користується cookie-сесією тих самих маршрутів.
-- Ключі API (`api_keys`, у базі лише хеш SHA-256) — для пакетної обробки (`source: 'batch'`) і MCP: заголовок `Authorization: Bearer khr_…`. Невідомий ключ із префіксом `khr_` — `401 unauthorized` до читання тіла; інший токен у `Bearer` (наприклад, сесії) ключем не вважається. З ключем у `POST /v1/recognitions` денний ліміт — `API_KEY_RECOGNITIONS_PER_DAY` (1000) на ключ замість гостьового, а 10 запитів на хвилину й 3 активні розпізнавання рахуються на ключ, а не на адресу. Запит із ключем зберігає `portal`, `portalUrl`, `folio` поряд із номером зображення і роки справи (`document`), зокрема коли відповідь іде з кешу. Інгестія корпусу користується `ADMIN_API_KEY`.
+- Ключі API (`api_keys`, у базі лише хеш SHA-256) — для пакетної обробки (`source: 'batch'`) і MCP: заголовок `Authorization: Bearer khr_…`. Невідомий ключ із префіксом `khr_` — `401 unauthorized` до читання тіла; пошуки ще не відомих серверу ключів — не більше 10 на хвилину з IP-адреси, далі `429 too_many_requests`. Інший токен у `Bearer` (наприклад, сесії) ключем не вважається. З ключем у `POST /v1/recognitions` денний ліміт — `API_KEY_RECOGNITIONS_PER_DAY` (1000) на ключ замість гостьового, а 10 запитів на хвилину й 3 активні розпізнавання рахуються на ключ, а не на адресу. Запит із ключем зберігає `portal`, `portalUrl`, `folio` поряд із номером зображення і роки справи (`document`); якщо регіон уже має сторінку (з кешу, під час читання чи після невдалого читання), — лише на ту сторінку й лише коли шифр запиту з нею збігається, інакше нічого не створює. `folio`, зайнятий іншою сторінкою справи, не записується. Інгестія корпусу користується `ADMIN_API_KEY`.
 
 ### Службові й адміністративні
 ```
@@ -114,6 +117,7 @@ GET  /v1/admin/stats     → { recognitions: { total, failed, p95Ms }, verifiedP
 ```
 
 - Джерело ідентифікує `url` (унікальний, лише https): повторне надсилання оновлює рядок і повертає той самий `id`. Кілька статей можуть назвати те саме джерело: однакові `url` в одному запиті дають один рядок і один елемент відповіді (береться останній).
+- Тексти адмінки (назва, текст, тема, терміни й типи) без символу NUL і одиночних сурогатів, `url` — без керуючих символів і одиночних сурогатів, інакше 400; `sourceId` порівнюється без урахування регістру.
 - Чанк ідентифікує `articleKey` (назва файлу статті без `.md`) і `idx` (номер чанка в статті). `POST /v1/admin/chunks` — синхронізація повним набором: чанки з новим текстом оновлюються, без змін — не чіпаються, ключі, яких у запиті немає, видаляються. Повторна інгестія без змін не змінює жодного рядка; виправлена стаття лишає рівно свої чанки.
 - Синонім ідентифікують `term` і `variant`; повтор пари в запиті — береться останній. Синоніми, яких у запиті немає, лишаються.
 - `stats`: `total` і `failed` — розпізнавання без відповідей із кешу; `p95Ms` — 95-й перцентиль часу від запиту до готової транскрипції (з чергою) для прочитаних моделлю, `null`, поки читань немає; `verifiedPages` — сторінки, де є хоча б одна підтверджена версія; `modelCalls` — бюджет `MODEL_CALLS_PER_DAY` за поточну UTC-добу.

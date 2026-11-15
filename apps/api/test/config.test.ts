@@ -144,6 +144,14 @@ describe('sign-in settings', () => {
     expect(() => loadConfig({ ...base, ...signIn, MAIL_FROM: '' })).toThrow(/RESEND_API_KEY/)
   })
 
+  it('needs https for the sign-in address in production and sends 300 codes a day by default', () => {
+    const production = { ...base, ...signIn, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'k' }
+    expect(() =>
+      loadConfig({ ...production, BETTER_AUTH_URL: 'http://api.khronist.example' }),
+    ).toThrow(/BETTER_AUTH_URL/)
+    expect(loadConfig(production).SIGN_IN_CODES_PER_DAY).toBe(300)
+  })
+
   it('refuses a short secret', () => {
     expect(() => loadConfig({ ...base, ...signIn, BETTER_AUTH_SECRET: 'short' })).toThrow(
       /BETTER_AUTH_SECRET/,

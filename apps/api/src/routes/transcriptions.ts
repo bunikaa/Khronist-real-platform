@@ -1,6 +1,5 @@
-import { transcriptionSchema } from '@khronist/contracts'
+import { idParamsSchema, transcriptionSchema } from '@khronist/contracts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { z } from 'zod'
 import type { Database } from '../db/client.ts'
 import { ApiError } from '../lib/errors.ts'
 import { recordReadsPerMinute } from '../lib/limits.ts'
@@ -13,7 +12,7 @@ export const transcriptionRoutes =
       '/v1/transcriptions/:id',
       {
         onRequest: app.rateLimit({ max: recordReadsPerMinute, timeWindow: '1 minute' }),
-        schema: { params: z.object({ id: z.uuid() }), response: { 200: transcriptionSchema } },
+        schema: { params: idParamsSchema, response: { 200: transcriptionSchema } },
       },
       async (request) => {
         const transcription = await loadTranscription(db, request.params.id)

@@ -156,4 +156,17 @@ describe('GET /v1/pages/lookup', () => {
     expect(limited.headers['retry-after']).toBeDefined()
     await app.close()
   })
+
+  it('counts reads of transcriptions apart from lookups', async () => {
+    const { app } = await createTestApp(database)
+    const url = '/v1/transcriptions/0190a000-0000-7000-8000-000000000000'
+    for (let i = 0; i < recordReadsPerMinute; i += 1) {
+      expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404)
+    }
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(429)
+    expect((await app.inject({ method: 'GET', url: lookupUrl({ image: '4' }) })).statusCode).toBe(
+      200,
+    )
+    await app.close()
+  })
 })

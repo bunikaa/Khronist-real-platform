@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+export const idParamsSchema = z.object({ id: z.uuid() })
+
 export const withoutControlCharacters = (value: string): boolean => !/\p{Cc}/u.test(value)
 
 const shelfmarkPart = z
@@ -12,14 +14,21 @@ const shelfmarkPart = z
 const maxImageNumber = 100000
 const maxPortalUrlLength = 2048
 
-const portalUrlSchema = z.httpUrl().refine(
-  (value) => {
-    if (value.length > maxPortalUrlLength) return false
-    const url = new URL(value)
-    return url.username === '' && url.password === ''
-  },
-  { message: 'portal link must be short and without credentials' },
-)
+export const withoutLoneSurrogates = (value: string): boolean => !/\p{Cs}/u.test(value)
+
+const portalUrlSchema = z
+  .httpUrl()
+  .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
+    message: 'control character or lone surrogate',
+  })
+  .refine(
+    (value) => {
+      if (value.length > maxPortalUrlLength) return false
+      const url = new URL(value)
+      return url.username === '' && url.password === ''
+    },
+    { message: 'portal link must be short and without credentials' },
+  )
 
 export const shelfmarkBaseSchema = z.object({
   archive: shelfmarkPart,

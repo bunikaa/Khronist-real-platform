@@ -88,16 +88,16 @@ sources               id, title, url (унікальний), licence, kind (dict
 chunks                id, source_id, article_key, idx, text, topic, type (term|place|date|unit|abbr), period_from, period_to, wikidata_id, tsv tsvector   (міграція — V-08)
 synonyms              id, term, variant, type                       (словник варіантів написання, з ML-команди)
 notes                 id, user_id, transcription_id, excerpt, note, citation, created_at   (should)
-api_keys              id, user_id, key_hash, name, created_at     (для MCP, скриптів, інгестії)
+api_keys              id, user_id, key_hash, name, created_at, last_used_at     (для MCP і пакетної обробки; інгестія — ADMIN_API_KEY)
 ```
 
 Розширення Postgres: `pg_trgm`. Індекси: `chunks.tsv` — GIN; `chunks.text` і `synonyms.variant` — GIN `gin_trgm_ops`; `transcriptions(region_id, version desc)`; `entities(normalized)` — GIN `gin_trgm_ops` для прізвищ із варіантами написання; `regions(image_hash)` для кешу; `recognitions(status)` для відновлення.
 
-`tsv` заповнюється тригером або при вставці: `to_tsvector('simple', text || ' ' || варіанти з synonyms для термінів цього чанка)`. Словника `ukrainian` у стандартному Postgres немає, тому `simple` плюс словник варіантів — свідомий вибір; стемінг не потрібен на 200 статтях.
+`tsv` — обчислювана колонка `to_tsvector('simple', topic || ' ' || text)` (V-08); варіанти з `synonyms` додаються до запиту, а не до вектора. Словника `ukrainian` у стандартному Postgres немає, тому `simple` плюс словник варіантів — свідомий вибір; стемінг не потрібен на 200 статтях.
 
 ## 4. Авторизація
 
-Better Auth із плагінами `emailOTP` і `bearer` (рішення 15 листопада). Для вебу — cookie-сесія. Розширення не користується ні cookie, ні CORS (ID розпакованого розширення різний на кожній машині): панель надсилає код із листа в `POST /api/auth/sign-in/email-otp`, бере токен сесії із заголовка `set-auth-token`, зберігає його в `chrome.storage.session` і шле в `Authorization: Bearer`. Для MCP, пакетної обробки й інгестії — `api_keys` з хешем, заголовок `Authorization: Bearer`, власний ліміт ключа. Деталі — `07-contracts.md`, розділ 2 «Вхід і ключі».
+Better Auth із плагінами `emailOTP` і `bearer` (рішення 15 листопада). Для вебу — cookie-сесія. Розширення не користується ні cookie, ні CORS (ID розпакованого розширення різний на кожній машині): панель надсилає код із листа в `POST /api/auth/sign-in/email-otp`, бере токен сесії із заголовка `set-auth-token`, зберігає його в `chrome.storage.session` і шле в `Authorization: Bearer`. Для MCP і пакетної обробки — `api_keys` з хешем, заголовок `Authorization: Bearer`, власний ліміт ключа. Деталі — `07-contracts.md`, розділ 2 «Вхід і ключі».
 
 Читання, пояснення й чат доступні без входу; ліміти гостя й спільний денний бюджет викликів моделей — `07-contracts.md`, розділ 2. Редагування й нотатник — лише з входом, підтвердження — лише адресам зі списку `VERIFIER_EMAILS`. Підпис підтвердження — `transcriptions.verified_signature`, поряд з іменем акаунта.
 

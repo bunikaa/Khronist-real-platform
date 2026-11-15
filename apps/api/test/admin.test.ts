@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   chunks,
@@ -10,6 +10,7 @@ import {
   transcriptions,
 } from '../src/db/schema.ts'
 import { utcDay } from '../src/services/budget.ts'
+import { lockCorpus } from '../src/services/corpus.ts'
 import {
   createTestApp,
   createTestDatabase,
@@ -130,10 +131,14 @@ describe('POST /v1/admin/chunks', () => {
     ]
     const first = await post(app, '/v1/admin/chunks', { items })
     expect(first.json()).toEqual({ inserted: 2, updated: 0, unchanged: 0, deleted: 0 })
-    const before = await database.db.select().from(chunks)
+    const versions = () =>
+      database.db.execute<{ id: string; xmin: string }>(
+        sql`select id, xmin::text as xmin from chunks order by id`,
+      )
+    const before = (await versions()).rows
     const again = await post(app, '/v1/admin/chunks', { items })
     expect(again.json()).toEqual({ inserted: 0, updated: 0, unchanged: 2, deleted: 0 })
-    expect(await database.db.select().from(chunks)).toEqual(before)
+    expect((await versions()).rows).toEqual(before)
     await app.close()
   })
 
@@ -163,6 +168,55 @@ describe('POST /v1/admin/chunks', () => {
       ['borshchahivka', 0, 'Борщагівка — село.', 'Q4535404'],
       ['kum', 0, 'Кум — хрещений батько дитини.', null],
     ])
+    await app.close()
+  })
+
+  it('treats an upper-case source id as the same source', async () => {
+    const app = await adminApp()
+    const sourceId = await createSource(app)
+    const items = [chunk(sourceId, 'kum', 0, 'Кум — хрещений батько.')]
+    await post(app, '/v1/admin/chunks', { items })
+    const again = await post(app, '/v1/admin/chunks', {
+      items: [{ ...items[0], sourceId: sourceId.toUpperCase() }],
+    })
+    expect(again.json()).toEqual({ inserted: 0, updated: 0, unchanged: 1, deleted: 0 })
+    await app.close()
+  })
+
+  it('answers 400 for a source link with a lone surrogate', async () => {
+    const app = await adminApp()
+    const res = await post(app, '/v1/admin/sources', {
+      items: [source('https://example.org/a\ud800b')],
+    })
+    expect(res.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('answers 400 for a source link with a control character', async () => {
+    const app = await adminApp()
+    const res = await post(app, '/v1/admin/sources', {
+      items: [source('https://example.org/a\u0000b')],
+    })
+    expect(res.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('answers 400 for a synonym with a lone surrogate, which the database would rewrite', async () => {
+    const app = await adminApp()
+    const res = await post(app, '/v1/admin/synonyms', {
+      items: [{ term: 'кум', variant: 'кум\ud800', type: 'term' }],
+    })
+    expect(res.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('answers 400 for a text with a NUL character', async () => {
+    const app = await adminApp()
+    const sourceId = await createSource(app)
+    const res = await post(app, '/v1/admin/chunks', {
+      items: [chunk(sourceId, 'kum', 0, 'Кум\u0000 — хрещений батько.')],
+    })
+    expect(res.statusCode).toBe(400)
     await app.close()
   })
 
@@ -229,6 +283,26 @@ describe('GET /v1/admin/stats', () => {
       .set({ status: 'verified', verifiedAt: new Date() })
       .where(eq(transcriptions.regionId, region.id))
     await database.db.insert(modelCalls).values({ day: utcDay(), calls: 7 })
+    const read = await database.db
+      .select()
+      .from(recognitions)
+      .where(eq(recognitions.source, 'extension'))
+    const timed = read.find((row) => row.startedAt !== null)
+    if (!timed) throw new Error('no read recognition')
+    const start = new Date('2026-11-15T10:00:00.000Z')
+    const after = (ms: number) => new Date(start.getTime() + ms)
+    await database.db
+      .update(recognitions)
+      .set({ createdAt: start, startedAt: start, finishedAt: after(1000) })
+      .where(eq(recognitions.id, timed.id))
+    await database.db.insert(recognitions).values({
+      regionId: region.id,
+      source: 'batch',
+      status: 'done',
+      createdAt: start,
+      startedAt: start,
+      finishedAt: after(2000),
+    })
 
     const res = await app.inject({
       method: 'GET',
@@ -237,9 +311,9 @@ describe('GET /v1/admin/stats', () => {
     })
     expect(res.statusCode).toBe(200)
     const stats = res.json()
-    expect(stats.recognitions.total).toBe(2)
+    expect(stats.recognitions.total).toBe(3)
     expect(stats.recognitions.failed).toBe(1)
-    expect(stats.recognitions.p95Ms).toBeGreaterThanOrEqual(0)
+    expect(stats.recognitions.p95Ms).toBe(1950)
     expect(stats.verifiedPages).toBe(1)
     expect(stats.modelCalls).toEqual({ today: 7, limit: 2000 })
     await app.close()
@@ -258,5 +332,24 @@ describe('GET /v1/admin/stats', () => {
       modelCalls: { today: 0, limit: 2000 },
     })
     await app.close()
+  })
+})
+
+describe('corpus write lock', () => {
+  it('holds the lock and a longer statement timeout only inside the transaction', async () => {
+    const setting = async (tx: Pick<TestDatabase['db'], 'execute'>) => {
+      const result = await tx.execute<{ statement_timeout: string }>(sql`show statement_timeout`)
+      return result.rows[0]?.statement_timeout
+    }
+    const before = await setting(database.db)
+    await database.db.transaction(async (tx) => {
+      await lockCorpus(tx)
+      expect(await setting(tx)).toBe('2min')
+      const locks = await tx.execute<{ objid: number }>(
+        sql`select objid from pg_locks where locktype = 'advisory'`,
+      )
+      expect(locks.rows.map((row) => Number(row.objid))).toContain(7_310_015)
+    })
+    expect(await setting(database.db)).toBe(before)
   })
 })

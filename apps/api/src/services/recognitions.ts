@@ -32,6 +32,7 @@ import { activeRecognitionsPerClient, maxBacklog } from '../lib/limits.ts'
 import type { HtrReader } from './htr/index.ts'
 import type { CallBudget } from './llm/index.ts'
 import type { EntityExtractor, Normalizer } from './normalize.ts'
+import { documentMatch, pageIdentity } from './pages.ts'
 import { loadTranscription } from './transcriptions.ts'
 
 export type RecognitionDeps = {
@@ -81,23 +82,11 @@ const findOrCreatePage = async (
   const [document] = await db
     .select({ id: documents.id })
     .from(documents)
-    .where(
-      and(
-        eq(documents.archive, shelfmark.archive),
-        eq(documents.fond, shelfmark.fond),
-        eq(documents.opys, shelfmark.opys),
-        eq(documents.sprava, shelfmark.sprava),
-      ),
-    )
+    .where(documentMatch(shelfmark))
     .limit(1)
   if (!document) throw new Error('document was not created')
 
-  const identity =
-    shelfmark.image !== undefined
-      ? { imageNo: shelfmark.image, folio: null, match: eq(pages.imageNo, shelfmark.image) }
-      : shelfmark.folio !== undefined
-        ? { imageNo: null, folio: shelfmark.folio, match: eq(pages.folio, shelfmark.folio) }
-        : undefined
+  const identity = pageIdentity(shelfmark)
   if (!identity) throw new ApiError(400, 'bad_request', 'Потрібен номер аркуша або зображення')
   const lookup = () =>
     db
@@ -136,14 +125,35 @@ const saveMetadata = async (
   if (Object.keys(documentFields).length > 0) {
     await db.update(documents).set(documentFields).where(eq(documents.id, documentId))
   }
-  const pageFields = {
-    ...(shelfmark.image !== undefined &&
-      shelfmark.folio !== undefined && { folio: shelfmark.folio }),
-    ...(shelfmark.portalUrl !== undefined && { sourceUrl: shelfmark.portalUrl }),
+  if (shelfmark.portalUrl !== undefined) {
+    await db.update(pages).set({ sourceUrl: shelfmark.portalUrl }).where(eq(pages.id, pageId))
   }
-  if (Object.keys(pageFields).length > 0) {
-    await db.update(pages).set(pageFields).where(eq(pages.id, pageId))
+  if (shelfmark.image !== undefined && shelfmark.folio !== undefined) {
+    await db
+      .update(pages)
+      .set({ folio: shelfmark.folio })
+      .where(eq(pages.id, pageId))
+      .catch((error: unknown) => {
+        if (!isUniqueViolation(error)) throw error
+      })
   }
+}
+
+const saveMetadataOnRegionPage = async (
+  db: Database,
+  pageId: string,
+  shelfmark: Shelfmark,
+  metadata: PageMetadata,
+) => {
+  const identity = pageIdentity(shelfmark)
+  if (!identity) return
+  const [page] = await db
+    .select({ documentId: pages.documentId })
+    .from(pages)
+    .innerJoin(documents, eq(pages.documentId, documents.id))
+    .where(and(eq(pages.id, pageId), documentMatch(shelfmark), identity.match))
+    .limit(1)
+  if (page) await saveMetadata(db, page.documentId, pageId, shelfmark, metadata)
 }
 
 const findRegion = async (db: Database, imageHash: string) => {
@@ -227,12 +237,18 @@ export const createRecognition = async (
   const known = await findRegion(db, image.sha256)
   const cached = known && (await findLatestTranscription(db, known.id))
   if (known && cached) {
-    if (request.shelfmark && (known.pageId === null || metadata)) {
-      const pageId = await findOrCreatePage(db, request.shelfmark, metadata)
-      await db
+    if (request.shelfmark && known.pageId === null) {
+      const pageId = await findOrCreatePage(db, request.shelfmark, undefined)
+      const linked = await db
         .update(regions)
         .set({ pageId })
         .where(and(eq(regions.id, known.id), isNull(regions.pageId)))
+        .returning({ id: regions.id })
+      if (metadata && linked.length > 0) {
+        await saveMetadataOnRegionPage(db, pageId, request.shelfmark, metadata)
+      }
+    } else if (request.shelfmark && metadata && known.pageId !== null) {
+      await saveMetadataOnRegionPage(db, known.pageId, request.shelfmark, metadata)
     }
     return answerFromCache(db, known.id, request.source, cached.id)
   }
@@ -247,7 +263,12 @@ export const createRecognition = async (
       olderThanMs: deps.staleAfterMs,
     })
     const running = await findActiveRecognition(db, known.id)
-    if (running) return { recognitionId: running.id, status: 'queued' }
+    if (running) {
+      if (request.shelfmark && metadata && known.pageId !== null) {
+        await saveMetadataOnRegionPage(db, known.pageId, request.shelfmark, metadata)
+      }
+      return { recognitionId: running.id, status: 'queued' }
+    }
   }
 
   const slot = queue.reserve(client.key, {
@@ -285,9 +306,13 @@ export const createRecognition = async (
       )
     }
 
-    const pageId = request.shelfmark
-      ? await findOrCreatePage(db, request.shelfmark, metadata)
-      : null
+    const knownPageId = known?.pageId ?? null
+    if (knownPageId !== null && request.shelfmark && metadata) {
+      await saveMetadataOnRegionPage(db, knownPageId, request.shelfmark, metadata)
+    }
+    const pageId =
+      knownPageId ??
+      (request.shelfmark ? await findOrCreatePage(db, request.shelfmark, metadata) : null)
     const region = await findOrCreateRegion(db, image.sha256, request.box ?? wholePage, pageId)
 
     let recognitionId: string

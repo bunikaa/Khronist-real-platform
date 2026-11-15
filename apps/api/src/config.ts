@@ -2,6 +2,7 @@ import type { HealthResponse } from '@khronist/contracts'
 import { z } from 'zod'
 import {
   defaultApiKeyRecognitionsPerDay,
+  defaultSignInCodesPerDay,
   defaultGuestRecognitionsPerDay,
   defaultModelCallsPerDay,
 } from './lib/limits.ts'
@@ -86,6 +87,10 @@ const configSchema = z
     BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     MAIL_FROM: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    SIGN_IN_CODES_PER_DAY: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).default(defaultSignInCodesPerDay),
+    ),
     ADMIN_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   })
   .refine((config) => !(config.NODE_ENV === 'production' && config.LLM_FIXTURES), {
@@ -127,6 +132,13 @@ const configSchema = z
   .refine(
     (config) =>
       config.NODE_ENV !== 'production' ||
+      config.BETTER_AUTH_URL === undefined ||
+      config.BETTER_AUTH_URL.startsWith('https://'),
+    { message: 'BETTER_AUTH_URL must use https in production', path: ['BETTER_AUTH_URL'] },
+  )
+  .refine(
+    (config) =>
+      config.NODE_ENV !== 'production' ||
       config.ADMIN_API_KEY === undefined ||
       config.ADMIN_API_KEY.length >= minProductionAdminKeyLength,
     {
@@ -137,7 +149,7 @@ const configSchema = z
 
 export type Config = z.infer<typeof configSchema>
 
-export type SignInSettings = {
+type SignInSettings = {
   secret: string
   baseURL: string
   resendApiKey: string
