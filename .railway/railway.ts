@@ -43,6 +43,7 @@ export default defineRailway(() => {
       HTR_MODEL_FALLBACK: 'gemini-3.6-flash',
       BETTER_AUTH_URL: 'https://api.khronist.org',
       MAIL_FROM: 'Хроніст <hello@khronist.org>',
+      SIGN_IN_CODES_PER_DAY: '300',
       ANTHROPIC_API_KEY: preserve(),
       GOOGLE_API_KEY: preserve(),
       BETTER_AUTH_SECRET: preserve(),

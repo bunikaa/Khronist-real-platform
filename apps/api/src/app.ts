@@ -8,9 +8,17 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod'
+import { createCodeLimits } from './auth/codes.ts'
 import { createAuth, type AuthOptions } from './auth/index.ts'
 import { ApiError } from './lib/errors.ts'
-import { defaultApiKeyRecognitionsPerDay, defaultGuestRecognitionsPerDay } from './lib/limits.ts'
+import {
+  defaultApiKeyRecognitionsPerDay,
+  defaultGuestRecognitionsPerDay,
+  signInCodesPerAddress,
+  signInCodesPerAddressAndClient,
+  signInCodesWindowMs,
+} from './lib/limits.ts'
+import { logMethod, safeError } from './lib/log.ts'
 import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
@@ -21,13 +29,14 @@ import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
   logLevel?: string
+  logStream?: { write: (line: string) => void }
   clientIpHeader?: string
   corsOrigins?: string[]
   guestRecognitionsPerDay?: number
   apiKeyRecognitionsPerDay?: number
   isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
-  auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'>
+  auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'> & { codesPerDay: number }
   admin?: AdminDeps
 }
 
@@ -75,7 +84,12 @@ const clientAddress = (request: FastifyRequest, header: string | undefined): str
 
 export const buildApp = async (deps: AppDeps) => {
   const app = Fastify({
-    logger: { level: deps.logLevel ?? 'info' },
+    logger: {
+      level: deps.logLevel ?? 'info',
+      serializers: { err: safeError, error: safeError },
+      hooks: { logMethod },
+      ...(deps.logStream && { stream: deps.logStream }),
+    },
     requestIdHeader: 'x-railway-request-id',
     genReqId: () => randomUUID(),
     return503OnClosing: false,
@@ -124,13 +138,19 @@ export const buildApp = async (deps: AppDeps) => {
 
   await app.register(healthRoutes(deps))
   if (deps.auth) {
+    const limits = createCodeLimits({
+      perDay: deps.auth.codesPerDay,
+      perAddressAndClient: signInCodesPerAddressAndClient,
+      perAddress: signInCodesPerAddress,
+      windowMs: signInCodesWindowMs,
+    })
     const auth = createAuth({
       ...deps.auth,
       trustedOrigins: deps.corsOrigins ?? [],
       clientIpHeader: deps.clientIpHeader,
       log: app.log,
     })
-    await app.register(authRoutes(auth, deps.auth.baseURL))
+    await app.register(authRoutes(auth, deps.auth.baseURL, limits, clientKey))
   }
   if (deps.recognitions) {
     await app.register(

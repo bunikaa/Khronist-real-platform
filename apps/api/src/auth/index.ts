@@ -28,6 +28,16 @@ export const createAuth = (options: AuthOptions) =>
     secret: options.secret,
     baseURL: options.baseURL,
     trustedOrigins: [...options.trustedOrigins, anyExtension],
+    onAPIError: { throw: true },
+    logger: {
+      log: (level, message: unknown, ...args: unknown[]) => {
+        const err = [message, ...args].find((arg) => arg instanceof Error)
+        options.log[level](
+          { ...(err && { err }), source: 'better-auth' },
+          typeof message === 'string' ? message : 'better-auth error',
+        )
+      },
+    },
     advanced: {
       disableOriginCheck: false,
       ...(options.clientIpHeader !== undefined && {
@@ -36,6 +46,7 @@ export const createAuth = (options: AuthOptions) =>
     },
     plugins: [
       emailOTP({
+        storeOTP: 'encrypted',
         sendVerificationOTP: async ({ email, otp }) => {
           void options
             .sendCode(email, otp)
@@ -44,7 +55,7 @@ export const createAuth = (options: AuthOptions) =>
             )
         },
       }),
-      bearer(),
+      bearer({ requireSignature: true }),
     ],
   })
 

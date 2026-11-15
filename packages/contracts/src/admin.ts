@@ -1,6 +1,16 @@
 import { z } from 'zod'
+import { withoutControlCharacters, withoutLoneSurrogates } from './common.ts'
 
 const century = z.number().int().min(1).max(21)
+
+const storableText = (value: string): boolean =>
+  !value.includes('\u0000') && withoutLoneSurrogates(value)
+
+const corpusText = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(storableText, { message: 'NUL character or lone surrogate' })
 
 const inOrder = (item: { periodFrom: number; periodTo: number }) => item.periodFrom <= item.periodTo
 const periodOrder = { message: 'periodFrom after periodTo' }
@@ -14,8 +24,12 @@ export const adminSourcesRequestSchema = z.object({
     .array(
       z
         .object({
-          url: z.url({ protocol: /^https$/ }),
-          title: z.string().trim().min(1),
+          url: z
+            .url({ protocol: /^https$/ })
+            .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
+              message: 'control character or lone surrogate',
+            }),
+          title: corpusText,
           licence: sourceLicenceSchema,
           kind: sourceKindSchema,
           periodFrom: century,
@@ -40,8 +54,8 @@ export const adminChunksRequestSchema = z.object({
           articleKey: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
           idx: z.number().int().min(0),
           sourceId: z.uuid(),
-          text: z.string().trim().min(1),
-          topic: z.string().trim().min(1),
+          text: corpusText,
+          topic: corpusText,
           type: chunkTypeSchema,
           periodFrom: century,
           periodTo: century,
@@ -73,9 +87,9 @@ export const adminSynonymsRequestSchema = z.object({
   items: z
     .array(
       z.object({
-        term: z.string().trim().min(1),
-        variant: z.string().trim().min(1),
-        type: z.string().trim().min(1),
+        term: corpusText,
+        variant: corpusText,
+        type: corpusText,
       }),
     )
     .min(1),

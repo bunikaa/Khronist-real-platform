@@ -10,6 +10,10 @@ export const createResendSender = (apiKey: string, from: string): SendSignInCode
   const resend = new Resend(apiKey)
   return async (email, code) => {
     const { error } = await resend.emails.send({ from, to: email, subject, text: body(code) })
-    if (error) throw new Error(`Resend rejected the email: ${error.name}: ${error.message}`)
+    if (error) {
+      throw new Error(
+        `Resend rejected the email: ${error.name} (${error.statusCode ?? 'no status'})`,
+      )
+    }
   }
 }

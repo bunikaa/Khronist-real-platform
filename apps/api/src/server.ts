@@ -13,6 +13,7 @@ import { selectHtrReader } from './services/htr/index.ts'
 import { noEntities, passthroughNormalizer } from './services/normalize.ts'
 
 const closeMarginMs = 10_000
+const statementTimeoutMs = 15_000
 
 const readConfig = (): Config => {
   try {
@@ -28,7 +29,7 @@ const drainMs =
   config.RAILWAY_DEPLOYMENT_DRAINING_SECONDS === undefined
     ? defaultDrainMs
     : Math.max(config.RAILWAY_DEPLOYMENT_DRAINING_SECONDS * 1000 - closeMarginMs, 1000)
-const { db, client } = createDatabase(config.DATABASE_URL)
+const { db, client } = createDatabase(config.DATABASE_URL, { statementTimeoutMs })
 const budget = createCallBudget(db, config.MODEL_CALLS_PER_DAY)
 const reader = selectHtrReader(config, budget)
 const hub = createEventHub()
@@ -63,6 +64,7 @@ const app = await buildApp({
       secret: signIn.secret,
       baseURL: signIn.baseURL,
       sendCode: createResendSender(signIn.resendApiKey, signIn.mailFrom),
+      codesPerDay: config.SIGN_IN_CODES_PER_DAY,
     },
   }),
   ...(config.ADMIN_API_KEY !== undefined && {

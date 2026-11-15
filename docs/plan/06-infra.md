@@ -27,16 +27,17 @@
 | `NODE_ENV`, `PORT`, `HOST`, `LOG_LEVEL` | api | середовище й сервер |
 | `CLIENT_IP_HEADER` | api | на Railway `x-real-ip` |
 | `GUEST_RECOGNITIONS_PER_DAY`, `MODEL_CALLS_PER_DAY` | api | 300 нових читань гостя на добу, 2000 викликів моделей на добу |
+| `API_KEY_RECOGNITIONS_PER_DAY` | api | 1000 нових читань на ключ API на добу |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | api, Railway | вікно дренажу, на проді 150 |
 | `LLM_FIXTURES`, `HTR_EFFORT` | api | фікстурне читання; глибина читання |
-| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | заплановано (V-15) |
-| `RESEND_API_KEY`, `MAIL_FROM` | api | листи з кодом входу, заплановано (V-15) |
+| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | вхід (V-15): секрет від 32 символів; адреса API, у проді лише `https` |
+| `RESEND_API_KEY`, `MAIL_FROM`, `SIGN_IN_CODES_PER_DAY` | api | листи з кодом входу; без ключа Resend входу немає; 300 листів на добу |
 | `VERIFIER_EMAILS` | api | хто може підтверджувати, заплановано (V-17) |
 | `ANTHROPIC_API_KEY`, `LLM_MODEL_PRIMARY`, `HTR_MODEL_PRIMARY` | api | назви моделей звірити в документації Anthropic; читання може використовувати іншу модель, ніж текстові задачі |
 | `GOOGLE_API_KEY`, `LLM_MODEL_FALLBACK`, `HTR_MODEL_FALLBACK` | api | резерв |
 | `HTR_URL`, `HTR_API_KEY` | api | порожні за замовчуванням; задаються лише при перемиканні на трек B |
 | `JOBS_CONCURRENCY`, `RETRIEVAL_MIN_RANK` | api | 4 і 0,05 стартово |
-| `ADMIN_API_KEY` | api, services/knowledge | інгестія корпусу |
+| `ADMIN_API_KEY` | api, services/knowledge | інгестія корпусу; у проді від 32 символів, без нього маршрутів адмінки немає |
 | `CORS_ORIGINS` | api | веб-домен; розширенню не потрібен (`host_permissions`) |
 | `KHRONIST_API_URL`, `KHRONIST_API_KEY` | services/knowledge, scripts | оцінка й пакетна обробка |
 | `HF_TOKEN` | Modal secret (трек B) | завантаження ваг моделі |

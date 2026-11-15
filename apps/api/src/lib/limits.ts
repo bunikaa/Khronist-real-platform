@@ -1,6 +1,11 @@
 export const maxBodyBytes = 12 * 1024 * 1024
 export const defaultGuestRecognitionsPerDay = 300
 export const defaultApiKeyRecognitionsPerDay = 1000
+export const defaultSignInCodesPerDay = 300
+export const signInCodesPerAddressAndClient = 3
+export const signInCodesPerAddress = 10
+export const signInCodesWindowMs = 15 * 60_000
+export const apiKeyLookupsPerMinute = 10
 export const defaultModelCallsPerDay = 2000
 export const guestRecognitionsPerMinute = 10
 export const activeRecognitionsPerClient = 3

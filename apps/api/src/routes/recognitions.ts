@@ -1,12 +1,12 @@
 import {
   createRecognitionRequestSchema,
+  idParamsSchema,
   createRecognitionResponseSchema,
   recognitionStateSchema,
   type RecognitionEvent,
 } from '@khronist/contracts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { z } from 'zod'
 import { failureEvent } from '../jobs/recognize.ts'
 import { bearerToken } from '../lib/bearer.ts'
 import { ApiError } from '../lib/errors.ts'
@@ -17,6 +17,7 @@ import {
   recognitionReadsPerMinute,
   streamRetryAfterSeconds,
   streamsPerClient,
+  apiKeyLookupsPerMinute,
 } from '../lib/limits.ts'
 import {
   createRecognition,
@@ -25,9 +26,7 @@ import {
   replayEvents,
   type RecognitionDeps,
 } from '../services/recognitions.ts'
-import { findApiKeyId, isApiKey } from '../services/api-keys.ts'
-
-const idParams = z.object({ id: z.uuid() })
+import { findApiKeyId, hashApiKey, isApiKey } from '../services/api-keys.ts'
 
 const maxPendingBytes = 1024 * 1024
 const secondsPerDay = 24 * 60 * 60
@@ -51,11 +50,32 @@ export const recognitionRoutes =
     })
 
     const apiKeyIds = new WeakMap<FastifyRequest, string>()
+    const knownApiKeys = new Map<string, string>()
+    const keyLookups = app.createRateLimit({
+      max: apiKeyLookupsPerMinute,
+      timeWindow: '1 minute',
+    })
     const identifyApiKey = async (request: FastifyRequest) => {
       const token = bearerToken(request.headers.authorization)
       if (!isApiKey(token)) return
-      const id = await findApiKeyId(deps.db, token)
+      const keyHash = hashApiKey(token)
+      const known = knownApiKeys.get(keyHash)
+      if (known !== undefined) {
+        apiKeyIds.set(request, known)
+        return
+      }
+      const lookups = await keyLookups(request)
+      if (!lookups.isAllowed && lookups.isExceeded) {
+        throw new ApiError(
+          429,
+          'too_many_requests',
+          'Забагато спроб із невідомим ключем, спробуйте за хвилину',
+          lookups.ttlInSeconds,
+        )
+      }
+      const id = await findApiKeyId(deps.db, keyHash)
       if (!id) throw new ApiError(401, 'unauthorized', 'Невідомий ключ API')
+      knownApiKeys.set(keyHash, id)
       apiKeyIds.set(request, id)
     }
     const clientOf = (request: FastifyRequest) => {
@@ -119,7 +139,7 @@ export const recognitionRoutes =
       '/v1/recognitions/:id',
       {
         onRequest: readsPerMinute,
-        schema: { params: idParams, response: { 200: recognitionStateSchema } },
+        schema: { params: idParamsSchema, response: { 200: recognitionStateSchema } },
       },
       async (request) => {
         const state = await getRecognitionState(deps.db, request.params.id)
@@ -130,7 +150,7 @@ export const recognitionRoutes =
 
     app.get(
       '/v1/recognitions/:id/events',
-      { onRequest: readsPerMinute, schema: { params: idParams } },
+      { onRequest: readsPerMinute, schema: { params: idParamsSchema } },
       async (request, reply) => {
         const { id } = request.params
         const record = await findRecognition(deps.db, id)
