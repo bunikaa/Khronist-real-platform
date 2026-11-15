@@ -73,6 +73,10 @@ const configSchema = z
       z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
     ),
     HTR_URL: z.preprocess(emptyToUndefined, z.url().optional()),
+    BETTER_AUTH_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+    BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
+    RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    MAIL_FROM: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   })
   .refine((config) => !(config.NODE_ENV === 'production' && config.LLM_FIXTURES), {
     message: 'LLM_FIXTURES must not be enabled in production',
@@ -94,8 +98,43 @@ const configSchema = z
     message: 'the remote reader is not implemented yet, leave HTR_URL empty',
     path: ['HTR_URL'],
   })
+  .refine((config) => config.NODE_ENV !== 'production' || config.RESEND_API_KEY !== undefined, {
+    message: 'sign-in needs RESEND_API_KEY in production',
+    path: ['RESEND_API_KEY'],
+  })
+  .refine(
+    (config) =>
+      config.RESEND_API_KEY === undefined ||
+      (config.BETTER_AUTH_SECRET !== undefined &&
+        config.BETTER_AUTH_URL !== undefined &&
+        config.MAIL_FROM !== undefined),
+    {
+      message: 'sign-in needs BETTER_AUTH_SECRET, BETTER_AUTH_URL and MAIL_FROM',
+      path: ['RESEND_API_KEY'],
+    },
+  )
 
 export type Config = z.infer<typeof configSchema>
+
+export type SignInSettings = {
+  secret: string
+  baseURL: string
+  resendApiKey: string
+  mailFrom: string
+}
+
+export const signInSettings = (config: Config): SignInSettings | undefined =>
+  config.RESEND_API_KEY !== undefined &&
+  config.BETTER_AUTH_SECRET !== undefined &&
+  config.BETTER_AUTH_URL !== undefined &&
+  config.MAIL_FROM !== undefined
+    ? {
+        secret: config.BETTER_AUTH_SECRET,
+        baseURL: config.BETTER_AUTH_URL,
+        resendApiKey: config.RESEND_API_KEY,
+        mailFrom: config.MAIL_FROM,
+      }
+    : undefined
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
   const parsed = configSchema.safeParse(env)

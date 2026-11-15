@@ -25,7 +25,7 @@ Fastify 5 + Drizzle + PostgreSQL 18. Контракти запитів і від
 
 Контракти віддаються сирим `.ts`, тож на хостингу (Railway) ставимо залежності всього монорепо й запускаємо `pnpm --filter @khronist/api start`. Міграції застосовує `pnpm db:migrate`; йому потрібен лише `DATABASE_URL`. `pnpm deploy` і копіювання `node_modules` не використовувати: Node не стирає типи в `node_modules` і падає з `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. Змінні `HOST=0.0.0.0` і `DATABASE_URL` задати у змінних середовища.
 
-Сервіс і база на Railway описані в `.railway/railway.ts`: збірка Railpack, міграції як pre-deploy, перевірка `/health`, деплой `main` лише після зеленого CI. Зміни застосовуються з кореня репозиторію через Railway CLI: `railway login`, `railway link`, `railway config plan`, `railway config apply`. Ключі (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) у файлі позначені `preserve()` і задаються в Railway, а не в репозиторії.
+Сервіс і база на Railway описані в `.railway/railway.ts`: збірка Railpack, міграції як pre-deploy, перевірка `/health`, деплой `main` лише після зеленого CI. Зміни застосовуються з кореня репозиторію через Railway CLI: `railway login`, `railway link`, `railway config plan`, `railway config apply`. Ключі (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `RESEND_API_KEY`) і `BETTER_AUTH_SECRET` у файлі позначені `preserve()` і задаються в Railway, а не в репозиторії.
 
 - Власний домен конфігурація не реєструє: `api.khronist.org` додається в дашборді Railway (Settings → Networking), записи CNAME і TXT — у Cloudflare в режимі «DNS only». Після цього домен дописується в `domains` сервісу в `.railway/railway.ts`, і `railway config plan` має показати відсутність змін (`pull` не використовуємо: він перезаписує файл згенерованим кодом).
 - На Windows SDK `railway` перевіряє версію CLI запуском `process.env._ || "railway"` без оболонки й не бачить обгортку `railway.cmd` з npm, тому падає з «requires Railway CLI 5.42.1 or newer» навіть на новому CLI. У PowerShell перед `railway config` вказати справжній файл: `$env:_ = "$(npm root -g)\@railway\cli\bin\railway.exe"`.
@@ -41,9 +41,19 @@ Fastify 5 + Drizzle + PostgreSQL 18. Контракти запитів і від
 - `chunks.tsv` — обов'язкова колонка `tsvector`, заповнюється інгестією (`to_tsvector('simple', …)` через `sql`, текст плюс варіанти зі `synonyms`). Унікальність чанка — `(source_id, text_hash)`.
 - Повнотекстовий пошук по `transcriptions.normalized_text` обслуговує індекс на виразі `to_tsvector('simple', normalized_text)`; запит має використовувати той самий вираз буквально.
 - Відкрите питання дизайну: чи може бути кілька версій одного регіону зі статусом `verified`. Правило поки не закладене в схему.
-- Таблиці Better Auth описані за документацією; звірити з `@better-auth/cli generate` під час підключення авторизації (версія 1.7) і за потреби додати міграцію.
+- Таблиці Better Auth звірено зі схемою `@better-auth/core` 1.7.23 (`db/get-tables`): поля збігаються, плагіни `emailOTP` і `bearer` нових таблиць не додають.
 - Колонки `timestamptz` повертаються як `Date`, а контракти очікують рядок ISO: перетворювати перед відповіддю.
 - Локаль бази: `pg_trgm` і конфігурація `simple` залежать від `LC_CTYPE`. Перевірити нижній регістр кирилиці на проді (`select lower('Б')`).
+
+## Вхід (`/api/auth/*`)
+
+Better Auth з плагінами `emailOTP` і `bearer` (`src/auth`), адаптер Drizzle над таблицями `user`, `session`, `account`, `verification`. Маршрути реєструються лише разом із `RESEND_API_KEY`, `BETTER_AUTH_SECRET` (від 32 символів), `BETTER_AUTH_URL` і `MAIL_FROM`; без ключа Resend входу немає й локально, а прод без цих змінних не стартує.
+
+- `POST /api/auth/email-otp/send-verification-otp` з `{ email, type: 'sign-in' }` надсилає лист із 6-значним кодом, що діє 5 хвилин (3 спроби). Відповідь не чекає на Resend, щоб час відповіді не виказував, чи пішов лист; збій відправлення лише пишеться в лог, без адреси.
+- `POST /api/auth/sign-in/email-otp` з `{ email, otp }` створює користувача, якщо його ще немає, і повертає токен сесії в заголовку `set-auth-token`. Далі токен іде в `Authorization: Bearer <токен>`: `GET /api/auth/get-session` повертає сесію й користувача, `POST /api/auth/sign-out` її завершує. Сесія діє 7 днів.
+- Better Auth перевіряє `Origin` на маршрутах коду: довірені — `BETTER_AUTH_URL`, `CORS_ORIGINS` і будь-яке розширення Chrome (`chrome-extension://*`), бо ID розпакованого розширення різний на кожній машині. Інший сайт отримує 403. У тестах Better Auth цю перевірку за замовчуванням вимикає, тож `src/auth` вмикає її явно.
+- Ліміт Better Auth (3 запити на хвилину на маршрути коду) діє лише в `NODE_ENV=production` і живе в пам'яті процесу; адреса клієнта — із `CLIENT_IP_HEADER`.
+- Помилки цих маршрутів — у форматі Better Auth (`{ code, message }`), а не `{ error: { code, message } }` решти API.
 
 ## Розпізнавання (`/v1/recognitions`)
 

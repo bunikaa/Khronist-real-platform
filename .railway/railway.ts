@@ -40,8 +40,12 @@ export default defineRailway(() => {
       MODEL_CALLS_PER_DAY: '2000',
       HTR_MODEL_PRIMARY: 'claude-sonnet-5-5',
       HTR_MODEL_FALLBACK: 'gemini-3.6-flash',
+      BETTER_AUTH_URL: 'https://api.khronist.org',
+      MAIL_FROM: 'Хроніст <hello@khronist.org>',
       ANTHROPIC_API_KEY: preserve(),
       GOOGLE_API_KEY: preserve(),
+      BETTER_AUTH_SECRET: preserve(),
+      RESEND_API_KEY: preserve(),
     },
   })
 

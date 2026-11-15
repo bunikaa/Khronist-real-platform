@@ -8,8 +8,10 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod'
+import { createAuth, type AuthOptions } from './auth/index.ts'
 import { ApiError } from './lib/errors.ts'
 import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
+import { authRoutes } from './routes/auth.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
 import type { RecognitionDeps } from './services/recognitions.ts'
@@ -21,6 +23,7 @@ export type AppDeps = HealthDeps & {
   guestRecognitionsPerDay?: number
   isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
+  auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'>
 }
 
 const shuttingDown = {
@@ -115,6 +118,15 @@ export const buildApp = async (deps: AppDeps) => {
   await app.register(rateLimit, { global: false, keyGenerator: clientKey })
 
   await app.register(healthRoutes(deps))
+  if (deps.auth) {
+    const auth = createAuth({
+      ...deps.auth,
+      trustedOrigins: deps.corsOrigins ?? [],
+      clientIpHeader: deps.clientIpHeader,
+      log: app.log,
+    })
+    await app.register(authRoutes(auth, deps.auth.baseURL))
+  }
   if (deps.recognitions) {
     await app.register(
       recognitionRoutes(
