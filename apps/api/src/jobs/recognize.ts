@@ -20,7 +20,7 @@ import {
 } from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { HtrReader } from '../services/htr/index.ts'
-import type { EntityExtractor, Normalizer } from '../services/normalize.ts'
+import { assertNormalized, type EntityExtractor, type Normalizer } from '../services/normalize.ts'
 import { insertTranscriptionVersion, normalizedTextOf } from '../services/transcriptions.ts'
 import type { EventHub } from './events.ts'
 
@@ -53,7 +53,7 @@ export type JobLogger = {
   info: LogFn
   warn: LogFn
   error: LogFn
-  child: (bindings: { recognitionId: string }) => JobLogger
+  child: (bindings: Record<string, string>) => JobLogger
 }
 
 export type JobDeps = {
@@ -180,25 +180,6 @@ const checkLines = (raw: Line[]): Line[] => {
   return lines
 }
 
-const checkNormalized = (lines: Line[], output: NormalizeOutput): NormalizeOutput => {
-  if (output.lines.length !== lines.length) {
-    throw new Error(`normalization returned ${output.lines.length} of ${lines.length} lines`)
-  }
-  output.lines.forEach((line, index) => {
-    const read = lines[index]?.words ?? []
-    if (line.words.map((word) => word.text).join(' ') !== line.text) {
-      throw new Error(`the words of normalized line ${index} do not add up to its text`)
-    }
-    if (line.words.length !== read.length) {
-      throw new Error(`normalized line ${index} has ${line.words.length} of ${read.length} words`)
-    }
-    if (read.some((word, at) => word.uncertain && !line.words[at]?.uncertain)) {
-      throw new Error(`normalized line ${index} lost an uncertain word`)
-    }
-  })
-  return output
-}
-
 const checkEntities = (text: string, found: Entity[]): Entity[] => {
   for (const entity of found) {
     if (entity.end <= entity.start || entity.end > text.length) {
@@ -281,12 +262,12 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
     await setStatus(db, recognitionId, 'normalizing')
     hub.publish(recognitionId, { event: 'progress', data: { status: 'normalizing' } })
     const normalized = await runWithTimeout(
-      (signal) => normalizer.normalize(lines, hints, signal),
+      (signal) => normalizer.normalize({ lines, hints, signal, log }),
       deps.normalizeTimeoutMs ?? normalizeTimeoutMs,
       'normalization',
       stopped,
     )
-      .then((output) => output && checkNormalized(lines, output))
+      .then((output) => output && assertNormalized(lines, output))
       .catch((error: unknown) => {
         log.warn({ err: error }, 'normalization failed, keeping the lines as read')
         return null

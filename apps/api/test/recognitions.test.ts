@@ -412,7 +412,7 @@ describe('recognitions', () => {
       const region = await regionOf()
       const row = await queuedRecognition(region.id)
       const normalizer: Normalizer = {
-        normalize: (lines) =>
+        normalize: ({ lines }) =>
           new Promise((resolve) =>
             setTimeout(
               () =>
@@ -567,12 +567,12 @@ describe('recognitions', () => {
 
     it('stores normalized lines and expansions and builds the text from them', async () => {
       const normalizer: Normalizer = {
-        normalize: async (lines) => ({
+        normalize: async ({ lines }) => ({
           lines: lines.map((line) => ({
             text: line.words.map((word) => word.text.replace(/ъ$/, '')).join(' '),
             words: line.words.map((word) => ({ ...word, text: word.text.replace(/ъ$/, '') })),
           })),
-          expansions: [{ from: 'Свящ.', to: 'Священник' }],
+          expansions: [{ from: 'крестьянинъ', to: 'крестьянин' }],
         }),
       }
       const state = await doneState({ normalizer })
@@ -585,14 +585,14 @@ describe('recognitions', () => {
         text: 'Григоріева',
         uncertain: true,
       })
-      expect(transcription.expansions).toEqual([{ from: 'Свящ.', to: 'Священник' }])
+      expect(transcription.expansions).toEqual([{ from: 'крестьянинъ', to: 'крестьянин' }])
     })
 
     it('keeps the lines as read when normalization breaks a rule of the contract', async () => {
       const broken: Normalizer[] = [
         { normalize: async () => ({ lines: [], expansions: [] }) },
         {
-          normalize: async (lines) => ({
+          normalize: async ({ lines }) => ({
             lines: lines.map((line) => ({
               text: line.text,
               words: line.words.map((word) => ({ ...word, uncertain: false })),
@@ -601,7 +601,7 @@ describe('recognitions', () => {
           }),
         },
         {
-          normalize: async (lines) => ({
+          normalize: async ({ lines }) => ({
             lines: lines.map((line) => ({
               text: `${line.text} зайве`,
               words: [...line.words, { text: 'зайве', uncertain: false }],

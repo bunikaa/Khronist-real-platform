@@ -5,6 +5,8 @@ type LlmText = { type: 'text'; text: string }
 
 export type LlmLog = { warn: (details: object, message: string) => void }
 
+export type LlmCallLog = LlmLog & { info: (details: object, message: string) => void }
+
 export type LlmRequest<T> = {
   system: string
   content: Array<LlmImage | LlmText>

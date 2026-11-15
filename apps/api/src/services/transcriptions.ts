@@ -118,24 +118,11 @@ export const insertTranscriptionVersion = async (
   return transcription.id
 }
 
-export const loadTranscription = async (
-  db: Database,
-  transcriptionId: string,
-): Promise<Transcription | undefined> => {
-  const [t] = await db
-    .select()
-    .from(transcriptions)
-    .where(eq(transcriptions.id, transcriptionId))
-    .limit(1)
-  if (!t) return undefined
-
-  const [region] = await db.select().from(regions).where(eq(regions.id, t.regionId)).limit(1)
-  if (!region) return undefined
-
+export const loadLines = async (db: Database, transcriptionId: string): Promise<Line[]> => {
   const lineRows = await db
     .select()
     .from(transcriptionLines)
-    .where(eq(transcriptionLines.transcriptionId, t.id))
+    .where(eq(transcriptionLines.transcriptionId, transcriptionId))
     .orderBy(asc(transcriptionLines.idx))
   const wordRows =
     lineRows.length === 0
@@ -150,6 +137,40 @@ export const loadTranscription = async (
             ),
           )
           .orderBy(asc(lineWords.idx))
+  return lineRows.map((line) => {
+    const words = wordRows
+      .filter((word) => word.lineId === line.id)
+      .map((word) => ({
+        text: word.text,
+        uncertain: word.uncertain,
+        ...(word.confidence !== null && { confidence: word.confidence }),
+      }))
+    return {
+      idx: line.idx,
+      text: line.text,
+      box: { x: line.x, y: line.y, w: line.w, h: line.h },
+      boxSource: line.boxSource,
+      uncertain: words.some((word) => word.uncertain),
+      words,
+    }
+  })
+}
+
+export const loadTranscription = async (
+  db: Database,
+  transcriptionId: string,
+): Promise<Transcription | undefined> => {
+  const [t] = await db
+    .select()
+    .from(transcriptions)
+    .where(eq(transcriptions.id, transcriptionId))
+    .limit(1)
+  if (!t) return undefined
+
+  const [region] = await db.select().from(regions).where(eq(regions.id, t.regionId)).limit(1)
+  if (!region) return undefined
+
+  const lines = await loadLines(db, t.id)
   const entityRows = await db.select().from(entities).where(eq(entities.transcriptionId, t.id))
 
   let shelfmark: Shelfmark | undefined
@@ -182,23 +203,7 @@ export const loadTranscription = async (
     box: { x: region.x, y: region.y, w: region.w, h: region.h },
     version: t.version,
     status: t.status,
-    lines: lineRows.map((line) => {
-      const words = wordRows
-        .filter((word) => word.lineId === line.id)
-        .map((word) => ({
-          text: word.text,
-          uncertain: word.uncertain,
-          ...(word.confidence !== null && { confidence: word.confidence }),
-        }))
-      return {
-        idx: line.idx,
-        text: line.text,
-        box: { x: line.x, y: line.y, w: line.w, h: line.h },
-        boxSource: line.boxSource,
-        uncertain: words.some((word) => word.uncertain),
-        words,
-      }
-    }),
+    lines,
     normalizedText: t.normalizedText,
     ...(t.normalizedLines && { normalizedLines: t.normalizedLines }),
     ...(t.expansions && { expansions: t.expansions }),

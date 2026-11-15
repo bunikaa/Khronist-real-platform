@@ -16,7 +16,8 @@ export type JobQueue = {
   stop: () => string[]
 }
 
-const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
+export const isAbort = (error: unknown) =>
+  error instanceof DOMException && error.name === 'AbortError'
 
 export const createJobQueue = (
   concurrency: number,

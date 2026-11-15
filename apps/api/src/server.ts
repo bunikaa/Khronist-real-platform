@@ -10,7 +10,7 @@ import { closeOwnRecognitions } from './jobs/shutdown.ts'
 import { defaultDrainMs, staleSweepMs } from './lib/limits.ts'
 import { createCallBudget } from './services/budget.ts'
 import { selectHtrReader } from './services/htr/index.ts'
-import { noEntities, passthroughNormalizer } from './services/normalize.ts'
+import { noEntities, selectNormalizer } from './services/normalize.ts'
 
 const closeMarginMs = 10_000
 const statementTimeoutMs = 15_000
@@ -32,6 +32,7 @@ const drainMs =
 const { db, client } = createDatabase(config.DATABASE_URL, { statementTimeoutMs })
 const budget = createCallBudget(db, config.MODEL_CALLS_PER_DAY)
 const reader = selectHtrReader(config, budget)
+const normalizer = selectNormalizer(config, budget)
 const hub = createEventHub()
 const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
 const signIn = signInSettings(config)
@@ -52,7 +53,7 @@ const app = await buildApp({
   recognitions: {
     db,
     reader,
-    normalizer: passthroughNormalizer,
+    normalizer,
     entities: noEntities,
     budget,
     hub,

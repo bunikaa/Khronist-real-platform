@@ -8,7 +8,8 @@ import {
 } from './lib/limits.ts'
 
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
-const readerModel = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
+const modelName = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
+const modelEffort = z.enum(['low', 'medium', 'high', 'xhigh', 'max'])
 const corsOrigins = z
   .string()
   .transform((value) =>
@@ -76,12 +77,12 @@ const configSchema = z
     LLM_FIXTURES: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
     ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     GOOGLE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, readerModel.default('claude-sonnet-5-5')),
-    HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, readerModel.optional()),
-    HTR_EFFORT: z.preprocess(
-      emptyToUndefined,
-      z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
-    ),
+    HTR_MODEL_PRIMARY: z.preprocess(emptyToUndefined, modelName.default('claude-sonnet-5-5')),
+    HTR_MODEL_FALLBACK: z.preprocess(emptyToUndefined, modelName.optional()),
+    HTR_EFFORT: z.preprocess(emptyToUndefined, modelEffort.default('medium')),
+    LLM_MODEL_PRIMARY: z.preprocess(emptyToUndefined, modelName.default('claude-sonnet-5-5')),
+    LLM_MODEL_FALLBACK: z.preprocess(emptyToUndefined, modelName.optional()),
+    LLM_EFFORT: z.preprocess(emptyToUndefined, modelEffort.default('medium')),
     HTR_URL: z.preprocess(emptyToUndefined, z.url().optional()),
     BETTER_AUTH_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
     BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
@@ -102,12 +103,24 @@ const configSchema = z
       config.NODE_ENV !== 'production' ||
       config.LLM_FIXTURES ||
       hasKeyFor(config, config.HTR_MODEL_PRIMARY),
-    { message: 'the primary model has no API key', path: ['HTR_MODEL_PRIMARY'] },
+    { message: 'the primary reading model has no API key', path: ['HTR_MODEL_PRIMARY'] },
   )
   .refine(
     (config) =>
       config.HTR_MODEL_FALLBACK === undefined || hasKeyFor(config, config.HTR_MODEL_FALLBACK),
-    { message: 'the fallback model has no API key', path: ['HTR_MODEL_FALLBACK'] },
+    { message: 'the fallback reading model has no API key', path: ['HTR_MODEL_FALLBACK'] },
+  )
+  .refine(
+    (config) =>
+      config.NODE_ENV !== 'production' ||
+      config.LLM_FIXTURES ||
+      hasKeyFor(config, config.LLM_MODEL_PRIMARY),
+    { message: 'the primary text model has no API key', path: ['LLM_MODEL_PRIMARY'] },
+  )
+  .refine(
+    (config) =>
+      config.LLM_MODEL_FALLBACK === undefined || hasKeyFor(config, config.LLM_MODEL_FALLBACK),
+    { message: 'the fallback text model has no API key', path: ['LLM_MODEL_FALLBACK'] },
   )
   .refine((config) => config.HTR_URL === undefined, {
     message: 'the remote reader is not implemented yet, leave HTR_URL empty',
@@ -148,6 +161,7 @@ const configSchema = z
   )
 
 export type Config = z.infer<typeof configSchema>
+export type ModelEffort = z.infer<typeof modelEffort>
 
 type SignInSettings = {
   secret: string
@@ -187,4 +201,4 @@ export const loadDatabaseUrl = (env: NodeJS.ProcessEnv = process.env): string =>
 export type ProviderStatus = Pick<HealthResponse, 'llm' | 'htr'>
 
 export const llmStatus = (config: Config): ProviderStatus['llm'] =>
-  hasKeyFor(config, config.HTR_MODEL_PRIMARY) ? 'ok' : 'degraded'
+  hasKeyFor(config, config.LLM_MODEL_PRIMARY) ? 'ok' : 'degraded'
