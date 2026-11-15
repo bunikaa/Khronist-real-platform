@@ -8,6 +8,7 @@ import {
   explainRequestSchema,
   htrVisionOutputSchema,
   isGroundedQuote,
+  pageLookupQuerySchema,
   patchLinesRequestSchema,
   searchQuerySchema,
   shelfmarkSchema,
@@ -91,6 +92,24 @@ describe('searchQuerySchema', () => {
     const parsed = searchQuerySchema.parse({ q: 'Коваленко', verifiedOnly: 'false' })
     expect(parsed.verifiedOnly).toBe(false)
     expect(parsed.limit).toBe(20)
+  })
+})
+
+describe('pageLookupQuerySchema', () => {
+  const base = { archive: 'ЦДІАК', fond: '127', opys: '1078', sprava: '177' }
+
+  it('reads the image number from the query string', () => {
+    expect(pageLookupQuerySchema.parse({ ...base, image: '4' }).image).toBe(4)
+  })
+
+  it('needs a folio or an image', () => {
+    expect(pageLookupQuerySchema.safeParse(base).success).toBe(false)
+    expect(pageLookupQuerySchema.safeParse({ ...base, folio: '14зв' }).success).toBe(true)
+  })
+
+  it('rejects an image that is not a positive whole number', () => {
+    expect(pageLookupQuerySchema.safeParse({ ...base, image: '0' }).success).toBe(false)
+    expect(pageLookupQuerySchema.safeParse({ ...base, image: 'abc' }).success).toBe(false)
   })
 })
 

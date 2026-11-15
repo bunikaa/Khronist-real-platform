@@ -13,7 +13,9 @@ import { ApiError } from './lib/errors.ts'
 import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
 import { authRoutes } from './routes/auth.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
+import { pageRoutes } from './routes/pages.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
+import { transcriptionRoutes } from './routes/transcriptions.ts'
 import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
@@ -137,6 +139,8 @@ export const buildApp = async (deps: AppDeps) => {
         },
       ),
     )
+    await app.register(transcriptionRoutes(deps.recognitions.db))
+    await app.register(pageRoutes(deps.recognitions.db))
   }
   return app
 }
