@@ -3,13 +3,13 @@ import type { Database } from '../db/client.ts'
 import { modelCalls } from '../db/schema.ts'
 import type { CallBudget } from './llm/index.ts'
 
-const today = (): string => new Date().toISOString().slice(0, 10)
+export const utcDay = (): string => new Date().toISOString().slice(0, 10)
 
 export const createCallBudget = (db: Database, callsPerDay: number): CallBudget => ({
   spend: async () => {
     const rows = await db
       .insert(modelCalls)
-      .values({ day: today(), calls: 1 })
+      .values({ day: utcDay(), calls: 1 })
       .onConflictDoUpdate({
         target: modelCalls.day,
         set: { calls: sql`${modelCalls.calls} + 1` },
@@ -22,7 +22,7 @@ export const createCallBudget = (db: Database, callsPerDay: number): CallBudget 
     const [row] = await db
       .select({ calls: modelCalls.calls })
       .from(modelCalls)
-      .where(eq(modelCalls.day, today()))
+      .where(eq(modelCalls.day, utcDay()))
     return (row?.calls ?? 0) < callsPerDay
   },
 })

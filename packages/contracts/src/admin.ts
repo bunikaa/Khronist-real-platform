@@ -82,6 +82,13 @@ export const adminSynonymsRequestSchema = z.object({
 })
 export type AdminSynonymsRequest = z.infer<typeof adminSynonymsRequestSchema>
 
+export const adminSynonymsResponseSchema = z.object({
+  inserted: z.number().int().min(0),
+  updated: z.number().int().min(0),
+  unchanged: z.number().int().min(0),
+})
+export type AdminSynonymsResponse = z.infer<typeof adminSynonymsResponseSchema>
+
 export const adminStatsResponseSchema = z.object({
   recognitions: z.object({
     total: z.number().int().min(0),

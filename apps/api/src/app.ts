@@ -11,6 +11,7 @@ import {
 import { createAuth, type AuthOptions } from './auth/index.ts'
 import { ApiError } from './lib/errors.ts'
 import { defaultGuestRecognitionsPerDay } from './lib/limits.ts'
+import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { pageRoutes } from './routes/pages.ts'
@@ -26,6 +27,7 @@ export type AppDeps = HealthDeps & {
   isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
   auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'>
+  admin?: AdminDeps
 }
 
 const shuttingDown = {
@@ -142,5 +144,6 @@ export const buildApp = async (deps: AppDeps) => {
     await app.register(transcriptionRoutes(deps.recognitions.db))
     await app.register(pageRoutes(deps.recognitions.db))
   }
+  if (deps.admin) await app.register(adminRoutes(deps.admin))
   return app
 }

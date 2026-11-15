@@ -220,50 +220,62 @@ describe('database schema', () => {
     const makeSource = async (title: string) => {
       const [source] = await db
         .insert(sources)
-        .values({ title, licence: 'test', kind: 'dictionary' })
+        .values({
+          title,
+          url: `https://example.org/${encodeURIComponent(title)}`,
+          licence: 'test',
+          kind: 'dictionary',
+          periodFrom: 18,
+          periodTo: 19,
+        })
         .returning()
       if (!source) throw new Error('source not inserted')
       return source
     }
 
-    it('allows the same text in two sources but not twice in one', async () => {
-      const first = await makeSource('Перше')
-      const second = await makeSource('Друге')
-      const row = (sourceId: string) => ({
-        sourceId,
-        text: 'восприємники',
-        textHash: 'same-hash',
-        type: 'term' as const,
-        tsv: sql`to_tsvector('simple', 'восприємники')`,
-      })
-      await db.insert(chunks).values(row(first.id))
-      await db.insert(chunks).values(row(second.id))
+    const chunkRow = (sourceId: string, articleKey: string, text: string) => ({
+      sourceId,
+      articleKey,
+      idx: 0,
+      text,
+      topic: articleKey,
+      type: 'term' as const,
+      periodFrom: 18,
+      periodTo: 19,
+    })
+
+    it('keeps one chunk per article key and index', async () => {
+      const source = await makeSource('Перше')
+      await db.insert(chunks).values(chunkRow(source.id, 'vospryiemnyky', 'восприємники'))
       await expectViolation(
-        db.insert(chunks).values(row(first.id)),
+        db.insert(chunks).values(chunkRow(source.id, 'vospryiemnyky', 'інший текст')),
         '23505',
-        'chunks_source_hash_unique',
+        'chunks_article_idx_unique',
       )
     })
 
-    it('requires a search vector', async () => {
-      const source = await makeSource('Третє')
-      await expectViolation(
-        db.execute(
-          sql`insert into chunks (id, source_id, text, text_hash, type) values (gen_random_uuid(), ${source.id}, 'a', 'h', 'term')`,
-        ),
-        '23502',
+    it('computes the search vector from the topic and the text', async () => {
+      const source = await makeSource('Друге')
+      await db.insert(chunks).values(chunkRow(source.id, 'kum', 'хрещений батько'))
+      const rows = await db
+        .select({ id: chunks.id })
+        .from(chunks)
+        .where(sql`${chunks.tsv} @@ plainto_tsquery('simple', 'kum батько')`)
+      expect(rows).toHaveLength(1)
+    })
+
+    it('keeps the full-text index after the search vector became a computed column', async () => {
+      const result = await db.execute<{ indexname: string }>(
+        sql`select indexname from pg_indexes where tablename = 'chunks' and indexname = 'chunks_tsv_idx'`,
       )
+      expect(result.rows).toHaveLength(1)
     })
 
     it('finds a spelling variant by trigram similarity', async () => {
       const source = await makeSource('Четверте')
-      await db.insert(chunks).values({
-        sourceId: source.id,
-        text: 'Борщагівка, село Київського повіту',
-        textHash: 'borshchahivka',
-        type: 'place',
-        tsv: sql`to_tsvector('simple', 'Борщагівка, село Київського повіту')`,
-      })
+      await db
+        .insert(chunks)
+        .values(chunkRow(source.id, 'borshchahivka', 'Борщагівка, село Київського повіту'))
       const rows = await db
         .select({ id: chunks.id })
         .from(chunks)

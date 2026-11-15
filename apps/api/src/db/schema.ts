@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import type { NormalizeOutput } from '@khronist/contracts'
 import {
   boolean,
@@ -336,10 +336,11 @@ export const edits = pgTable(
 export const sources = pgTable('sources', {
   id: id(),
   title: text('title').notNull(),
-  url: text('url'),
+  url: text('url').notNull().unique(),
   licence: text('licence').notNull(),
   kind: sourceKindEnum('kind').notNull(),
-  period: text('period'),
+  periodFrom: integer('period_from').notNull(),
+  periodTo: integer('period_to').notNull(),
 })
 
 export const chunks = pgTable(
@@ -349,15 +350,22 @@ export const chunks = pgTable(
     sourceId: uuid('source_id')
       .notNull()
       .references(() => sources.id, { onDelete: 'cascade' }),
+    articleKey: text('article_key').notNull(),
+    idx: integer('idx').notNull(),
     text: text('text').notNull(),
-    textHash: text('text_hash').notNull(),
-    topic: text('topic'),
+    topic: text('topic').notNull(),
     type: chunkTypeEnum('type').notNull(),
-    period: text('period'),
-    tsv: tsvector('tsv').notNull(),
+    periodFrom: integer('period_from').notNull(),
+    periodTo: integer('period_to').notNull(),
+    wikidataId: text('wikidata_id'),
+    tsv: tsvector('tsv')
+      .notNull()
+      .generatedAlwaysAs(
+        (): SQL => sql`to_tsvector('simple', ${chunks.topic} || ' ' || ${chunks.text})`,
+      ),
   },
   (t) => [
-    unique('chunks_source_hash_unique').on(t.sourceId, t.textHash),
+    unique('chunks_article_idx_unique').on(t.articleKey, t.idx),
     index('chunks_tsv_idx').using('gin', t.tsv),
     index('chunks_text_trgm_idx').using('gin', t.text.op('gin_trgm_ops')),
   ],

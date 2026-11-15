@@ -24,6 +24,7 @@ const corsOrigins = z
   )
 
 const databaseUrl = z.string().min(1)
+const minProductionAdminKeyLength = 32
 
 type ProviderKeys = { ANTHROPIC_API_KEY?: string | undefined; GOOGLE_API_KEY?: string | undefined }
 
@@ -77,6 +78,7 @@ const configSchema = z
     BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     MAIL_FROM: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    ADMIN_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   })
   .refine((config) => !(config.NODE_ENV === 'production' && config.LLM_FIXTURES), {
     message: 'LLM_FIXTURES must not be enabled in production',
@@ -111,6 +113,17 @@ const configSchema = z
     {
       message: 'sign-in needs BETTER_AUTH_SECRET, BETTER_AUTH_URL and MAIL_FROM',
       path: ['RESEND_API_KEY'],
+    },
+  )
+
+  .refine(
+    (config) =>
+      config.NODE_ENV !== 'production' ||
+      config.ADMIN_API_KEY === undefined ||
+      config.ADMIN_API_KEY.length >= minProductionAdminKeyLength,
+    {
+      message: `the admin key must have at least ${minProductionAdminKeyLength} characters in production`,
+      path: ['ADMIN_API_KEY'],
     },
   )
 

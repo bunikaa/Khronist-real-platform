@@ -29,6 +29,13 @@
       "when": 1794704169073,
       "tag": "0003_audit_readings_and_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794749558301,
+      "tag": "0004_admin_corpus",
+      "breakpoints": true
     }
   ]
 }

@@ -108,12 +108,15 @@ POST /v1/admin/sources   body: { items: [{ url, title, licence, kind, periodFrom
 POST /v1/admin/chunks    body: { items: [{ articleKey, idx, sourceId, text, topic, type, periodFrom, periodTo, wikidataId? }] }
                           → 200 { inserted, updated, unchanged, deleted }
 POST /v1/admin/synonyms  body: { items: [{ term, variant, type }] }                                  (upsert за term + variant)
+                          → 200 { inserted, updated, unchanged }
 GET  /v1/admin/stats     → { recognitions: { total, failed, p95Ms }, verifiedPages, modelCalls: { today, limit } }
 Усі /v1/admin/* — заголовок Authorization: Bearer <ADMIN_API_KEY>.
 ```
 
-- Джерело ідентифікує `url` (унікальний, лише https): повторне надсилання оновлює рядок і повертає той самий `id`.
+- Джерело ідентифікує `url` (унікальний, лише https): повторне надсилання оновлює рядок і повертає той самий `id`. Кілька статей можуть назвати те саме джерело: однакові `url` в одному запиті дають один рядок і один елемент відповіді (береться останній).
 - Чанк ідентифікує `articleKey` (назва файлу статті без `.md`) і `idx` (номер чанка в статті). `POST /v1/admin/chunks` — синхронізація повним набором: чанки з новим текстом оновлюються, без змін — не чіпаються, ключі, яких у запиті немає, видаляються. Повторна інгестія без змін не змінює жодного рядка; виправлена стаття лишає рівно свої чанки.
+- Синонім ідентифікують `term` і `variant`; повтор пари в запиті — береться останній. Синоніми, яких у запиті немає, лишаються.
+- `stats`: `total` і `failed` — розпізнавання без відповідей із кешу; `p95Ms` — 95-й перцентиль часу від запиту до готової транскрипції (з чергою) для прочитаних моделлю, `null`, поки читань немає; `verifiedPages` — сторінки, де є хоча б одна підтверджена версія; `modelCalls` — бюджет `MODEL_CALLS_PER_DAY` за поточну UTC-добу.
 - `ADMIN_API_KEY` у проді — щонайменше 32 символи, порівнюється через `crypto.timingSafeEqual`; без ключа маршрути адмінки не реєструються. Тіло запиту — до 2 МіБ.
 
 ## 3. HTR-сервіс (трек B, `services/htr`, Modal web endpoint)
