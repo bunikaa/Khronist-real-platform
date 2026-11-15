@@ -379,6 +379,26 @@ describe('vision reader', () => {
     const { lines } = await readReply([{ text: ' Іван  Коваленко ', words }])
     expect(lines[0]?.uncertain).toBe(true)
   })
+
+  it('writes the fita lookalikes Ө and ө as Ѳ and ѳ in the line and its words', async () => {
+    const { lines } = await readReply([
+      {
+        text: 'Өеодоръ Аөанасьевъ',
+        words: [
+          { text: 'Өеодоръ', uncertain: false },
+          { text: 'Аөанасьевъ', uncertain: true },
+        ],
+      },
+    ])
+    expect(lines[0]?.text).toBe('Ѳеодоръ Аѳанасьевъ')
+    expect(lines[0]?.words?.map((word) => word.text)).toEqual(['Ѳеодоръ', 'Аѳанасьевъ'])
+  })
+
+  it('accepts a line that writes fita as Ѳ in the text and as Ө in the words', async () => {
+    const words = [{ text: 'Өеодоръ', uncertain: false }]
+    const { lines } = await readReply([{ text: 'Ѳеодоръ', words }])
+    expect(lines[0]?.words?.[0]?.text).toBe('Ѳеодоръ')
+  })
 })
 
 describe('reader selection', () => {
