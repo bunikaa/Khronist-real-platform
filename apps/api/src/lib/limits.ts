@@ -5,6 +5,7 @@ export const guestRecognitionsPerMinute = 10
 export const activeRecognitionsPerClient = 3
 export const maxBacklog = 50
 export const recognitionReadsPerMinute = 120
+export const recordReadsPerMinute = 120
 export const streamsPerClient = 5
 export const maxOpenStreams = 300
 export const streamRetryAfterSeconds = 10

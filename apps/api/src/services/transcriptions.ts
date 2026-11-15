@@ -33,6 +33,20 @@ export type NewVersion = {
   entities: Entity[]
 }
 
+export const shelfmarkOf = (
+  document: typeof documents.$inferSelect,
+  page: typeof pages.$inferSelect,
+): Shelfmark => ({
+  archive: document.archive,
+  fond: document.fond,
+  opys: document.opys,
+  sprava: document.sprava,
+  ...(page.folio !== null && { folio: page.folio }),
+  ...(page.imageNo !== null && { image: page.imageNo }),
+  ...(document.portal !== null && { portal: document.portal }),
+  ...(page.sourceUrl !== null && { portalUrl: page.sourceUrl }),
+})
+
 export const normalizedTextOf = (lines: Line[], normalized: NormalizeOutput | null): string =>
   (normalized?.lines ?? lines).map((line) => line.text).join('\n')
 
@@ -146,18 +160,7 @@ export const loadTranscription = async (
       .innerJoin(documents, eq(pages.documentId, documents.id))
       .where(eq(pages.id, region.pageId))
       .limit(1)
-    if (row) {
-      shelfmark = {
-        archive: row.document.archive,
-        fond: row.document.fond,
-        opys: row.document.opys,
-        sprava: row.document.sprava,
-        ...(row.page.folio !== null && { folio: row.page.folio }),
-        ...(row.page.imageNo !== null && { image: row.page.imageNo }),
-        ...(row.document.portal !== null && { portal: row.document.portal }),
-        ...(row.page.sourceUrl !== null && { portalUrl: row.page.sourceUrl }),
-      }
-    }
+    if (row) shelfmark = shelfmarkOf(row.document, row.page)
   }
 
   const nameOf = async (userId: string | null) => {

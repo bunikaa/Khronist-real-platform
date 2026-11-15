@@ -1,6 +1,6 @@
 # 07 · Контракти між частинами
 
-Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють лише `/health` і `/v1/recognitions*`; решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
+Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id` і `GET /v1/pages/lookup`; решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
 
 Спільні правила: JSON, UTF-8; ідентифікатори — UUID; час — ISO 8601 UTC; координати — частки 0…1 від ширини й висоти зображення (`x`, `y` — лівий верхній кут); помилки — `{ "error": { "code": "snake_case", "message": "людською мовою українською" } }`. Будь-який запит під час зупинки сервера отримує `503 { error: { code: 'shutting_down' } }` із `retry-after`. Кожна відповідь несе `x-request-id` (з `x-railway-request-id`, якщо його поставив Railway).
 
@@ -63,6 +63,8 @@ GET  /v1/transcriptions/:id/history
 
 - `:id` — завжди рядок конкретної версії. Нова версія регіону — новий рядок з новим `id`. `PATCH` і `verify` приймають лише останню версію регіону (для `PATCH` ще й `baseVersion` = її `version`), інакше `409 version_conflict` з поточною версією.
 - `normalizedLines` і `expansions` є лише тоді, коли нормалізація справді відбулася; без них `normalizedText` — прочитані рядки. `warnings` — попередження моделі про виділення й аркуш (порожній список не передається).
+- `pages/lookup` шукає сторінку за номером зображення, якщо він є в запиті, інакше за аркушем (так само сторінку створює `POST /v1/recognitions`); сторінки немає — `200 {}`. `transcriptions` — остання версія кожного регіону сторінки в порядку створення регіонів.
+- Ліміт гостя за IP: 120 `GET /v1/pages/lookup` на хвилину і окремо 120 `GET /v1/transcriptions/:id`; понад — `429 too_many_requests` з `retry-after`.
 - Підтверджувати може лише вхід з адресою зі списку `VERIFIER_EMAILS` (команда й історик) — інакше `403 forbidden`. Підпис зберігається в `transcriptions.verified_signature` і завжди показується поряд з іменем акаунта.
 
 ### Пояснення і чат

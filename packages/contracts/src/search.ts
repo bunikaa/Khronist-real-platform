@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { boxSchema, shelfmarkSchema, transcriptionStatusSchema } from './common.ts'
+import {
+  boxSchema,
+  shelfmarkBaseSchema,
+  shelfmarkSchema,
+  transcriptionStatusSchema,
+} from './common.ts'
 import { yearSchema } from './recognitions.ts'
 
 export const maxSearchQueryLength = 200
@@ -41,6 +46,17 @@ export const transcriptionSummarySchema = z.object({
   createdAt: z.iso.datetime(),
 })
 export type TranscriptionSummary = z.infer<typeof transcriptionSummarySchema>
+
+export const pageLookupQuerySchema = shelfmarkBaseSchema
+  .pick({ archive: true, fond: true, opys: true, sprava: true, folio: true })
+  .extend({
+    image: z.coerce.number().pipe(shelfmarkBaseSchema.shape.image.unwrap()).optional(),
+  })
+  .refine((query) => query.folio !== undefined || query.image !== undefined, {
+    message: 'folio or image is required',
+    path: ['folio'],
+  })
+export type PageLookupQuery = z.infer<typeof pageLookupQuerySchema>
 
 export const pageLookupResponseSchema = z.object({
   page: z
