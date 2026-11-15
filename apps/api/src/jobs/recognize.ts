@@ -20,7 +20,8 @@ import {
 } from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { HtrReader } from '../services/htr/index.ts'
-import { assertNormalized, type EntityExtractor, type Normalizer } from '../services/normalize.ts'
+import { assertEntitiesFit, type EntityExtractor } from '../services/entities.ts'
+import { assertNormalized, type Normalizer } from '../services/normalize.ts'
 import { insertTranscriptionVersion, normalizedTextOf } from '../services/transcriptions.ts'
 import type { EventHub } from './events.ts'
 
@@ -100,6 +101,40 @@ class NoTextError extends Error {
 const isActive = (id: string) =>
   and(eq(recognitions.id, id), inArray(recognitions.status, [...activeRecognitionStatuses]))
 
+const ensureActive = async (db: Database, id: string) => {
+  const [row] = await db
+    .select({ id: recognitions.id })
+    .from(recognitions)
+    .where(isActive(id))
+    .limit(1)
+  if (!row) throw new JobCancelledError()
+}
+
+type EntitySearch = {
+  normalizedText: string
+  hints?: Hints | undefined
+  log: JobLogger
+  timeoutMs: number
+  stopped?: AbortSignal | undefined
+}
+
+export const findEntities = (
+  extractor: EntityExtractor,
+  { normalizedText, hints, log, timeoutMs, stopped }: EntitySearch,
+): Promise<Entity[]> =>
+  runWithTimeout(
+    (signal) => extractor.extract({ normalizedText, hints, signal, log }),
+    timeoutMs,
+    'entities',
+    stopped,
+  )
+    .then((found) => assertEntitiesFit(normalizedText, found))
+    .catch((error: unknown) => {
+      if (stopped?.aborted) throw error
+      log.warn({ err: error }, 'entities failed, keeping the text without them')
+      return []
+    })
+
 const setStatus = async (db: Database, id: string, status: 'reading' | 'normalizing') => {
   const rows = await db
     .update(recognitions)
@@ -178,15 +213,6 @@ const checkLines = (raw: Line[]): Line[] => {
     if (line.idx !== index) throw new Error(`line ${index} has index ${line.idx}`)
   })
   return lines
-}
-
-const checkEntities = (text: string, found: Entity[]): Entity[] => {
-  for (const entity of found) {
-    if (entity.end <= entity.start || entity.end > text.length) {
-      throw new Error(`entity "${entity.text}" has an invalid span ${entity.start}-${entity.end}`)
-    }
-  }
-  return found
 }
 
 type ReadingToSave = {
@@ -273,17 +299,16 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
         return null
       })
     const normalizedText = normalizedTextOf(lines, normalized)
-    const entities = await runWithTimeout(
-      (signal) => deps.entities.extract(normalizedText, hints, signal),
-      deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
-      'entities',
-      stopped,
-    )
-      .then((found) => checkEntities(normalizedText, found))
-      .catch((error: unknown) => {
-        log.warn({ err: error }, 'entities failed, saving the transcription without them')
-        return []
-      })
+    await ensureActive(db, recognitionId)
+    const entities = stopped?.aborted
+      ? []
+      : await findEntities(deps.entities, {
+          normalizedText,
+          hints,
+          log,
+          timeoutMs: deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
+          stopped,
+        }).catch(() => [])
 
     stage = 'save'
     transcriptionId = await saveTranscription(db, recognitionId, {

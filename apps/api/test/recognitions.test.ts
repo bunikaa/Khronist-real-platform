@@ -14,7 +14,8 @@ import { closeOwnRecognitions } from '../src/jobs/shutdown.ts'
 import { maxBodyBytes } from '../src/lib/limits.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader } from '../src/services/htr/index.ts'
-import { noEntities, passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
+import { noEntities } from '../src/services/entities.ts'
+import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
 import {
   createRecordingReader,
   createTestApp,
@@ -507,9 +508,11 @@ describe('recognitions', () => {
       },
     })
 
-    it('saves nothing when the recognition is closed during normalization', async () => {
+    it('saves nothing and finds no entities when the recognition is closed during normalization', async () => {
+      const extract = vi.fn(async () => [])
       const { app, queue } = await createTestApp(database, {
         normalizer: closingNormalizer('answers'),
+        entities: { extract },
       })
       const created = await post(app, recognitionBody(nextPng()))
       await queue.onIdle()
@@ -517,6 +520,7 @@ describe('recognitions', () => {
       expect(state.json().status).toBe('failed')
       expect(state.json().error.code).toBe('restarted')
       expect(state.json().transcription).toBeUndefined()
+      expect(extract).not.toHaveBeenCalled()
       await app.close()
     })
 
@@ -635,9 +639,9 @@ describe('recognitions', () => {
     it('stores entities and returns them', async () => {
       const entity = {
         type: 'place',
-        text: 'Борщаговка',
-        start: 0,
-        end: 10,
+        text: 'Борщаговки',
+        start: 5,
+        end: 15,
         normalized: 'Борщагівка',
         wikidataId: 'Q1',
         extra: { modern: 'Київ' },
@@ -649,6 +653,19 @@ describe('recognitions', () => {
       await queue.onIdle()
       const state = await get(app, created.json().recognitionId)
       expect(state.json().transcription.entities).toEqual([entity])
+      await app.close()
+    })
+
+    it('saves the transcription without entities that do not match the text', async () => {
+      const misplaced = { type: 'place', text: 'Борщаговка', start: 0, end: 10 } as const
+      const { app, queue } = await createTestApp(database, {
+        entities: { extract: async () => [misplaced] },
+      })
+      const created = await post(app, recognitionBody(nextPng()))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      expect(state.json().status).toBe('done')
+      expect(state.json().transcription.entities).toEqual([])
       await app.close()
     })
 

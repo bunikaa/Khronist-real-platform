@@ -1,6 +1,5 @@
 import {
   normalizeOutputSchema,
-  type Entity,
   type Hints,
   type Line,
   type NormalizeOutput,
@@ -8,6 +7,7 @@ import {
 import { loadPrompt, renderPrompt } from '@khronist/prompts'
 import type { Config } from '../config.ts'
 import { normalizePrimaryLimitMs } from '../lib/limits.ts'
+import { hintValues, isRussianOrUnmarked } from './hints.ts'
 import type { CallBudget, LlmCallLog, LlmProvider } from './llm/index.ts'
 import { createProvider, selectProvider, type ProviderFactory } from './llm/select.ts'
 
@@ -22,17 +22,7 @@ export type Normalizer = {
   normalize: (input: NormalizeInput) => Promise<NormalizeOutput | null>
 }
 
-export type EntityExtractor = {
-  extract: (
-    normalizedText: string,
-    hints?: Hints | undefined,
-    signal?: AbortSignal | undefined,
-  ) => Promise<Entity[]>
-}
-
 export const passthroughNormalizer: Normalizer = { normalize: async () => null }
-
-export const noEntities: EntityExtractor = { extract: async () => [] }
 
 const letterRules: [RegExp, string][] = [
   [/ѣ/g, 'е'],
@@ -132,12 +122,8 @@ export const assertNormalized = (lines: Line[], output: NormalizeOutput): Normal
 
 const maxOutputTokens = 8192
 
-const normalizedLanguages = new Set<Hints['language']>([undefined, 'ru'])
-
 const promptValues = (lines: Line[], hints: Hints | undefined) => ({
-  language: hints?.language ?? 'unknown',
-  period: hints?.period ?? 'unknown',
-  documentType: hints?.documentType ?? 'unknown',
+  ...hintValues(hints),
   lines: JSON.stringify(
     lines.map((line) => ({
       text: line.words.map((word) => word.text).join(' '),
@@ -150,7 +136,7 @@ export const createLlmNormalizer = (llm: LlmProvider): Normalizer => {
   const prompt = loadPrompt('normalize')
   return {
     normalize: async ({ lines, hints, signal, log }) => {
-      if (!normalizedLanguages.has(hints?.language)) return null
+      if (!isRussianOrUnmarked(hints)) return null
       const schema = normalizeOutputSchema.superRefine((output, context) => {
         const problem = normalizationProblem(lines, output)
         if (problem) context.addIssue({ code: 'custom', message: problem })

@@ -14,12 +14,8 @@ import { pngEnd } from '../src/lib/image.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader, ReadInput } from '../src/services/htr/index.ts'
 import type { CallBudget } from '../src/services/llm/index.ts'
-import {
-  noEntities,
-  passthroughNormalizer,
-  type EntityExtractor,
-  type Normalizer,
-} from '../src/services/normalize.ts'
+import { noEntities, type EntityExtractor } from '../src/services/entities.ts'
+import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
 
 export const createTestDatabase = async () => {
   const client = new PGlite({ extensions: { pg_trgm } })

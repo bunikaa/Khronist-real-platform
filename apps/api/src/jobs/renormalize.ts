@@ -2,18 +2,26 @@ import { and, eq, gt, isNotNull, isNull, lt } from 'drizzle-orm'
 import PQueue from 'p-queue'
 import type { Database } from '../db/client.ts'
 import { entities, transcriptions } from '../db/schema.ts'
-import { normalizeTimeoutMs, renormalizeBacklog, renormalizeConcurrency } from '../lib/limits.ts'
+import {
+  entitiesTimeoutMs,
+  normalizeTimeoutMs,
+  renormalizeBacklog,
+  renormalizeConcurrency,
+} from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
+import type { EntityExtractor } from '../services/entities.ts'
 import { assertNormalized, type Normalizer } from '../services/normalize.ts'
-import { loadLines, normalizedTextOf } from '../services/transcriptions.ts'
+import { insertEntities, loadLines, normalizedTextOf } from '../services/transcriptions.ts'
 import { isAbort } from './queue.ts'
-import type { JobLogger } from './recognize.ts'
+import { findEntities, type JobLogger } from './recognize.ts'
 
 type RenormalizeDeps = {
   db: Database
   normalizer: Normalizer
+  entities: EntityExtractor
   log: JobLogger
   normalizeTimeoutMs?: number | undefined
+  entitiesTimeoutMs?: number | undefined
 }
 
 type RenormalizeOutcome = 'normalized' | 'skipped'
@@ -68,12 +76,22 @@ export const renormalizeVersion = async (
   )
   if (!output) return 'skipped'
   assertNormalized(lines, output)
+  if (await hasVersion(db, and(sameRegion, gt(transcriptions.version, version.version)))) {
+    return 'skipped'
+  }
+  const normalizedText = normalizedTextOf(lines, output)
+  const found = await findEntities(deps.entities, {
+    normalizedText,
+    log,
+    timeoutMs: deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
+    stopped,
+  })
 
   return db.transaction(async (tx) => {
     const updated = await tx
       .update(transcriptions)
       .set({
-        normalizedText: normalizedTextOf(lines, output),
+        normalizedText,
         normalizedLines: output.lines,
         expansions: output.expansions,
       })
@@ -81,6 +99,7 @@ export const renormalizeVersion = async (
       .returning({ id: transcriptions.id })
     if (updated.length === 0) return 'skipped'
     await tx.delete(entities).where(eq(entities.transcriptionId, transcriptionId))
+    await insertEntities(tx, transcriptionId, found)
     return 'normalized'
   })
 }

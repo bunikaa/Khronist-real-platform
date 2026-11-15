@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { entities, transcriptions } from '../src/db/schema.ts'
 import { createRenormalizer, renormalizeVersion } from '../src/jobs/renormalize.ts'
+import { noEntities, placeEntities, type EntityExtractor } from '../src/services/entities.ts'
 import type { Normalizer } from '../src/services/normalize.ts'
 import { insertTranscriptionVersion, loadLines } from '../src/services/transcriptions.ts'
 import {
@@ -98,7 +99,12 @@ const stored = async (id: string) => {
   return row
 }
 
-const deps = (normalizer: Normalizer) => ({ db: database.db, normalizer, log: silentLog })
+const deps = (normalizer: Normalizer, extractor: EntityExtractor = noEntities) => ({
+  db: database.db,
+  normalizer,
+  entities: extractor,
+  log: silentLog,
+})
 
 describe('renormalizeVersion', () => {
   it('normalizes an edited version when the previous one was normalized', async () => {
@@ -132,6 +138,75 @@ describe('renormalizeVersion', () => {
       .from(entities)
       .where(eq(entities.transcriptionId, edited))
     expect(left).toHaveLength(0)
+  })
+
+  const entitiesOf = (id: string) =>
+    database.db
+      .select({ text: entities.text, start: entities.startPos, end: entities.endPos })
+      .from(entities)
+      .where(eq(entities.transcriptionId, id))
+
+  it('finds the entities again in the renormalized text', async () => {
+    const edited = await editVersion(await readFirstVersion(dropHardSigns), [
+      { type: 'person', text: 'Села', start: 0, end: 4 },
+    ])
+    const extract = vi.fn<EntityExtractor['extract']>(
+      async ({ normalizedText }) =>
+        placeEntities(normalizedText, [
+          { type: 'person', text: 'Петров Коваленко', normalized: 'Петров Коваленко' },
+        ]).placed,
+    )
+    expect(await renormalizeVersion(deps(dropHardSigns, { extract }), edited)).toBe('normalized')
+    const row = await stored(edited)
+    expect(extract).toHaveBeenCalledWith(
+      expect.objectContaining({ normalizedText: row?.normalizedText }),
+    )
+    const saved = await entitiesOf(edited)
+    expect(saved).toHaveLength(1)
+    expect(row?.normalizedText.slice(saved[0]?.start, saved[0]?.end)).toBe('Петров Коваленко')
+  })
+
+  it('keeps the normalization without entities when they fail', async () => {
+    const edited = await editVersion(await readFirstVersion(dropHardSigns), [
+      { type: 'person', text: 'Села', start: 0, end: 4 },
+    ])
+    const failing: EntityExtractor = {
+      extract: async () => {
+        throw new Error('entities are down')
+      },
+    }
+    expect(await renormalizeVersion(deps(dropHardSigns, failing), edited)).toBe('normalized')
+    expect((await stored(edited))?.normalizedLines).not.toBeNull()
+    expect(await entitiesOf(edited)).toHaveLength(0)
+  })
+
+  it('writes nothing when the work is stopped while it looks for entities', async () => {
+    const edited = await editVersion(await readFirstVersion(dropHardSigns))
+    const stopping = new AbortController()
+    const stopper: EntityExtractor = {
+      extract: async () => {
+        stopping.abort(new Error('the server is shutting down'))
+        return new Promise(() => {})
+      },
+    }
+    await expect(
+      renormalizeVersion(deps(dropHardSigns, stopper), edited, stopping.signal),
+    ).rejects.toThrow(/shutting down/)
+    expect((await stored(edited))?.normalizedLines).toBeNull()
+  })
+
+  it('does not look for entities when a newer edit arrived during normalization', async () => {
+    const first = await readFirstVersion(dropHardSigns)
+    const edited = await editVersion(first)
+    const extract = vi.fn<EntityExtractor['extract']>(async () => [])
+    const editing: Normalizer = {
+      normalize: async (input) => {
+        await editVersion({ ...first, id: edited })
+        return dropHardSigns.normalize(input)
+      },
+    }
+    expect(await renormalizeVersion(deps(editing, { extract }), edited)).toBe('skipped')
+    expect(extract).not.toHaveBeenCalled()
   })
 
   it('keeps the lines as edited when no earlier version was normalized', async () => {
