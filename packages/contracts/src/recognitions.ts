@@ -59,6 +59,7 @@ export type CreateRecognitionResponse = z.infer<typeof createRecognitionResponse
 
 export const recognitionFailureCodeSchema = z.enum([
   'read_failed',
+  'no_text',
   'normalize_failed',
   'restarted',
   'bad_image',

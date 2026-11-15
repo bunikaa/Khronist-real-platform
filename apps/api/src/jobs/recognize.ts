@@ -26,6 +26,7 @@ import type { EventHub } from './events.ts'
 
 const failureMessages: Record<RecognitionFailureCode, string> = {
   read_failed: 'Не вдалося прочитати фрагмент',
+  no_text: 'На фрагменті не знайдено тексту. Виділіть ділянку із записом',
   normalize_failed: 'Не вдалося обробити прочитаний текст',
   save_failed: 'Не вдалося зберегти результат',
   restarted: 'Сервер було перезапущено, спробуйте ще раз',
