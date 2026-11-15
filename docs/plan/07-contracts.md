@@ -146,7 +146,7 @@ GET /health → { ok: true, warm: boolean, model: { name, revision } }
 
 ## 5. Формат корпусу
 
-Стаття — Markdown з YAML-шапкою (`05`, розділ 3): `term`, `variants[]` (непорожні, без повторів і без самого `term`), `type` (`term|place|date|unit|abbr`), `period` (століття римськими цифрами або діапазон двох: `XIX`, `XVIII–XIX`), `source_title`, `source_url` (лише https), `source_kind` (`dictionary|encyclopedia|wikidata|publication`, як `kind` у `/v1/admin/sources`), `licence` (`суспільне надбання` або `CC BY-SA 4.0`), опційно `wikidata_id`. Статті лежать прямо в `data/entries/`, без підтек. Інгестія надсилає джерела статей як `sources`, статті як `chunks` з `articleKey` = назва файлу, `periodFrom`/`periodTo` числами з `period` і `wikidataId`, а `variants` — як `synonyms`.
+Стаття — Markdown з YAML-шапкою (`05`, розділ 3): `term`, `variants[]` (непорожні, без повторів і без самого `term`), `type` (`term|place|date|unit|abbr`), `period` (століття римськими цифрами або діапазон двох: `XIX`, `XVIII–XIX`), `source_title`, `source_url` (лише https), `source_kind` (`dictionary|encyclopedia|wikidata|publication`, як `kind` у `/v1/admin/sources`), `licence` (`суспільне надбання` або `CC BY-SA 4.0`), опційно `wikidata_id`. Статті лежать прямо в `data/entries/`, без підтек. Інгестія надсилає джерела статей як `sources`, статті як `chunks` з `articleKey` = назва файлу, `periodFrom`/`periodTo` числами з `period` і `wikidataId`, а `variants` — як `synonyms` з `type` статті. Варіанти з `data/synonyms.yaml` мають `type: person` (імена) або `place` (села й топоніми).
 
 ## 6. MCP-сервер (`apps/mcp`)
 
