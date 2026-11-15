@@ -18,12 +18,11 @@ uv run ruff check && uv run ruff format --check && uv run pytest
 uv run python eval/prepare_fragments.py
 pnpm --filter @khronist/api read-fragments --model claude-sonnet-5-5 \
   --fragments ../../services/knowledge/eval/.cache/fragments --out <readings.jsonl>
-uv run python eval/run_htr_eval.py --reference eval/reference/lines.jsonl \
-  --reference-reader claude-opus-5-5 \
+uv run python eval/run_htr_eval.py --reference eval/gold/lines.jsonl \
   --readings <readings.jsonl> ... --out eval/results/<дата>-htr.md
 ```
 
-Шляхи для `read-fragments` — абсолютні або від `apps/api`. `read-fragments` не дописує в наявний файл: для кожного прогону — новий `--out`. Протокол метрик — `docs/decisions.md`, 14 листопада; походження еталона — `eval/reference/README.md`.
+Шляхи для `read-fragments` — абсолютні або від `apps/api`. `read-fragments` не дописує в наявний файл: для кожного прогону — новий `--out`. Протокол метрик — `docs/decisions.md`, 14 листопада. Еталонів два, обидва на тих самих фрагментах: `eval/gold/lines.jsonl` — читання історика-консультанта (CER), `eval/reference/lines.jsonl` — читання `claude-opus-5-5` (з `--reference-reader claude-opus-5-5`, розбіжність). Походження — у `README.md` теки кожного; звіт називає той еталон, який передано в `--reference`.
 
 - `--reference-reader` — модель, яка прочитала еталон, якщо це не людина. Тоді звіт називає метрики розбіжністю з читанням цієї моделі, а не CER. Для золотого набору від людини параметр не передається.
 - `run_htr_eval.py` перевіряє кожен рядок читань, падає на повторному читанні того самого фрагмента тією самою моделлю, а фрагмент еталона без читання рахує невдалим.
