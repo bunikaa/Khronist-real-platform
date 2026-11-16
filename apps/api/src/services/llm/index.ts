@@ -112,7 +112,7 @@ export const withFallback = (
 
 export type CallBudget = {
   spend: () => Promise<boolean>
-  available: () => Promise<boolean>
+  available: (share?: number) => Promise<boolean>
 }
 
 export const withCallBudget = (provider: LlmProvider, budget: CallBudget): LlmProvider => ({

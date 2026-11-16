@@ -32,7 +32,7 @@
 | `LLM_FIXTURES`, `HTR_EFFORT`, `LLM_EFFORT` | api | фікстурне читання; глибина читання; глибина текстових задач |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | api | вхід (V-15): секрет від 32 символів; адреса API, у проді лише `https` |
 | `RESEND_API_KEY`, `MAIL_FROM`, `SIGN_IN_CODES_PER_DAY` | api | листи з кодом входу; без ключа Resend входу немає; 300 листів на добу |
-| `VERIFIER_EMAILS` | api | хто може підтверджувати, заплановано (V-17) |
+| `VERIFIER_EMAILS` | api | адреси через кому, хто може підтверджувати; порожньо — ніхто; у Railway задається вручну (`preserve()`) |
 | `ANTHROPIC_API_KEY`, `LLM_MODEL_PRIMARY`, `HTR_MODEL_PRIMARY` | api | назви моделей звірити в документації Anthropic; читання може використовувати іншу модель, ніж текстові задачі |
 | `GOOGLE_API_KEY`, `LLM_MODEL_FALLBACK`, `HTR_MODEL_FALLBACK` | api | резерв |
 | `HTR_URL`, `HTR_API_KEY` | api | порожні за замовчуванням; задаються лише при перемиканні на трек B |

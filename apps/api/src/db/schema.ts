@@ -211,6 +211,7 @@ export const transcriptions = pgTable(
     authorId: text('author_id').references(() => user.id, { onDelete: 'set null' }),
     verifiedBy: text('verified_by').references(() => user.id, { onDelete: 'set null' }),
     verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedSignature: text('verified_signature'),
     createdAt: createdAt(),
   },
   (t) => [

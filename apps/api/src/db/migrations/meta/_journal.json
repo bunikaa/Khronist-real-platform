@@ -43,6 +43,13 @@
       "when": 1794750822338,
       "tag": "0005_document_years",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794820506020,
+      "tag": "0006_verified_signature",
+      "breakpoints": true
     }
   ]
 }

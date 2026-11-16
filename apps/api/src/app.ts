@@ -10,6 +10,7 @@ import {
 } from 'fastify-type-provider-zod'
 import { createCodeLimits } from './auth/codes.ts'
 import { createAuth, type AuthOptions } from './auth/index.ts'
+import { createRenormalizer } from './jobs/renormalize.ts'
 import { ApiError } from './lib/errors.ts'
 import {
   defaultApiKeyRecognitionsPerDay,
@@ -36,7 +37,10 @@ export type AppDeps = HealthDeps & {
   apiKeyRecognitionsPerDay?: number
   isShuttingDown?: () => boolean
   recognitions?: Omit<RecognitionDeps, 'log'>
-  auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'> & { codesPerDay: number }
+  auth?: Pick<AuthOptions, 'db' | 'secret' | 'baseURL' | 'sendCode'> & {
+    codesPerDay: number
+    verifierEmails: string[]
+  }
   admin?: AdminDeps
 }
 
@@ -137,22 +141,27 @@ export const buildApp = async (deps: AppDeps) => {
   await app.register(rateLimit, { global: false, keyGenerator: clientKey })
 
   await app.register(healthRoutes(deps))
-  if (deps.auth) {
-    const limits = createCodeLimits({
-      perDay: deps.auth.codesPerDay,
-      perAddressAndClient: signInCodesPerAddressAndClient,
-      perAddress: signInCodesPerAddress,
-      windowMs: signInCodesWindowMs,
-    })
-    const auth = createAuth({
+  const signIn = deps.auth && {
+    settings: deps.auth,
+    auth: createAuth({
       ...deps.auth,
       trustedOrigins: deps.corsOrigins ?? [],
       clientIpHeader: deps.clientIpHeader,
       log: app.log,
+    }),
+  }
+  if (signIn) {
+    const limits = createCodeLimits({
+      perDay: signIn.settings.codesPerDay,
+      perAddressAndClient: signInCodesPerAddressAndClient,
+      perAddress: signInCodesPerAddress,
+      windowMs: signInCodesWindowMs,
     })
-    await app.register(authRoutes(auth, deps.auth.baseURL, limits, clientKey))
+    await app.register(authRoutes(signIn.auth, signIn.settings.baseURL, limits, clientKey))
   }
   if (deps.recognitions) {
+    const { db, normalizer, entities, budget, normalizeTimeoutMs, entitiesTimeoutMs } =
+      deps.recognitions
     await app.register(
       recognitionRoutes(
         { ...deps.recognitions, log: app.log },
@@ -163,8 +172,25 @@ export const buildApp = async (deps: AppDeps) => {
         },
       ),
     )
-    await app.register(transcriptionRoutes(deps.recognitions.db))
-    await app.register(pageRoutes(deps.recognitions.db))
+    await app.register(
+      transcriptionRoutes(
+        db,
+        signIn && {
+          auth: signIn.auth,
+          verifierEmails: signIn.settings.verifierEmails,
+          renormalizer: createRenormalizer({
+            db,
+            normalizer,
+            entities,
+            budget,
+            log: app.log,
+            normalizeTimeoutMs,
+            entitiesTimeoutMs,
+          }),
+        },
+      ),
+    )
+    await app.register(pageRoutes(db))
   }
   if (deps.admin) await app.register(adminRoutes(deps.admin))
   return app

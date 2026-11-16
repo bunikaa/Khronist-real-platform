@@ -68,6 +68,7 @@ const app = await buildApp({
       baseURL: signIn.baseURL,
       sendCode: createResendSender(signIn.resendApiKey, signIn.mailFrom),
       codesPerDay: config.SIGN_IN_CODES_PER_DAY,
+      verifierEmails: config.VERIFIER_EMAILS,
     },
   }),
   ...(config.ADMIN_API_KEY !== undefined && {

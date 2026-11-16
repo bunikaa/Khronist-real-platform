@@ -5,13 +5,16 @@ import { createRenormalizer, renormalizeVersion } from '../src/jobs/renormalize.
 import { noEntities, placeEntities, type EntityExtractor } from '../src/services/entities.ts'
 import type { Normalizer } from '../src/services/normalize.ts'
 import { insertTranscriptionVersion, loadLines } from '../src/services/transcriptions.ts'
+import type { CallBudget } from '../src/services/llm/index.ts'
 import {
   createTestApp,
   createTestDatabase,
+  dropHardSigns,
   makePng,
   recognitionBody,
   resetDatabase,
   silentLog,
+  unlimitedBudget,
   type TestDatabase,
 } from './helpers.ts'
 
@@ -31,21 +34,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDatabase(database)
 })
-
-const dropHardSign = (text: string) => text.replace(/ъ(?=\s|$)/g, '')
-
-const dropHardSigns: Normalizer = {
-  normalize: async ({ lines }) => ({
-    lines: lines.map((line) => ({
-      text: dropHardSign(line.text),
-      words: line.words.map((word) => ({
-        text: dropHardSign(word.text),
-        uncertain: word.uncertain,
-      })),
-    })),
-    expansions: [],
-  }),
-}
 
 const readFirstVersion = async (normalizer?: Normalizer) => {
   const { app, queue } = await createTestApp(database, normalizer && { normalizer })
@@ -103,10 +91,29 @@ const deps = (normalizer: Normalizer, extractor: EntityExtractor = noEntities) =
   db: database.db,
   normalizer,
   entities: extractor,
+  budget: unlimitedBudget,
   log: silentLog,
 })
 
 describe('renormalizeVersion', () => {
+  it('keeps the edited lines while the rest of the model budget is kept for readings', async () => {
+    const edited = await editVersion(await readFirstVersion(dropHardSigns))
+    const normalize = vi.fn(dropHardSigns.normalize)
+    const keptForReadings: CallBudget = {
+      spend: async () => true,
+      available: async (share = 1) => share >= 1,
+    }
+
+    const outcome = await renormalizeVersion(
+      { ...deps({ normalize }), budget: keptForReadings },
+      edited,
+    )
+
+    expect(outcome).toBe('skipped')
+    expect(normalize).not.toHaveBeenCalled()
+    expect((await stored(edited))?.normalizedLines).toBeNull()
+  })
+
   it('normalizes an edited version when the previous one was normalized', async () => {
     const edited = await editVersion(await readFirstVersion(dropHardSigns))
     expect((await stored(edited))?.normalizedLines).toBeNull()
