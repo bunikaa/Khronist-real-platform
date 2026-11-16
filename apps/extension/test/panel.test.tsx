@@ -875,6 +875,44 @@ describe('side panel', () => {
         expect(container.textContent).not.toContain('Правки не збережено')
       })
 
+      it('shows the entities as chips under the text and hides them while an edit is unsaved', async () => {
+        const withEntities: Transcription = {
+          ...edited,
+          entities: [
+            { type: 'place', text: 'Борщаговки', start: 5, end: 15 },
+            { type: 'person', text: 'Коваленко', start: 16, end: 25 },
+            { type: 'place', text: 'Борщаговки', start: 40, end: 50 },
+          ],
+        }
+        await fakeStorage.session.set({ sessionToken: token })
+        read({
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({ recognitionId, status: 'done', transcription: withEntities }),
+          [linesPath]: () => new Promise<Response>(() => undefined),
+        })
+        await openReading()
+
+        const chips = () =>
+          [...container.querySelectorAll('main li [title]')].map((chip) => chip.textContent)
+        expect(container.textContent).toContain('Сутності')
+        expect(chips()).toEqual(['Місце: Борщаговки', 'Особа: Коваленко'])
+
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+
+        expect(container.textContent).not.toContain('Сутності')
+        expect(chips()).toEqual([])
+      })
+
+      it('has no entities section when the model found none', async () => {
+        read()
+        await openReading()
+
+        expect(container.textContent).toContain('Села Борщаговки')
+        expect(container.textContent).not.toContain('Сутності')
+      })
+
       describe('conflict of edits (E4)', () => {
         const twoMinutesAgo = () => new Date(Date.now() - 2 * 60_000 - 5_000).toISOString()
         const theirs = (lines: [string, string]): Transcription => ({

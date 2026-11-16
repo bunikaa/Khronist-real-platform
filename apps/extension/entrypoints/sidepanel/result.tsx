@@ -1,5 +1,5 @@
 import type { Transcription } from '@khronist/contracts'
-import { LineWords, SectionLabel, strings } from '@khronist/ui'
+import { EntityChip, LineWords, SectionLabel, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
 import { ConfirmActions, ConfirmAlert, PageStatus, VerifiedAlert } from './confirming.tsx'
 import { ConflictCompare, EditableLines, EditAlert, EditingHint } from './editing.tsx'
@@ -51,6 +51,41 @@ const ModernText = ({ lines, expansions }: ModernTextProps) => (
     )}
   </section>
 )
+
+const lineBreak = /-\s*\n\s*/g
+const spaces = /\s+/g
+
+const shownText = (text: string) => text.replace(lineBreak, '').replace(spaces, ' ').trim()
+
+export const distinctEntities = (entities: Transcription['entities']) =>
+  entities
+    .toSorted((a, b) => a.start - b.start || a.end - b.end)
+    .map(({ type, text }) => ({ type, text: shownText(text) }))
+    .filter(
+      (entity, index, sorted) =>
+        sorted.findIndex((other) => other.type === entity.type && other.text === entity.text) ===
+        index,
+    )
+
+const Entities = ({ entities }: { entities: Transcription['entities'] }) => {
+  const shown = distinctEntities(entities)
+  if (shown.length === 0) return null
+  return (
+    <>
+      <hr className="border-rule" />
+      <section className="flex flex-col gap-2 p-3">
+        <SectionLabel>{strings.entity.section}</SectionLabel>
+        <ul className="flex flex-wrap gap-x-1 gap-y-1.5">
+          {shown.map(({ type, text }) => (
+            <li key={`${type}:${text}`} className="flex max-w-full">
+              <EntityChip type={type}>{text}</EntityChip>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>
+  )
+}
 
 type ResultProps = {
   transcription: Transcription
@@ -119,6 +154,7 @@ export const Result = ({
             <ModernText lines={modern} expansions={transcription.expansions ?? []} />
           </>
         )}
+        {!editing.unsaved && <Entities entities={transcription.entities} />}
       </div>
       <div className="relative">
         <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
