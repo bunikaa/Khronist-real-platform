@@ -1,4 +1,9 @@
-import { maxSignatureLength, type ReadingWarning, type Shelfmark } from '@khronist/contracts'
+import {
+  maxSignatureLength,
+  type Entity,
+  type ReadingWarning,
+  type Shelfmark,
+} from '@khronist/contracts'
 
 const plural = new Intl.PluralRules('uk')
 const number = new Intl.NumberFormat('uk')
@@ -38,6 +43,13 @@ const fragmentForms: Record<Intl.LDMLPluralRule, string> = {
   few: 'фрагменти',
   many: 'фрагментів',
   other: 'фрагмента',
+}
+
+const entityTypes: Record<Entity['type'], string> = {
+  person: 'Особа',
+  place: 'Місце',
+  term: 'Термін',
+  date: 'Дата',
 }
 
 const lineNumber = (idx: number) => String(idx + 1).padStart(2, '0')
@@ -128,6 +140,10 @@ export const strings = {
     showCurrent: 'Показати нову версію',
     signInToSave: 'Правки не збережено: щоб зберегти їх, увійдіть',
     discard: 'Скасувати правки',
+  },
+  entity: {
+    section: 'Сутності',
+    type: (type: Entity['type']) => `${entityTypes[type]}: `,
   },
   confirm: {
     action: 'Підтвердити',
