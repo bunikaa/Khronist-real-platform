@@ -1,4 +1,8 @@
-import { signInCodeRequestSchema, signInRequestSchema } from '@khronist/contracts'
+import {
+  signInCodeRequestSchema,
+  signInRequestSchema,
+  updateUserRequestSchema,
+} from '@khronist/contracts'
 import { fromNodeHeaders } from 'better-auth/node'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -114,4 +118,5 @@ export const authRoutes =
     app.post('/api/auth/sign-in/email-otp', { schema: { body: signInRequestSchema } }, forward)
     app.get('/api/auth/get-session', forward)
     app.post('/api/auth/sign-out', forward)
+    app.post('/api/auth/update-user', { schema: { body: updateUserRequestSchema } }, forward)
   }

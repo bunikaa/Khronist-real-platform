@@ -146,6 +146,64 @@ describe('sign-in with a code from the email', () => {
     await app.close()
   })
 
+  const updateUser = (app: App, token: string | undefined, payload: object) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/auth/update-user',
+      headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
+      payload,
+    })
+
+  it('sets the account name, the signature of confirmations, and shows it in the session', async () => {
+    const app = await createApp()
+    const token = String((await signIn(app)).headers['set-auth-token'])
+
+    const updated = await updateUser(app, token, { name: '  Олена К.  ' })
+
+    expect(updated.statusCode).toBe(200)
+    expect((await sessionOf(app, token)).json().user.name).toBe('Олена К.')
+    await app.close()
+  })
+
+  it('passes only the name to update-user', async () => {
+    const app = await createApp()
+    const token = String((await signIn(app)).headers['set-auth-token'])
+
+    const updated = await updateUser(app, token, {
+      name: 'Олена',
+      email: 'someone@khronist.example',
+      image: 'https://khronist.example/face.png',
+    })
+
+    expect(updated.statusCode).toBe(200)
+    const { user } = (await sessionOf(app, token)).json()
+    expect(user).toMatchObject({ name: 'Олена', email, image: null })
+    await app.close()
+  })
+
+  it('refuses a name outside the signature rules', async () => {
+    const app = await createApp()
+    const token = String((await signIn(app)).headers['set-auth-token'])
+
+    for (const name of ['', '   ', 'x'.repeat(81), 'Олена\u0007', 'Олена\uD800']) {
+      const res = await updateUser(app, token, { name })
+      expect(res.statusCode).toBe(400)
+      expect(res.json().error.code).toBe('bad_request')
+    }
+    expect((await sessionOf(app, token)).json().user.name).toBe('')
+    await app.close()
+  })
+
+  it('answers 401 to update-user without a session', async () => {
+    const app = await createApp()
+
+    const res = await updateUser(app, undefined, { name: 'Олена' })
+
+    expect(res.statusCode).toBe(401)
+    expect(res.json().error.code).toBe('unauthorized')
+    await app.close()
+  })
+
   it('has no sign-in routes without mail settings', async () => {
     const app = await buildApp({
       logLevel: 'silent',
@@ -175,7 +233,7 @@ describe('sign-in with a code from the email', () => {
   it('exposes only the sign-in routes of the contract', async () => {
     const app = await createApp()
     const token = String((await signIn(app)).headers['set-auth-token'])
-    for (const url of ['/api/auth/update-user', '/api/auth/email-otp/reset-password']) {
+    for (const url of ['/api/auth/delete-user', '/api/auth/email-otp/reset-password']) {
       const res = await app.inject({
         method: 'POST',
         url,

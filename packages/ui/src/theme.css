@@ -79,4 +79,7 @@
   --text-brand-logo: 16px;
   --text-brand-logo--line-height: 20px;
   --text-brand-logo--font-weight: 500;
+  --text-brand-display: 24px;
+  --text-brand-display--line-height: 28px;
+  --text-brand-display--font-weight: 500;
 }

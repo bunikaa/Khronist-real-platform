@@ -28,6 +28,20 @@ describe('PanelHeader', () => {
     expect(html).toContain('<span class="shrink-0">зобр. 4</span>')
   })
 
+  it('shows the account button with its label and whether its screen is open', () => {
+    const closed = renderToStaticMarkup(
+      <PanelHeader account={{ label: 'Увійти', open: false, onToggle: () => {} }} />,
+    )
+    const open = renderToStaticMarkup(
+      <PanelHeader account={{ label: 'Профіль', open: true, onToggle: () => {} }} />,
+    )
+
+    expect(closed).toContain('aria-label="Увійти"')
+    expect(closed).toContain('aria-pressed="false"')
+    expect(open).toContain('aria-label="Профіль"')
+    expect(open).toContain('aria-pressed="true"')
+  })
+
   it('prefers the folio over the image number', () => {
     const html = renderToStaticMarkup(<PanelHeader shelfmark={{ ...shelfmark, folio: '14' }} />)
 

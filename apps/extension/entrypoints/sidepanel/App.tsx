@@ -1,4 +1,4 @@
-import { PanelHeader } from '@khronist/ui'
+import { PanelHeader, strings } from '@khronist/ui'
 import { useEffect, useState } from 'react'
 import { browser } from 'wxt/browser'
 import {
@@ -6,9 +6,12 @@ import {
   fragmentMessageSchema,
   type SelectionCommand,
 } from '../../messages.ts'
+import { FirstRun, Profile, SignIn } from './account.tsx'
 import { Failed, MissingPage, Reading, ReadyToRead, Result, Selecting } from './screens.tsx'
 import { activeTabId, useActivePage } from './useActivePage.ts'
+import { useFirstRun } from './useFirstRun.ts'
 import { useReading } from './useReading.ts'
+import { useSession } from './useSession.ts'
 
 const sendToActiveTab = async (command: SelectionCommand) => {
   const tabId = await activeTabId()
@@ -21,13 +24,17 @@ const cancelSelection = () => void sendToActiveTab({ type: 'cancel-selection' })
 const useShortcut = () => {
   const [shortcut, setShortcut] = useState<string>()
   useEffect(() => {
-    browser.commands.getAll().then(
-      (commands) => {
-        const assigned = commands.find((command) => command.name === 'open-panel')?.shortcut
-        setShortcut(assigned || undefined)
-      },
-      () => setShortcut(undefined),
-    )
+    const read = () =>
+      browser.commands.getAll().then(
+        (commands) => {
+          const assigned = commands.find((command) => command.name === 'open-panel')?.shortcut
+          setShortcut(assigned || undefined)
+        },
+        () => setShortcut(undefined),
+      )
+    void read()
+    window.addEventListener('focus', read)
+    return () => window.removeEventListener('focus', read)
   }, [])
   return shortcut
 }
@@ -36,11 +43,23 @@ export const App = () => {
   const page = useActivePage()
   const shortcut = useShortcut()
   const { reading, start, retry, failSelection, cancel } = useReading()
+  const { session, refresh } = useSession()
+  const { seen: firstRunSeen, finish: finishFirstRun } = useFirstRun()
+  const [accountOpen, setAccountOpen] = useState(false)
   const selecting = page?.selecting === true
 
   useEffect(() => {
-    const onCommand = (command: string) => {
-      if (command === 'open-panel') startSelection()
+    const showReading = () => {
+      finishFirstRun()
+      setAccountOpen(false)
+    }
+    const onCommand = (command: string, tab?: { id?: number }) => {
+      if (command !== 'open-panel') return
+      void activeTabId().then((tabId) => {
+        if (tab?.id === undefined || tab.id !== tabId) return
+        showReading()
+        startSelection()
+      })
     }
     const onMessage = (message: unknown, sender: { tab?: { id?: number } }) => {
       const fragment = fragmentMessageSchema.safeParse(message)
@@ -48,6 +67,7 @@ export const App = () => {
       if (!fragment.success && !failed.success) return
       void activeTabId().then((tabId) => {
         if (sender.tab?.id !== tabId) return
+        showReading()
         if (fragment.success) start(fragment.data.fragment, fragment.data.shelfmark)
         if (failed.success) failSelection(failed.data.reason, failed.data.shelfmark)
       })
@@ -58,16 +78,39 @@ export const App = () => {
       browser.commands.onCommand.removeListener(onCommand)
       browser.runtime.onMessage.removeListener(onMessage)
     }
-  }, [start, failSelection])
+  }, [start, failSelection, finishFirstRun])
 
   useEffect(() => {
-    if (!selecting) return
+    if (!selecting || accountOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') cancelSelection()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selecting])
+  }, [selecting, accountOpen])
+
+  useEffect(() => {
+    if (!accountOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [accountOpen])
+
+  const closeAccount = () => setAccountOpen(false)
+
+  const account = () =>
+    session.status === 'signed-in' ? (
+      <Profile
+        user={session.user}
+        shortcut={shortcut}
+        onSaved={refresh}
+        onSignedOut={closeAccount}
+      />
+    ) : (
+      <SignIn onSignedIn={closeAccount} />
+    )
 
   const screen = () => {
     if (selecting) return <Selecting onCancel={cancelSelection} />
@@ -87,10 +130,36 @@ export const App = () => {
 
   const shelfmark = reading.phase === 'idle' ? page?.shelfmark : reading.shelfmark
 
+  if (firstRunSeen === undefined) return null
+  if (!firstRunSeen) {
+    return (
+      <main className="flex h-screen flex-col">
+        <FirstRun
+          shortcut={shortcut}
+          onStart={finishFirstRun}
+          onSignIn={() => {
+            finishFirstRun()
+            setAccountOpen(true)
+          }}
+        />
+      </main>
+    )
+  }
+
   return (
     <div className="flex h-screen flex-col">
-      <PanelHeader shelfmark={shelfmark ?? undefined} />
-      {screen()}
+      <PanelHeader
+        shelfmark={shelfmark ?? undefined}
+        account={{
+          label:
+            session.status === 'signed-in'
+              ? strings.account.profileLabel
+              : strings.account.signInLabel,
+          open: accountOpen,
+          onToggle: () => setAccountOpen(!accountOpen),
+        }}
+      />
+      <main className="flex min-h-0 flex-1 flex-col">{accountOpen ? account() : screen()}</main>
     </div>
   )
 }

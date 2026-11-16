@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiFailure, maxReconnects, readRecognition, reconnectDelayMs } from '../api/client.ts'
 import { parseEventBlock, readEvents } from '../api/events.ts'
 
+vi.mock('wxt/browser', async () => {
+  const { fakeStorage } = await import('./fake-storage.ts')
+  return { browser: { storage: fakeStorage } }
+})
+
 const line: Line = {
   idx: 0,
   text: 'Села Борщаговки',
