@@ -13,6 +13,7 @@ export const maxBacklog = 50
 export const recognitionReadsPerMinute = 120
 export const recordReadsPerMinute = 120
 export const recordEditsPerMinute = 30
+export const searchesPerMinute = 60
 export const maxEditBodyBytes = 256 * 1024
 export const maxCiteBodyBytes = 1024
 export const streamsPerClient = 5
