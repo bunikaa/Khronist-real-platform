@@ -8,6 +8,7 @@ import {
   noEntities,
   placeEntities,
   selectEntityExtractor,
+  withNewStyleDates,
 } from '../src/services/entities.ts'
 import { parseOutput, type LlmProvider, type LlmRequest } from '../src/services/llm/index.ts'
 import type { ProviderFactory } from '../src/services/llm/select.ts'
@@ -168,6 +169,42 @@ const promptOf = (request: LlmRequest<unknown> | undefined) => {
   return part?.type === 'text' ? part.text : ''
 }
 
+describe('withNewStyleDates', () => {
+  const date = (text: string, normalized?: string) => ({
+    type: 'date' as const,
+    text,
+    start: 0,
+    end: text.length,
+    ...(normalized !== undefined && { normalized }),
+  })
+
+  it.each([
+    [
+      'the date of the record',
+      date('12 января 1884 года'),
+      { newStyle: '1884-01-24', weekday: 'четвер' },
+    ],
+    [
+      'the record over the normalized form',
+      date('12 января 1884', '12 января 1885'),
+      { newStyle: '1884-01-24', weekday: 'четвер' },
+    ],
+    [
+      'the normalized form of a date split across lines',
+      date('12 ян-\nваря 1884', '12 января 1884'),
+      { newStyle: '1884-01-24', weekday: 'четвер' },
+    ],
+    ['nothing for a date without a day', date('в 1884 году'), undefined],
+  ])('takes %s', (_case, entity, extra) => {
+    expect(withNewStyleDates([entity])[0]?.extra).toEqual(extra)
+  })
+
+  it('leaves the other entities as they are', () => {
+    const person = { type: 'person' as const, text: '12 января 1884', start: 0, end: 14 }
+    expect(withNewStyleDates([person])).toEqual([person])
+  })
+})
+
 describe('createLlmEntityExtractor', () => {
   const found: Found = [
     { type: 'person', text: 'Иоанн', normalized: 'Иоанн' },
@@ -191,6 +228,15 @@ describe('createLlmEntityExtractor', () => {
       expect.objectContaining({ found: 1, dropped: 1 }),
       'entities found',
     )
+  })
+
+  it('adds the new style to the dates the model found', async () => {
+    const record = 'Родился 12 января 1884 года'
+    const { provider } = answering([
+      { type: 'date', text: '12 января 1884 года', normalized: '12 января 1884 года' },
+    ])
+    const [found] = await createLlmEntityExtractor(provider).extract({ normalizedText: record })
+    expect(found?.extra).toEqual({ newStyle: '1884-01-24', weekday: 'четвер' })
   })
 
   it('does not call the model for other languages or an empty text', async () => {
