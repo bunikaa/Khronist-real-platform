@@ -78,7 +78,7 @@ regions               id, page_id, x, y, w, h, image_hash, created_by, created_a
 recognitions          id, region_id, status (queued|reading|normalizing|done|failed), source (extension|web|mcp|batch),
                       transcription_id, error_code, error_message, attempts, started_at, finished_at, created_at
 transcriptions        id, region_id, version, status (draft|verified|disputed),
-                      raw_text, normalized_text, reader (назва моделі або сервісу), author_id, verified_by, verified_at, created_at
+                      raw_text, normalized_text, reader (назва моделі або сервісу), author_id, verified_by, verified_at, created_at, tsv tsvector   (tsv — V-30)
 transcription_lines   id, transcription_id, idx, text, x, y, w, h, box_source (model|estimated)
 line_words            id, line_id, idx, text, uncertain boolean, confidence
 entities              id, transcription_id, type (person|place|term|date), text, normalized,
@@ -91,9 +91,9 @@ notes                 id, user_id, transcription_id, excerpt, note, citation, cr
 api_keys              id, user_id, key_hash, name, created_at, last_used_at     (для MCP і пакетної обробки; інгестія — ADMIN_API_KEY)
 ```
 
-Розширення Postgres: `pg_trgm`. Індекси: `chunks.tsv` — GIN; `chunks.text` і `synonyms.variant` — GIN `gin_trgm_ops`; `transcriptions(region_id, version desc)`; `entities(normalized)` — GIN `gin_trgm_ops` для прізвищ із варіантами написання; `regions(image_hash)` для кешу; `recognitions(status)` для відновлення.
+Розширення Postgres: `pg_trgm`. Індекси: `chunks.tsv` — GIN; `transcriptions.tsv` — GIN `transcriptions_tsv_idx` (V-30); `chunks.text` і `synonyms.variant` — GIN `gin_trgm_ops`; `transcriptions(region_id, version desc)`; `entities(normalized)` — GIN `gin_trgm_ops` для прізвищ із варіантами написання; `regions(image_hash)` для кешу; `recognitions(status)` для відновлення.
 
-`tsv` — обчислювана колонка `to_tsvector('simple', topic || ' ' || text)` (V-08); варіанти з `synonyms` додаються до запиту, а не до вектора. Словника `ukrainian` у стандартному Postgres немає, тому `simple` плюс словник варіантів — свідомий вибір; стемінг не потрібен на 200 статтях.
+`tsv` — обчислювана колонка `to_tsvector('simple', topic || ' ' || text)` (V-08); варіанти з `synonyms` додаються до запиту, а не до вектора. Словника `ukrainian` у стандартному Postgres немає, тому `simple` плюс словник варіантів — свідомий вибір; стемінг не потрібен на 200 статтях. `transcriptions.tsv` — так само обчислювана колонка `to_tsvector('simple', normalized_text)` для пошуку Commons (V-30, міграція `0008`).
 
 ## 4. Авторизація
 

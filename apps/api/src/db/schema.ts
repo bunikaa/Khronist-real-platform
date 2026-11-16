@@ -213,10 +213,13 @@ export const transcriptions = pgTable(
     verifiedAt: timestamp('verified_at', { withTimezone: true }),
     verifiedSignature: text('verified_signature'),
     createdAt: createdAt(),
+    tsv: tsvector('tsv')
+      .notNull()
+      .generatedAlwaysAs((): SQL => sql`to_tsvector('simple', ${transcriptions.normalizedText})`),
   },
   (t) => [
     unique('transcriptions_region_version_unique').on(t.regionId, t.version),
-    index('transcriptions_fts_idx').using('gin', sql`to_tsvector('simple', ${t.normalizedText})`),
+    index('transcriptions_tsv_idx').using('gin', t.tsv),
     check('transcriptions_version_positive', sql`${t.version} >= 1`),
     check(
       'transcriptions_verified_has_time',

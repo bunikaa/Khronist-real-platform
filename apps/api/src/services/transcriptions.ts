@@ -8,7 +8,7 @@ import type {
   Word,
 } from '@khronist/contracts'
 import { readingWarningSchema } from '@khronist/contracts'
-import { asc, eq, inArray, sql } from 'drizzle-orm'
+import { asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import type { Database } from '../db/client.ts'
@@ -44,8 +44,8 @@ export const warningsOf = (stored: string[]): ReadingWarning[] =>
   })
 
 export const shelfmarkOf = (
-  document: typeof documents.$inferSelect,
-  page: typeof pages.$inferSelect,
+  document: Pick<typeof documents.$inferSelect, 'archive' | 'fond' | 'opys' | 'sprava' | 'portal'>,
+  page: Pick<typeof pages.$inferSelect, 'folio' | 'imageNo' | 'sourceUrl'>,
 ): Shelfmark => ({
   archive: document.archive,
   fond: document.fond,
@@ -180,12 +180,14 @@ export const loadLines = async (db: Database, transcriptionId: string): Promise<
   })
 }
 
+const { tsv: _searchVector, ...storedFields } = getTableColumns(transcriptions)
+
 const readTranscription = async (
   db: Database,
   transcriptionId: string,
 ): Promise<Transcription | undefined> => {
   const [t] = await db
-    .select()
+    .select(storedFields)
     .from(transcriptions)
     .where(eq(transcriptions.id, transcriptionId))
     .limit(1)

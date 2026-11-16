@@ -2,8 +2,9 @@ import {
   createRecognitionResponseSchema,
   healthResponseSchema,
   recognitionStateSchema,
+  searchResponseSchema,
 } from '@khronist/contracts'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 const baseUrl = process.env['SMOKE_URL'] ?? 'http://localhost:3000'
 const pollIntervalMs = 100
@@ -28,6 +29,7 @@ const health = healthResponseSchema.parse(await (await fetch(`${baseUrl}/health`
 expectThat(health.ok && health.db === 'ok', 'the database answers')
 
 const png = makePng()
+const shelfmark = { archive: `smoke-${randomUUID()}`, fond: '1', opys: '1', sprava: '1', image: 1 }
 const post = async () => {
   const response = await fetch(`${baseUrl}/v1/recognitions`, {
     method: 'POST',
@@ -36,6 +38,7 @@ const post = async () => {
       image: { base64Png: png.toString('base64') },
       imageHash: createHash('sha256').update(png).digest('hex'),
       source: 'batch',
+      shelfmark,
     }),
   })
   expectThat(response.status === 201, `POST answered ${response.status}`)
@@ -65,5 +68,14 @@ const events = await (
   await fetch(`${baseUrl}/v1/recognitions/${repeated.recognitionId}/events`)
 ).text()
 expectThat(events.includes('event: done'), 'the event stream ends with done')
+
+const searchParams = new URLSearchParams({ q: 'Коваленко', archive: shelfmark.archive })
+const found = searchResponseSchema.parse(
+  await (await fetch(`${baseUrl}/v1/search?${searchParams.toString()}`)).json(),
+)
+expectThat(
+  found.items.some((item) => item.transcriptionId === state.transcription?.id),
+  'search finds the new transcription by a word of its text',
+)
 
 console.log('smoke checks passed')

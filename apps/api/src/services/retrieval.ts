@@ -1,5 +1,5 @@
 import type { Hints } from '@khronist/contracts'
-import { and, eq, gte, inArray, lte, or, sql, type SQL } from 'drizzle-orm'
+import { and, eq, gte, inArray, lte, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 import type { Database } from '../db/client.ts'
 import { chunks, sources, synonyms } from '../db/schema.ts'
 
@@ -193,9 +193,32 @@ const scope = ({ type, period }: RetrievalQuery): SQL[] => {
 
 const canonicalTopic = sql`lower(translate(${chunks.topic}, '’ʼ‘', ${"'''"}))`
 
-const conceptRank = (terms: string[]) =>
+export type Concept = { spellings: string[]; terms: string[] }
+
+export const expandQuery = async (db: Database, text: string, type?: ChunkType) => {
+  const tokens = tokensOf(text)
+  const words = tokens.map(({ word }) => word)
+  const rows = await synonymRows(db, tokens, type)
+  const concepts = conceptsOf(words, rows)
+    .map((spellings) => ({
+      spellings,
+      terms: spellings.flatMap(withApostrophes).map(asSearchTerm).filter(Boolean),
+    }))
+    .filter(({ terms }) => terms.length > 0)
+  return { words, concepts }
+}
+
+export const similarWordsOf = (words: string[]): string[] =>
+  [...new Set(words.filter(isContentWord))].slice(0, maxSimilarWords)
+
+export const anyConceptQuery = (concepts: Concept[]): SQL =>
+  sql`websearch_to_tsquery('simple', ${searchText(
+    concepts.flatMap(({ spellings }) => spellings.flatMap(withApostrophes)),
+  )})`
+
+export const conceptRank = (vector: SQLWrapper, terms: string[]): SQL =>
   sql`greatest(${sql.join(
-    terms.map((term) => sql`ts_rank(${chunks.tsv}, websearch_to_tsquery('simple', ${term}))`),
+    terms.map((term) => sql`ts_rank(${vector}, websearch_to_tsquery('simple', ${term}))`),
     sql`, `,
   )})`
 
@@ -205,18 +228,11 @@ const topicMatch = (titles: string[]) =>
     sql`, `,
   )}) then ${sql.raw(String(topicBonus))} else 0 end`
 
-const rankedChunks = (db: Database, concepts: string[][], phrase: string, filters: SQL[]) => {
-  const usable = concepts
-    .map((spellings) => ({
-      spellings,
-      terms: spellings.flatMap(withApostrophes).map(asSearchTerm).filter(Boolean),
-    }))
-    .filter(({ terms }) => terms.length > 0)
-  if (usable.length === 0) return Promise.resolve([])
-  const allTerms = searchText(usable.flatMap(({ spellings }) => spellings.flatMap(withApostrophes)))
-  const tsquery = sql`websearch_to_tsquery('simple', ${allTerms})`
-  const titles = [...new Set([phrase, ...usable.flatMap(({ spellings }) => spellings)])]
-  const parts = [...usable.map(({ terms }) => conceptRank(terms)), topicMatch(titles)]
+const rankedChunks = (db: Database, concepts: Concept[], phrase: string, filters: SQL[]) => {
+  if (concepts.length === 0) return Promise.resolve([])
+  const tsquery = anyConceptQuery(concepts)
+  const titles = [...new Set([phrase, ...concepts.flatMap(({ spellings }) => spellings)])]
+  const parts = [...concepts.map(({ terms }) => conceptRank(chunks.tsv, terms)), topicMatch(titles)]
   const rank = sql<number>`${sql.join(parts, sql` + `)}`.as('rank')
   return db
     .select({ ...chunkFields, rank })
@@ -243,15 +259,12 @@ const similarChunks = (db: Database, words: string[], filters: SQL[]) => {
 }
 
 export const retrieve = async (db: Database, query: RetrievalQuery, minRank: number) => {
-  const tokens = tokensOf(query.text)
-  const words = tokens.map(({ word }) => word)
   const filters = scope(query)
-  const similarWords = [...new Set(words.filter(isContentWord))].slice(0, maxSimilarWords)
-  const [rows, similar] = await Promise.all([
-    synonymRows(db, tokens, query.type),
-    similarChunks(db, similarWords, filters),
+  const [{ words, concepts }, similar] = await Promise.all([
+    expandQuery(db, query.text, query.type),
+    similarChunks(db, similarWordsOf(queryWords(query.text)), filters),
   ])
-  const ranked = await rankedChunks(db, conceptsOf(words, rows), words.join(' '), filters)
+  const ranked = await rankedChunks(db, concepts, words.join(' '), filters)
   const known = new Set(ranked.map((chunk) => chunk.id))
   const extra = similar
     .filter((chunk) => !known.has(chunk.id))
