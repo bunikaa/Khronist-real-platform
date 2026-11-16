@@ -30,6 +30,23 @@ def century(roman: str) -> int:
     value = 10 * len(match.group(1)) + UNITS[match.group(2)] if match else 0
     if value == 0:
         raise ValueError(f"{roman!r} is not a century in Roman numerals")
+    if value > 21:
+        raise ValueError(f"{roman!r} exceeds the supported range of 21 centuries")
+    return value
+
+
+def check_storable_text(value: str) -> str:
+    if "\x00" in value:
+        raise ValueError("text must not contain NUL characters")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ValueError("text must not contain lone surrogates")
+    return value
+
+
+def check_safe_url_characters(value: str) -> str:
+    check_storable_text(value)
+    if any(ord(character) <= 0x1F or 0x7F <= ord(character) <= 0x9F for character in value):
+        raise ValueError("source_url must not contain control characters")
     return value
 
 
@@ -56,11 +73,35 @@ class ArticleMeta(BaseModel):
     licence: Licence
     wikidata_id: str | None = Field(default=None, pattern=r"^Q[1-9][0-9]*$")
 
+    @field_validator("term", "source_title", mode="before")
+    @classmethod
+    def check_text_fields(cls, value: object) -> object:
+        if isinstance(value, str):
+            checked = check_storable_text(value)
+            if not checked.strip():
+                raise ValueError("text must not be empty")
+            return checked
+        return value
+
+    @field_validator("variants", mode="before")
+    @classmethod
+    def check_variant_text(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [check_storable_text(item) if isinstance(item, str) else item for item in value]
+        return value
+
     @field_validator("period")
     @classmethod
     def check_period(cls, period: str) -> str:
         period_range(period)
         return period
+
+    @field_validator("source_url", mode="before")
+    @classmethod
+    def check_source_url_characters(cls, url: object) -> object:
+        if isinstance(url, str):
+            return check_safe_url_characters(url)
+        return url
 
     @field_validator("source_url")
     @classmethod
@@ -98,6 +139,11 @@ class Article(BaseModel):
     path: Path
     meta: ArticleMeta
     text: str = NonEmpty
+
+    @field_validator("text")
+    @classmethod
+    def check_text_characters(cls, text: str) -> str:
+        return check_storable_text(text)
 
 
 class CorpusError(ValueError):
