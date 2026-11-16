@@ -4,7 +4,9 @@ import { loadSession, type SessionUser } from '../../api/auth.ts'
 import { sessionTokenKey } from '../../api/token.ts'
 
 export type Session =
-  { status: 'loading' } | { status: 'signed-out' } | { status: 'signed-in'; user: SessionUser }
+  | { status: 'loading' }
+  | { status: 'signed-out' }
+  | { status: 'signed-in'; user: SessionUser; canVerify: boolean }
 
 export const useSession = () => {
   const [session, setSession] = useState<Session>({ status: 'loading' })
@@ -12,9 +14,13 @@ export const useSession = () => {
 
   const refresh = useCallback(async () => {
     const check = (latestCheck.current += 1)
-    const user = await loadSession().catch(() => undefined)
+    const found = await loadSession().catch(() => undefined)
     if (check !== latestCheck.current) return
-    setSession(user ? { status: 'signed-in', user } : { status: 'signed-out' })
+    setSession(
+      found
+        ? { status: 'signed-in', user: found.user, canVerify: found.canVerify }
+        : { status: 'signed-out' },
+    )
   }, [])
 
   useEffect(() => {

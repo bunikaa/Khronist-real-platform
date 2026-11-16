@@ -130,7 +130,7 @@ describe('the session of the panel', () => {
       json({ session: { id: 's' }, user: { ...user, image: null }, canVerify: false }),
     )
 
-    expect(await loadSession()).toEqual(user)
+    expect(await loadSession()).toEqual({ user, canVerify: false })
     expect(requestOf(fetch)).toMatchObject({
       url: `${apiOrigin}/api/auth/get-session`,
       authorization: `Bearer ${token}`,

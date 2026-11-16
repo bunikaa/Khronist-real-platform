@@ -1,9 +1,7 @@
 import type { Transcription } from '@khronist/contracts'
-import { strings } from '@khronist/ui'
 import { useEffect, useReducer, useRef, type ActionDispatch } from 'react'
-import { ApiFailure, VersionConflictFailure } from '../../api/client.ts'
-import { readToken } from '../../api/token.ts'
 import { saveLines, type LineChange } from '../../api/transcriptions.ts'
+import { problemOf } from './failures.ts'
 import {
   editReducer,
   initialEdit,
@@ -14,21 +12,19 @@ import {
 import type { Session } from './useSession.ts'
 
 const saveTimeoutMs = 20_000
-const retryableCodes = new Set(['too_many_requests', 'internal_error', 'shutting_down'])
 
 export const answerOf = async (error: unknown, regionId: string): Promise<EditAction> => {
-  if (error instanceof VersionConflictFailure)
-    return { type: 'conflict', regionId, current: error.current }
-  const unauthorized = error instanceof ApiFailure && error.code === 'unauthorized'
-  if (unauthorized && (await readToken()) === undefined) return { type: 'unauthorized', regionId }
-  if (error instanceof ApiFailure) {
-    const retryable = unauthorized || retryableCodes.has(error.code)
-    return { type: 'failed', regionId, message: error.message, offline: false, retryable }
+  const problem = await problemOf(error)
+  switch (problem.kind) {
+    case 'conflict':
+      return { type: 'conflict', regionId, current: problem.current }
+    case 'signed-out':
+      return { type: 'unauthorized', regionId }
+    case 'failed': {
+      const { message, offline, retryable } = problem
+      return { type: 'failed', regionId, message, offline, retryable }
+    }
   }
-  const offline =
-    error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')
-  const message = offline ? strings.read.offline : strings.read.badResponse
-  return { type: 'failed', regionId, message, offline, retryable: true }
 }
 
 type SavedText = (idx: number) => string

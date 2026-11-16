@@ -1,7 +1,9 @@
 import type { Transcription } from '@khronist/contracts'
-import { ActionBar, Button, LineWords, SectionLabel, strings } from '@khronist/ui'
+import { LineWords, SectionLabel, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
+import { ConfirmActions, ConfirmAlert, PageStatus } from './confirming.tsx'
 import { EditableLines, EditAlert, EditingHint } from './editing.tsx'
+import type { Confirming } from './useConfirm.ts'
 import type { LineEditing } from './useLineEditing.ts'
 
 export const modernLines = (transcription: Transcription) => {
@@ -53,18 +55,28 @@ const ModernText = ({ lines, expansions }: ModernTextProps) => (
 type ResultProps = {
   transcription: Transcription
   editing: LineEditing
+  confirm: Confirming
+  signedIn: boolean
   onSelect: () => void
   onSignIn: () => void
 }
 
-export const Result = ({ transcription, editing, onSelect, onSignIn }: ResultProps) => {
+export const Result = ({
+  transcription,
+  editing,
+  confirm,
+  signedIn,
+  onSelect,
+  onSignIn,
+}: ResultProps) => {
   const modern = modernLines(transcription)
   const warnings = transcription.warnings ?? []
   return (
     <>
       <EditAlert editing={editing} onSignIn={onSignIn} />
+      <ConfirmAlert confirm={confirm} signedIn={signedIn} onSignIn={onSignIn} />
       <div className="flex-1 overflow-y-auto">
-        {editing.editing && <EditingHint />}
+        {editing.editing ? <EditingHint /> : <PageStatus transcription={transcription} />}
         {warnings.length > 0 && (
           <section className="p-3 pb-0">
             <Notes notes={warnings.map((warning) => strings.read.warnings[warning])} />
@@ -72,7 +84,13 @@ export const Result = ({ transcription, editing, onSelect, onSignIn }: ResultPro
         )}
         <section className="flex flex-col gap-1 p-3">
           <SectionLabel>{strings.read.transcriptionLines(transcription.lines.length)}</SectionLabel>
-          <EditableLines editing={editing} />
+          <EditableLines
+            editing={{
+              ...editing,
+              editable:
+                editing.editable && !confirm.sending && confirm.problem?.kind !== 'conflict',
+            }}
+          />
         </section>
         {modern && !editing.unsaved && (
           <>
@@ -81,9 +99,7 @@ export const Result = ({ transcription, editing, onSelect, onSignIn }: ResultPro
           </>
         )}
       </div>
-      <ActionBar>
-        <Button onClick={onSelect}>{strings.read.selectFragment}</Button>
-      </ActionBar>
+      <ConfirmActions transcription={transcription} confirm={confirm} onSelect={onSelect} />
     </>
   )
 }

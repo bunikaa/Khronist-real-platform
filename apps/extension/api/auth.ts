@@ -3,7 +3,8 @@ import { strings } from '@khronist/ui'
 import { ApiFailure, send, sendSignedIn } from './client.ts'
 import { clearToken, readToken, saveToken } from './token.ts'
 
-export type SessionUser = NonNullable<SessionResponse>['user']
+type SignedInSession = NonNullable<SessionResponse>
+export type SessionUser = SignedInSession['user']
 
 const signOutTimeoutMs = 5000
 
@@ -24,7 +25,7 @@ export const signIn = async (email: string, otp: string): Promise<void> => {
   await saveToken(token)
 }
 
-export const loadSession = async (): Promise<SessionUser | undefined> => {
+export const loadSession = async (): Promise<SignedInSession | undefined> => {
   const token = await readToken()
   if (!token) return undefined
   const response = await send('/api/auth/get-session', {
@@ -33,7 +34,7 @@ export const loadSession = async (): Promise<SessionUser | undefined> => {
   const session = sessionResponseSchema.parse(await response.json())
   if ((await readToken()) !== token) return undefined
   if (!session) await clearToken()
-  return session?.user
+  return session ?? undefined
 }
 
 export const signOut = async (): Promise<void> => {

@@ -10,6 +10,7 @@ import { FirstRun, Profile, SignIn } from './account.tsx'
 import { Result } from './result.tsx'
 import { Failed, MissingPage, Reading, ReadyToRead, Selecting } from './screens.tsx'
 import { activeTabId, useActivePage } from './useActivePage.ts'
+import { useConfirm } from './useConfirm.ts'
 import { useFirstRun } from './useFirstRun.ts'
 import { useLineEditing } from './useLineEditing.ts'
 import { useReading } from './useReading.ts'
@@ -54,6 +55,14 @@ export const App = () => {
     session,
     onSaved: replace,
     onSignInNeeded: openAccount,
+  })
+  const confirm = useConfirm({
+    transcription: reading.phase === 'done' ? reading.transcription : undefined,
+    session,
+    editing,
+    onConfirmed: replace,
+    onForbidden: refresh,
+    shown: !accountOpen && page?.selecting !== true,
   })
   const selecting = page?.selecting === true
 
@@ -135,6 +144,8 @@ export const App = () => {
           <Result
             transcription={reading.transcription}
             editing={editing}
+            confirm={confirm}
+            signedIn={session.status === 'signed-in'}
             onSelect={startSelection}
             onSignIn={openAccount}
           />
