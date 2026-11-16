@@ -48,10 +48,12 @@ export const signOut = async (): Promise<void> => {
 }
 
 export const saveName = async (name: string): Promise<void> => {
+  const token = await readToken()
   try {
     await send('/api/auth/update-user', postJson({ name }))
   } catch (error) {
-    if (error instanceof ApiFailure && error.code === 'unauthorized') await clearToken()
+    const rejected = error instanceof ApiFailure && error.code === 'unauthorized'
+    if (rejected && (await readToken()) === token) await clearToken()
     throw error
   }
 }
