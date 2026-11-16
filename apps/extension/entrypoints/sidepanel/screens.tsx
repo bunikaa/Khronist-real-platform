@@ -56,19 +56,19 @@ const Lines = ({ lines }: { lines: Line[] }) => (
 )
 
 export const MissingPage = () => (
-  <main className="flex-1 overflow-y-auto">
+  <div className="flex-1 overflow-y-auto">
     <section className="flex flex-col items-center gap-3 px-3 py-8 text-center">
       <h2 className="text-heading-16">{strings.page.missingTitle}</h2>
       <p className="text-body-13 text-ink-muted">{strings.page.missingBody}</p>
     </section>
-  </main>
+  </div>
 )
 
 type ReadyToReadProps = { onSelect: Action; shortcut: string | undefined }
 
 export const ReadyToRead = ({ onSelect, shortcut }: ReadyToReadProps) => (
   <>
-    <main className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto">
       <section className="flex flex-col items-center gap-3 px-3 py-8 text-center">
         <Crosshair
           size={32}
@@ -80,7 +80,7 @@ export const ReadyToRead = ({ onSelect, shortcut }: ReadyToReadProps) => (
         <h2 className="text-heading-16">{strings.read.promptTitle}</h2>
         <p className="text-body-13 text-ink-muted">{strings.read.promptBody(shortcut)}</p>
       </section>
-    </main>
+    </div>
     <ActionBar>
       <Button onClick={onSelect}>{strings.read.selectFragment}</Button>
     </ActionBar>
@@ -89,12 +89,12 @@ export const ReadyToRead = ({ onSelect, shortcut }: ReadyToReadProps) => (
 
 export const Selecting = ({ onCancel }: { onCancel: Action }) => (
   <>
-    <main className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto">
       <section className="flex flex-col items-center gap-3 px-3 py-8 text-center opacity-50">
         <h2 className="text-heading-16">{strings.read.selectingTitle}</h2>
         <p className="font-mono text-mono-11 text-ink-muted">{strings.read.selectingHint}</p>
       </section>
-    </main>
+    </div>
     <ActionBar>
       <Button kind="ghost" onClick={onCancel}>
         {strings.read.cancel}
@@ -129,7 +129,7 @@ export const Reading = ({ fragment, status, lines, onCancel }: ReadingProps) => 
   const read = status === 'normalizing' || lines.length > 0
   return (
     <>
-      <main className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         <section className="flex flex-col gap-3 p-3">
           <FragmentPreview fragment={fragment} />
           <ol className="flex flex-col gap-2">
@@ -159,7 +159,7 @@ export const Reading = ({ fragment, status, lines, onCancel }: ReadingProps) => 
             </div>
           )}
         </section>
-      </main>
+      </div>
       <ActionBar>
         <Button kind="ghost" onClick={onCancel}>
           {strings.read.cancel}
@@ -187,7 +187,7 @@ export const Result = ({ transcription, onSelect }: ResultProps) => {
   const warnings = transcription.warnings ?? []
   return (
     <>
-      <main className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {warnings.length > 0 && (
           <section className="p-3 pb-0">
             <Notes notes={warnings.map((warning) => strings.read.warnings[warning])} />
@@ -222,7 +222,7 @@ export const Result = ({ transcription, onSelect }: ResultProps) => {
             </section>
           </>
         )}
-      </main>
+      </div>
       <ActionBar>
         <Button onClick={onSelect}>{strings.read.selectFragment}</Button>
       </ActionBar>
@@ -247,7 +247,7 @@ export const Failed = ({ fragment, failure, onSelect, onRetry }: FailedProps) =>
       action={retriable(failure) && fragment ? strings.read.retry : strings.read.selectAgain}
       onAction={retriable(failure) && fragment ? onRetry : onSelect}
     />
-    <main className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto">
       <section className="flex flex-col gap-3 p-3">
         {fragment && <FragmentPreview fragment={fragment} failed />}
         {failure.kind === 'unreadable' && (
@@ -264,7 +264,7 @@ export const Failed = ({ fragment, failure, onSelect, onRetry }: FailedProps) =>
           </>
         )}
       </section>
-    </main>
+    </div>
     <ActionBar>
       <Button onClick={onSelect}>{strings.read.selectFragment}</Button>
     </ActionBar>

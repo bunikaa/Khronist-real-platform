@@ -10,6 +10,7 @@ export default defineConfig({
   }),
   manifest: ({ mode }) => ({
     name: 'Хроніст',
+    permissions: ['storage'],
     host_permissions: [`${apiOriginFor(mode)}/*`],
     action: {
       default_title: 'Відкрити Хроніст',

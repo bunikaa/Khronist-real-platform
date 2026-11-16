@@ -10,6 +10,7 @@ import {
 import { strings } from '@khronist/ui'
 import { readEvents } from './events.ts'
 import { apiOrigin } from './origin.ts'
+import { readToken } from './token.ts'
 
 export class ApiFailure extends Error {
   readonly code: string
@@ -27,8 +28,11 @@ const failureOf = async (response: Response): Promise<ApiFailure> => {
     : new ApiFailure('internal_error', strings.read.badResponse)
 }
 
-const send = async (path: string, init: RequestInit): Promise<Response> => {
-  const response = await fetch(`${apiOrigin}${path}`, init)
+export const send = async (path: string, init: RequestInit): Promise<Response> => {
+  const token = await readToken()
+  const headers = new Headers(init.headers)
+  if (token && !headers.has('authorization')) headers.set('authorization', `Bearer ${token}`)
+  const response = await fetch(`${apiOrigin}${path}`, { ...init, headers })
   if (!response.ok) throw await failureOf(response)
   return response
 }
