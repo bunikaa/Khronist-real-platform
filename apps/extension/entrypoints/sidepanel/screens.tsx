@@ -1,7 +1,8 @@
-import type { Line, RecognitionStatus } from '@khronist/contracts'
+import type { Line, RecognitionStatus, Transcription } from '@khronist/contracts'
 import {
   ActionBar,
   Button,
+  PageStatusBadge,
   SectionLabel,
   StatusBar,
   strings,
@@ -9,6 +10,8 @@ import {
 } from '@khronist/ui'
 import { Check, Crosshair } from 'lucide-react'
 import type { Fragment } from '../../messages.ts'
+import { statusOf } from './confirming.tsx'
+import type { PageReadings } from './usePageReadings.ts'
 import type { Failure } from './useReading.ts'
 
 type Action = () => void
@@ -52,11 +55,62 @@ export const MissingPage = () => (
   </div>
 )
 
-type ReadyToReadProps = { onSelect: Action; shortcut: string | undefined }
+const PageBadge = ({ readings }: { readings: PageReadings }) => {
+  if (readings.status !== 'found') return null
+  const { total, verified } = readings
+  return (
+    <>
+      <section className="flex p-3">
+        <PageStatusBadge status={verified > 0 ? 'verified' : 'draft'}>
+          {total > 0 ? strings.read.alreadyRead(total, verified) : strings.read.notRead}
+        </PageStatusBadge>
+      </section>
+      <hr className="border-rule" />
+    </>
+  )
+}
 
-export const ReadyToRead = ({ onSelect, shortcut }: ReadyToReadProps) => (
+type ReadOnPageProps = { transcriptions: Transcription[]; onOpen: (t: Transcription) => void }
+
+const ReadOnPage = ({ transcriptions, onOpen }: ReadOnPageProps) => {
+  const now = new Date()
+  return (
+    <section className="flex flex-col gap-1 p-3">
+      <SectionLabel>{strings.read.readHere}</SectionLabel>
+      <ul className="flex flex-col">
+        {transcriptions.map((transcription) => {
+          const { label } = statusOf(transcription, now)
+          return (
+            <li key={transcription.id}>
+              <button
+                type="button"
+                className="flex w-full cursor-pointer flex-col gap-1 border-b border-rule py-2 text-left"
+                onClick={() => onOpen(transcription)}
+              >
+                <span className="truncate font-mono text-mono-transcription">
+                  {transcription.lines[0]?.text ?? ''}
+                </span>
+                <span className="font-mono text-mono-10 text-ink-muted">{label}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+type ReadyToReadProps = {
+  onSelect: Action
+  shortcut: string | undefined
+  readings: PageReadings
+  onOpen: (transcription: Transcription) => void
+}
+
+export const ReadyToRead = ({ onSelect, shortcut, readings, onOpen }: ReadyToReadProps) => (
   <>
     <div className="flex-1 overflow-y-auto">
+      <PageBadge readings={readings} />
       <section className="flex flex-col items-center gap-3 px-3 py-8 text-center">
         <Crosshair
           size={32}
@@ -68,6 +122,9 @@ export const ReadyToRead = ({ onSelect, shortcut }: ReadyToReadProps) => (
         <h2 className="text-heading-16">{strings.read.promptTitle}</h2>
         <p className="text-body-13 text-ink-muted">{strings.read.promptBody(shortcut)}</p>
       </section>
+      {readings.status === 'found' && readings.transcriptions.length > 0 && (
+        <ReadOnPage transcriptions={readings.transcriptions} onOpen={onOpen} />
+      )}
     </div>
     <ActionBar>
       <Button onClick={onSelect}>{strings.read.selectFragment}</Button>

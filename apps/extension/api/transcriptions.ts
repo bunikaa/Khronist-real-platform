@@ -4,7 +4,7 @@ import {
   type Transcription,
   type VerifyRequest,
 } from '@khronist/contracts'
-import { sendSignedIn } from './client.ts'
+import { send, sendSignedIn } from './client.ts'
 
 export type LineChange = PatchLinesRequest['lines'][number]
 
@@ -35,5 +35,13 @@ export const verifyTranscription = async (
     body: JSON.stringify(body),
     signal,
   })
+  return transcriptionSchema.parse(await response.json())
+}
+
+export const loadTranscription = async (
+  id: string,
+  signal: AbortSignal,
+): Promise<Transcription> => {
+  const response = await send(`/v1/transcriptions/${id}`, { signal })
   return transcriptionSchema.parse(await response.json())
 }

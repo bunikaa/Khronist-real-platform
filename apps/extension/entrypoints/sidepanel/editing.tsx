@@ -1,7 +1,9 @@
 import { maxLineLength } from '@khronist/contracts'
 import {
+  Button,
   OldLettersBar,
   PageStatusBadge,
+  SectionLabel,
   StatusBar,
   strings,
   TranscriptionLine,
@@ -134,9 +136,12 @@ export const EditAlert = ({ editing, onSignIn }: EditAlertProps) => {
     return (
       <StatusBar
         type="warning"
-        message={strings.edit.conflict}
-        action={strings.edit.showCurrent}
-        onAction={editing.showCurrent}
+        message={strings.edit.conflictBy(
+          editing.conflicts.map(({ idx }) => idx),
+          problem.current.author?.name ?? '',
+        )}
+        action={strings.edit.compare}
+        onAction={editing.compare}
       />
     )
   if (problem?.kind === 'failed')
@@ -159,3 +164,44 @@ export const EditAlert = ({ editing, onSignIn }: EditAlertProps) => {
     )
   return null
 }
+
+export const ConflictCompare = ({ editing }: { editing: LineEditing }) => {
+  const { problem } = editing
+  if (problem?.kind !== 'conflict' || !problem.comparing) return null
+  const theirs = strings.edit.theirs(
+    problem.current.author?.name ?? '',
+    new Date(problem.current.createdAt),
+    new Date(),
+  )
+  return (
+    <section
+      aria-label={strings.edit.compare}
+      className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto rounded-md border border-rule bg-base-200 p-3 shadow-[0_8px_24px_rgb(28_26_23/0.16)]"
+    >
+      {editing.conflicts.map(({ idx, mine, theirs: text }) => (
+        <div key={idx} className="flex flex-col gap-2">
+          <SectionLabel>{strings.edit.versions(idx)}</SectionLabel>
+          <Version label={strings.edit.mine} text={mine} mine />
+          <Version label={theirs} text={text} />
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <Button autoFocus onClick={editing.keepMine}>
+          {strings.edit.keepMine}
+        </Button>
+        <Button kind="ghost" onClick={editing.takeTheirs}>
+          {strings.edit.takeTheirs}
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+type VersionProps = { label: string; text: string; mine?: boolean }
+
+const Version = ({ label, text, mine = false }: VersionProps) => (
+  <div className="flex flex-col gap-1">
+    <p className={`font-mono text-mono-10 ${mine ? 'text-primary' : 'text-ink-muted'}`}>{label}</p>
+    <p className="font-mono text-mono-transcription">{text}</p>
+  </div>
+)

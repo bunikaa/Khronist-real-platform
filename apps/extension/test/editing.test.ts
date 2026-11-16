@@ -1,8 +1,10 @@
 import type { Line, Transcription } from '@khronist/contracts'
 import { describe, expect, it } from 'vitest'
 import {
+  conflictsOf,
   editReducer,
   initialEdit,
+  settledBy,
   shownLines,
   type EditState,
 } from '../entrypoints/sidepanel/lineEditing.ts'
@@ -44,7 +46,7 @@ describe('editReducer', () => {
     ],
     [
       'keeps a conflict on screen instead of opening a line',
-      { ...open, problem: { kind: 'conflict', current: transcription } },
+      { ...open, problem: { kind: 'conflict', current: transcription, comparing: false } },
       { type: 'open', idx: 1, text: 'Коваленко и законная' },
       { editing: undefined },
     ],
@@ -171,25 +173,32 @@ describe('editReducer', () => {
       { pending: [], changed: [0], problem: undefined },
     ],
     [
-      'stops editing on a conflict',
-      { ...open, editing: { idx: 2, text: 'оба' }, pending: [change], sending: [change] },
+      'keeps the open line on a conflict, so its text is not lost',
+      { ...open, editing: { idx: 2, text: 'обоє' }, pending: [change], sending: [change] },
       { type: 'conflict', regionId, current: transcription },
       {
-        editing: undefined,
+        editing: { idx: 2, text: 'обоє' },
         sending: undefined,
-        problem: { kind: 'conflict', current: transcription },
+        pending: [change],
+        problem: { kind: 'conflict', current: transcription, comparing: false },
       },
     ],
     [
-      'drops the edits when the reader takes the newer version',
+      'opens the comparison of a conflict',
+      { ...open, problem: { kind: 'conflict', current: transcription, comparing: false } },
+      { type: 'compare' },
+      { problem: { kind: 'conflict', current: transcription, comparing: true } },
+    ],
+    [
+      'moves the edits onto the newer version and drops the lines given up',
       {
         ...open,
-        pending: [change],
+        pending: [change, { idx: 2, text: 'обоє' }],
         changed: [0],
-        problem: { kind: 'conflict', current: transcription },
+        problem: { kind: 'conflict', current: transcription, comparing: true },
       },
-      { type: 'resolve' },
-      { pending: [], changed: [], problem: undefined },
+      { type: 'rebase', dropped: [1] },
+      { pending: [{ idx: 2, text: 'обоє' }], changed: [0], problem: undefined },
     ],
     [
       'clears a failure for a retry',
@@ -222,5 +231,42 @@ describe('shownLines', () => {
       line: { ...transcription.lines[1], text: change.text, uncertain: false, words: [] },
     })
     expect(lines[2]).toMatchObject({ changed: false, line: transcription.lines[2] })
+  })
+})
+
+describe('conflictsOf', () => {
+  const current: Transcription = {
+    ...transcription,
+    id: '7c2e8d2f-5b1c-4e4d-8b54-3d2f8c1a0b22',
+    version: 2,
+    lines: [line(0, 'Села Борщагівки'), line(1, 'Коваленко и законная жена его'), line(2, 'оба')],
+  }
+
+  it.each<
+    [string, { idx: number; text: string }[], { idx: number; mine: string; theirs: string }[]]
+  >([
+    ['nothing when the other reader changed other lines', [{ idx: 2, text: 'обоє' }], []],
+    [
+      'a line both readers changed differently',
+      [change],
+      [{ idx: 1, mine: change.text, theirs: 'Коваленко и законная жена его' }],
+    ],
+    [
+      'nothing when both readers wrote the same text',
+      [{ idx: 1, text: 'Коваленко и законная жена его' }],
+      [],
+    ],
+    ['nothing for a line the newer version does not have', [{ idx: 7, text: 'зайвий' }], []],
+  ])('finds %s', (_case, pending, expected) => {
+    expect(conflictsOf(transcription, current, pending)).toEqual(expected)
+  })
+
+  it('settles the lines that already read as the reader wrote them', () => {
+    expect(
+      settledBy(current, [
+        { idx: 1, text: 'Коваленко и законная жена его' },
+        { idx: 2, text: 'обоє' },
+      ]),
+    ).toEqual([1])
   })
 })

@@ -56,6 +56,7 @@ export const useConfirm = (options: ConfirmOptions) => {
   const [stored, setStored] = useState(() => idle(versionId))
   const state = stored.versionId === versionId ? stored : idle(versionId)
   const [dontAsk, rememberDontAsk] = useDontAsk()
+  const [confirmedHere, setConfirmedHere] = useState<ReadonlySet<string>>(new Set())
   const answer = (forVersion: string, change: Partial<ConfirmState>) =>
     setStored((current) => (current.versionId === forVersion ? { ...current, ...change } : current))
   const changeShown = (change: Partial<ConfirmState>) =>
@@ -116,6 +117,7 @@ export const useConfirm = (options: ConfirmOptions) => {
     ).then(
       (confirmed) => {
         answer(sentFor, idle(sentFor))
+        setConfirmedHere((ids) => new Set([...ids, sentFor]))
         onConfirmed(confirmed)
       },
       async (error: unknown) => {
@@ -134,6 +136,7 @@ export const useConfirm = (options: ConfirmOptions) => {
     available,
     asking,
     sending: state.sending,
+    confirmedHere,
     problem: state.problem,
     ticked: state.ticked,
     signature: signedIn?.user.name ?? '',

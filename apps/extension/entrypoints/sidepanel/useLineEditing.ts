@@ -3,10 +3,13 @@ import { useEffect, useReducer, useRef, type ActionDispatch } from 'react'
 import { saveLines, type LineChange } from '../../api/transcriptions.ts'
 import { problemOf } from './failures.ts'
 import {
+  conflictsOf,
   editReducer,
+  rewritten,
   initialEdit,
   shownLines,
   type EditAction,
+  settledBy,
   type EditState,
 } from './lineEditing.ts'
 import type { Session } from './useSession.ts'
@@ -117,11 +120,40 @@ export const useLineEditing = ({ session, onSignInNeeded, ...options }: LineEdit
     }
   }, [guestQueue, waitingForSignIn, onSignInNeeded])
 
+  const conflict = state.problem?.kind === 'conflict' ? state.problem : undefined
+  const conflicts =
+    conflict && transcription
+      ? conflictsOf(transcription, conflict.current, unsent(state, saved))
+      : []
+  const takeCurrent = (dropped: number[]) => {
+    if (!conflict) return
+    onSaved(conflict.current)
+    dispatch({
+      type: 'rebase',
+      dropped: [...settledBy(conflict.current, state.pending), ...dropped],
+    })
+  }
+  const noOverlap = conflict !== undefined && conflicts.length === 0
+  useEffect(() => {
+    if (!conflict || !transcription) return
+    const open = state.editing
+    if (!noOverlap) {
+      if (open) dispatch({ type: 'commit', idx: open.idx, saved: saved(open.idx) })
+      return
+    }
+    const closed = open && rewritten(transcription, conflict.current, open.idx) ? [open.idx] : []
+    if (closed.length > 0) dispatch({ type: 'cancel' })
+    takeCurrent(closed)
+  })
+
   const lines = transcription ? shownLines(transcription, state) : []
   return {
-    ...editActions(state, dispatch, lines, saved, onSaved),
+    ...editActions(state, dispatch, lines, saved),
     editing: state.editing,
-    problem: state.problem,
+    problem: noOverlap ? undefined : state.problem,
+    conflicts,
+    keepMine: () => takeCurrent([]),
+    takeTheirs: () => takeCurrent(conflicts.map(({ idx }) => idx)),
     lines,
     waitingForSignIn,
     unsaved: unsent(state, saved).length > 0,
@@ -134,9 +166,8 @@ const editActions = (
   dispatch: ActionDispatch<[EditAction]>,
   lines: ReturnType<typeof shownLines>,
   saved: SavedText,
-  onSaved: (transcription: Transcription) => void,
 ) => {
-  const { editing, problem } = state
+  const { editing } = state
   const commit = () => {
     if (editing) dispatch({ type: 'commit', idx: editing.idx, saved: saved(editing.idx) })
   }
@@ -151,16 +182,11 @@ const editActions = (
     if (following) open(following.line.idx)
     else commit()
   }
-  const showCurrent = () => {
-    if (problem?.kind !== 'conflict') return
-    onSaved(problem.current)
-    dispatch({ type: 'resolve' })
-  }
   return {
     open,
     commit,
     next,
-    showCurrent,
+    compare: () => dispatch({ type: 'compare' }),
     change: (text: string) => dispatch({ type: 'change', text }),
     cancel: () => dispatch({ type: 'cancel' }),
     retry: () => dispatch({ type: 'retry' }),

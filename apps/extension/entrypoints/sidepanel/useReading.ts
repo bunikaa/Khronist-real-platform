@@ -21,7 +21,12 @@ type Source = { fragment: Fragment; shelfmark: Shelfmark | null }
 export type Reading =
   | { phase: 'idle' }
   | ({ phase: 'reading'; status: RecognitionStatus; lines: Line[] } & Source)
-  | ({ phase: 'done'; transcription: Transcription } & Source)
+  | {
+      phase: 'done'
+      transcription: Transcription
+      fragment?: Fragment
+      shelfmark: Shelfmark | null
+    }
   | { phase: 'failed'; fragment?: Fragment; shelfmark: Shelfmark | null; failure: Failure }
 
 const retryCodes = new Set([
@@ -138,6 +143,11 @@ export const useReading = () => {
     setReading({ phase: 'idle' })
   }, [])
 
+  const show = useCallback((transcription: Transcription, shelfmark: Shelfmark | null) => {
+    controller.current?.abort()
+    setReading({ phase: 'done', transcription, shelfmark })
+  }, [])
+
   const replace = useCallback((transcription: Transcription) => {
     setReading((previous) =>
       previous.phase === 'done' && previous.transcription.regionId === transcription.regionId
@@ -148,5 +158,5 @@ export const useReading = () => {
 
   useEffect(() => () => controller.current?.abort(), [])
 
-  return { reading, start, retry, failSelection, cancel, replace }
+  return { reading, start, retry, failSelection, cancel, replace, show }
 }
