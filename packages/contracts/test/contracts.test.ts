@@ -11,6 +11,7 @@ import {
   pageLookupQuerySchema,
   patchLinesRequestSchema,
   searchQuerySchema,
+  sessionResponseSchema,
   shelfmarkSchema,
   verifyRequestSchema,
   visionToLines,
@@ -294,5 +295,19 @@ describe('shelfmark limits', () => {
     expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://example.org/x' }).success).toBe(
       true,
     )
+  })
+})
+
+describe('sessionResponseSchema', () => {
+  const user = { id: 'user-1', email: 'olena.k@khronist.example', name: '' }
+
+  it.each([
+    ['a signed-in verifier', { session: { id: 's' }, user, canVerify: true }, true],
+    ['a signed-in reader', { session: { id: 's' }, user, canVerify: false }, true],
+    ['no session', null, true],
+    ['a session without canVerify', { session: { id: 's' }, user }, false],
+    ['canVerify as a string', { session: { id: 's' }, user, canVerify: 'true' }, false],
+  ])('checks %s', (_case, body, valid) => {
+    expect(sessionResponseSchema.safeParse(body).success).toBe(valid)
   })
 })

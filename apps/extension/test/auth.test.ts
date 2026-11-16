@@ -126,7 +126,9 @@ describe('the session of the panel', () => {
 
   it('returns the user of a valid session', async () => {
     await signedIn()
-    const fetch = stubFetch(json({ session: { id: 's' }, user: { ...user, image: null } }))
+    const fetch = stubFetch(
+      json({ session: { id: 's' }, user: { ...user, image: null }, canVerify: false }),
+    )
 
     expect(await loadSession()).toEqual(user)
     expect(requestOf(fetch)).toMatchObject({
@@ -147,7 +149,7 @@ describe('the session of the panel', () => {
     await signedIn()
     const fetch = vi.fn<typeof globalThis.fetch>(async () => {
       await fakeStorage.session.remove('sessionToken')
-      return json({ session: { id: 's' }, user })
+      return json({ session: { id: 's' }, user, canVerify: false })
     })
     vi.stubGlobal('fetch', fetch)
 
