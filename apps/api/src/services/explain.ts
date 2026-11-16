@@ -1,6 +1,4 @@
 import {
-  answerConfidenceSchema,
-  citationSchema,
   explainOutputSchema,
   isGroundedQuote,
   type Citation,
@@ -9,29 +7,23 @@ import {
   type ExplainResponse,
 } from '@khronist/contracts'
 import { loadPrompt, loadProviderNotes, renderPrompt } from '@khronist/prompts'
-import { eq } from 'drizzle-orm'
-import { z } from 'zod'
 import type { Config } from '../config.ts'
 import type { Database } from '../db/client.ts'
-import { transcriptions } from '../db/schema.ts'
 import { ApiError } from '../lib/errors.ts'
+import { explainBudgetShare, explainPrimaryLimitMs, explainTimeoutMs } from '../lib/limits.ts'
 import {
-  explainBudgetShare,
-  explainPrimaryLimitMs,
-  explainTimeoutMs,
-  maxExplainRecordChars,
-} from '../lib/limits.ts'
+  anyCaseConfidenceSchema,
+  chunkCitationOf,
+  promptChunksOf,
+  recordOf,
+  type FoundChunk,
+} from './answers.ts'
 import { describeDate } from './calendar.ts'
 import type { CallBudget, LlmCallLog, LlmProvider } from './llm/index.ts'
 import { createProvider, selectProvider, type ProviderFactory } from './llm/select.ts'
 import { retrieve, type RetrievalQuery } from './retrieval.ts'
 
-const modelOutputSchema = explainOutputSchema.extend({
-  confidence: z.preprocess(
-    (value) => (typeof value === 'string' ? value.toLowerCase() : value),
-    answerConfidenceSchema,
-  ),
-})
+const modelOutputSchema = explainOutputSchema.extend({ confidence: anyCaseConfidenceSchema })
 
 const chunkTypeOf: Record<ExplainRequest['kind'], RetrievalQuery['type']> = {
   term: undefined,
@@ -44,45 +36,23 @@ const maxOutputTokens = 2048
 
 const unavailable = () => new ApiError(503, 'reader_unavailable', 'Пояснення тимчасово недоступне')
 
-type Found = Awaited<ReturnType<typeof retrieve>>['chunks'][number]
-
-const citationOf = (chunk: Found, quote: string): Citation => ({
-  kind: 'chunk',
-  chunkId: chunk.id,
-  sourceId: chunk.sourceId,
-  title: chunk.title,
-  ...(citationSchema.shape.url.safeParse(chunk.url).success && { url: chunk.url }),
-  licence: chunk.licence,
-  retelling: true,
-  quote,
-})
-
-const citationsOf = (output: ExplainOutput, chunks: Found[]): Citation[] | undefined => {
+const citationsOf = (output: ExplainOutput, chunks: FoundChunk[]): Citation[] | undefined => {
   const byId = new Map(chunks.map((chunk) => [chunk.id, chunk]))
   const citations: Citation[] = []
   for (const { chunkId, quote } of output.citations) {
     const chunk = byId.get(chunkId)
     if (!chunk || !isGroundedQuote(quote, chunk.text)) return undefined
-    citations.push(citationOf(chunk, quote.trim()))
+    citations.push(chunkCitationOf(chunk, quote.trim()))
   }
   return citations.length > 0 ? citations : undefined
 }
 
-const answerOf = (output: ExplainOutput, chunks: Found[]) => {
+const answerOf = (output: ExplainOutput, chunks: FoundChunk[]) => {
   const answer = output.answer?.trim()
   const citations = answer ? citationsOf(output, chunks) : undefined
   return answer && citations
     ? { answer, confidence: output.confidence, citations }
     : { answer: null, reason: 'no_sources' as const, citations: [] }
-}
-
-const recordOf = async (db: Database, transcriptionId: string | undefined) => {
-  if (!transcriptionId) return null
-  const [row] = await db
-    .select({ text: transcriptions.normalizedText })
-    .from(transcriptions)
-    .where(eq(transcriptions.id, transcriptionId))
-  return row ? row.text.slice(0, maxExplainRecordChars) : null
 }
 
 type ExplainDeps = {
@@ -97,15 +67,15 @@ export type Explainer = (request: ExplainRequest, log?: LlmCallLog) => Promise<E
 export const createExplainer = ({ db, llm, budget, minRank }: ExplainDeps): Explainer => {
   const prompt = loadPrompt('explain')
 
-  const ask = async (request: ExplainRequest, found: Found[], log?: LlmCallLog) => {
+  const ask = async (request: ExplainRequest, found: FoundChunk[], log?: LlmCallLog) => {
     if (!llm || !(await budget.available(explainBudgetShare))) return undefined
     const record = await recordOf(db, request.context?.transcriptionId)
     const text = renderPrompt(prompt.user, {
       kind: request.kind,
       text: JSON.stringify(request.text),
       period: request.context?.period ?? 'unknown',
-      record: JSON.stringify(record),
-      chunks: JSON.stringify(found.map(({ id, title, text }) => ({ chunkId: id, title, text }))),
+      record: JSON.stringify(record?.text ?? null),
+      chunks: promptChunksOf(found),
     })
     try {
       const { value } = await llm.complete({
