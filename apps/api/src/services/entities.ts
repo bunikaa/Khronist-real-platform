@@ -7,6 +7,7 @@ import {
 import { loadPrompt, renderPrompt } from '@khronist/prompts'
 import type { Config } from '../config.ts'
 import { entitiesPrimaryLimitMs } from '../lib/limits.ts'
+import { dateExtra } from './calendar.ts'
 import { hintValues, isRussianOrUnmarked } from './hints.ts'
 import type { CallBudget, LlmCallLog, LlmProvider } from './llm/index.ts'
 import { createProvider, selectProvider, type ProviderFactory } from './llm/select.ts'
@@ -87,6 +88,14 @@ export const placeEntities = (
   return { placed, dropped: found.length - placed.length }
 }
 
+export const withNewStyleDates = (entities: Entity[]): Entity[] =>
+  entities.map((entity) => {
+    if (entity.type !== 'date') return entity
+    const extra =
+      dateExtra(entity.text) ?? (entity.normalized ? dateExtra(entity.normalized) : undefined)
+    return extra ? { ...entity, extra } : entity
+  })
+
 export const assertEntitiesFit = (text: string, found: Entity[]): Entity[] => {
   for (const [index, entity] of found.entries()) {
     if (
@@ -126,7 +135,7 @@ export const createLlmEntityExtractor = (llm: LlmProvider): EntityExtractor => {
         { model, usage, durationMs: Date.now() - startedAt, found: placed.length, dropped },
         'entities found',
       )
-      return placed
+      return withNewStyleDates(placed)
     },
   }
 }
