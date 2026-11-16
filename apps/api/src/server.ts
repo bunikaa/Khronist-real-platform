@@ -10,6 +10,7 @@ import { closeOwnRecognitions } from './jobs/shutdown.ts'
 import { defaultDrainMs, staleSweepMs } from './lib/limits.ts'
 import { createCallBudget } from './services/budget.ts'
 import { selectHtrReader } from './services/htr/index.ts'
+import { selectChatResponder } from './services/chat.ts'
 import { selectEntityExtractor } from './services/entities.ts'
 import { selectExplainer } from './services/explain.ts'
 import { selectNormalizer } from './services/normalize.ts'
@@ -37,6 +38,7 @@ const reader = selectHtrReader(config, budget)
 const normalizer = selectNormalizer(config, budget)
 const entities = selectEntityExtractor(config, budget)
 const explain = selectExplainer(config, db, budget)
+const chat = selectChatResponder(config, db, budget)
 const hub = createEventHub()
 const queue = createJobQueue(config.JOBS_CONCURRENCY, (error) => app.log.error(error))
 const signIn = signInSettings(config)
@@ -55,6 +57,7 @@ const app = await buildApp({
     return true
   },
   explain,
+  chat,
   recognitions: {
     db,
     reader,

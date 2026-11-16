@@ -22,12 +22,14 @@ import {
 import { logMethod, safeError } from './lib/log.ts'
 import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
+import { chatRoutes } from './routes/chat.ts'
 import { citeRoutes } from './routes/cite.ts'
 import { explainRoutes } from './routes/explain.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { pageRoutes } from './routes/pages.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
 import { transcriptionRoutes } from './routes/transcriptions.ts'
+import type { ChatResponder } from './services/chat.ts'
 import type { Explainer } from './services/explain.ts'
 import type { RecognitionDeps } from './services/recognitions.ts'
 
@@ -47,6 +49,8 @@ export type AppDeps = HealthDeps & {
   admin?: AdminDeps
   explain?: Explainer
   guestExplainsPerDay?: number
+  chat?: ChatResponder
+  guestChatsPerDay?: number
 }
 
 const shuttingDown = {
@@ -199,6 +203,7 @@ export const buildApp = async (deps: AppDeps) => {
     await app.register(citeRoutes(db))
   }
   if (deps.explain) await app.register(explainRoutes(deps.explain, deps.guestExplainsPerDay))
+  if (deps.chat) await app.register(chatRoutes(deps.chat, deps.guestChatsPerDay))
   if (deps.admin) await app.register(adminRoutes(deps.admin))
   return app
 }
