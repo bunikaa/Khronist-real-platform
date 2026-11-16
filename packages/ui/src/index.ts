@@ -1,5 +1,6 @@
 export { ActionBar } from './ActionBar.tsx'
 export { Button } from './Button.tsx'
+export { ConfirmDialog } from './ConfirmDialog.tsx'
 export { OldLettersBar } from './OldLettersBar.tsx'
 export { PageStatusBadge } from './PageStatusBadge.tsx'
 export { PanelHeader } from './PanelHeader.tsx'

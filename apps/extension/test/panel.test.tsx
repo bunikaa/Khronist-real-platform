@@ -1145,5 +1145,491 @@ describe('side panel', () => {
         expect(saves(calls)[1]?.authorization).toBe('Bearer newer-token.signature')
       })
     })
+
+    describe('confirming', () => {
+      const olena = { ...user, name: 'Олена К.' }
+      const two: Transcription = {
+        ...transcription,
+        shelfmark: shelfmark(4),
+        lines: [
+          ...transcription.lines,
+          { ...transcription.lines[0]!, idx: 1, text: 'Коваленко и законная' },
+        ],
+      }
+      const verifyPath = `/v1/transcriptions/${two.id}/verify`
+      const confirmed = (at = new Date().toISOString()): Transcription => ({
+        ...two,
+        status: 'verified',
+        verifiedBy: { name: 'Олена К.' },
+        verifiedSignature: 'Олена К.',
+        verifiedAt: at,
+      })
+
+      const read = (
+        session: { user: typeof user; canVerify: boolean } | null,
+        routes: Parameters<typeof api>[0] = {},
+        shown: Transcription = two,
+      ) =>
+        api({
+          '/api/auth/get-session': () => json(session && { session: { id: 's' }, ...session }),
+          '/v1/recognitions': () =>
+            json({ recognitionId, status: 'cached', transcriptionId: shown.id }, 201),
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({ recognitionId, status: 'done', transcription: shown }),
+          ...routes,
+        })
+
+      const openReading = async () => {
+        currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
+        await render()
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await settle()
+      }
+
+      const remount = () => {
+        act(() => root.unmount())
+        root = createRoot(container)
+      }
+
+      const dialog = () => container.querySelector('main section[role="group"]')
+      const dialogButton = (text: string) =>
+        [...(dialog()?.querySelectorAll('button') ?? [])].find(
+          (button) => button.textContent === text,
+        )
+      const badge = () => container.querySelector('main section > span')
+      const statusBar = () => container.querySelector('[role="status"]')
+      const verifies = (calls: ReturnType<typeof api>) =>
+        calls.filter((call) => call.path === verifyPath)
+      const failing = (status: number, code: string, message: string) => () =>
+        json({ error: { code, message } }, status)
+
+      it('offers no confirmation to a guest or to an account outside the verifier list', async () => {
+        read(null)
+        await openReading()
+        expect(badge()?.textContent).toBe('чернетка моделі')
+        expect(container.textContent).toContain('ще ніхто не підтвердив')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+        expect(mainButton('Виділити фрагмент')?.className).toContain('btn-primary')
+
+        remount()
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: false })
+        await openReading()
+        expect(container.textContent).toContain('Села Борщаговки')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+      })
+
+      it('asks first and confirms with the signature of the account', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: () => json(confirmed()) },
+        )
+        await openReading()
+        expect(mainButton('Виділити фрагмент')?.className).toContain('btn-ghost')
+
+        await click(mainButton('Підтвердити'))
+
+        expect(dialog()?.textContent).toContain('Підтвердити 2 рядки як прочитані вами?')
+        expect(dialog()?.textContent).toContain(
+          'Текст стане публічним під CC BY 4.0 з підписом «Олена К.».',
+        )
+        expect(verifies(calls)).toEqual([])
+
+        await click(dialogButton('Підтвердити'))
+
+        expect(verifies(calls)).toEqual([
+          { path: verifyPath, authorization: `Bearer ${token}`, body: { signature: 'Олена К.' } },
+        ])
+        expect(dialog()).toBeNull()
+        expect(badge()?.textContent).toBe('підтверджено · Олена К. · сьогодні')
+        expect(container.textContent).not.toContain('ще ніхто не підтвердив')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+
+        await click(mainButton('Наступний фрагмент'))
+        expect(sent).toContainEqual({ type: 'start-selection' })
+      })
+
+      it('closes the question on cancel and on Esc without confirming', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: () => json(confirmed()) },
+        )
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Скасувати'))
+        expect(dialog()).toBeNull()
+
+        await click(mainButton('Підтвердити'))
+        await act(async () => {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+        })
+        expect(dialog()).toBeNull()
+        expect(verifies(calls)).toEqual([])
+      })
+
+      it('remembers not to ask only once a confirmation is sent', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: () => json(confirmed()) },
+        )
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        await click(dialog()?.querySelector('input[type="checkbox"]'))
+        await click(dialogButton('Скасувати'))
+        expect(fakeStorage.local.items.has('confirmWithoutAsking')).toBe(false)
+
+        await click(mainButton('Підтвердити'))
+        expect(dialog()?.querySelector('input[type="checkbox"]')).toHaveProperty('checked', false)
+        await click(dialog()?.querySelector('input[type="checkbox"]'))
+        await click(dialogButton('Підтвердити'))
+        expect(fakeStorage.local.items.get('confirmWithoutAsking')).toBe(true)
+
+        remount()
+        await openReading()
+        await click(mainButton('Підтвердити'))
+
+        expect(dialog()).toBeNull()
+        expect(verifies(calls)).toHaveLength(2)
+        expect(document.activeElement).toBe(mainButton('Наступний фрагмент'))
+      })
+
+      it('closes the question when the profile opens, so it does not come back by itself', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true })
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        await click(accountButton())
+        expect(container.textContent).toContain('Підпис підтверджень')
+        await click(accountButton())
+
+        expect(container.textContent).toContain('Села Борщаговки')
+        expect(dialog()).toBeNull()
+        expect(mainButton('Підтвердити')).toBeDefined()
+      })
+
+      it('offers no confirmation for a fragment without a shelfmark', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true }, {}, { ...two, shelfmark: undefined })
+        await openReading()
+
+        expect(container.textContent).toContain('Села Борщаговки')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+      })
+
+      it('gives the focus back to the button after the question closes', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true })
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        expect(document.activeElement?.textContent).toBe('Підтвердити')
+        expect(dialog()?.contains(document.activeElement)).toBe(true)
+        await click(dialogButton('Скасувати'))
+
+        expect(document.activeElement).toBe(mainButton('Підтвердити'))
+      })
+
+      it('drops the question for good once a line is opened', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true })
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        const line = [...container.querySelectorAll('main li button')].find((button) =>
+          button.textContent?.includes('Села Борщаговки'),
+        )
+        await click(line)
+        expect(dialog()).toBeNull()
+        await act(async () => {
+          container
+            .querySelector('textarea')
+            ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        })
+        await settle()
+
+        expect(container.querySelector('textarea')).toBeNull()
+        expect(dialog()).toBeNull()
+        expect(mainButton('Підтвердити')).toBeDefined()
+      })
+
+      it('closes the question when the next fragment is selected', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true })
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        await click(mainButton('Виділити фрагмент'))
+
+        expect(sent).toContainEqual({ type: 'start-selection' })
+        expect(dialog()).toBeNull()
+      })
+
+      it('does not retry a failed confirmation once a line is opened', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: failing(429, 'too_many_requests', 'Забагато запитів') },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+        expect(statusBar()?.textContent).toContain('Забагато запитів')
+
+        const line = [...container.querySelectorAll('main li button')].find((button) =>
+          button.textContent?.includes('Села Борщаговки'),
+        )
+        await click(line)
+
+        expect(statusBar()).toBeNull()
+        expect(mainButton('Підтвердити')).toBeUndefined()
+        expect(verifies(calls)).toHaveLength(1)
+      })
+
+      it('drops the answer for a fragment that is no longer shown and frees the button', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        let answer: (response: Response) => void = () => undefined
+        const other: Transcription = {
+          ...two,
+          id: '9d3f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b',
+          regionId: '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e',
+          lines: [{ ...two.lines[0]!, text: 'Иванъ Петровъ' }],
+        }
+        let shown = two
+        const calls = read(
+          { user: olena, canVerify: true },
+          {
+            '/v1/recognitions': () =>
+              json({ recognitionId, status: 'cached', transcriptionId: shown.id }, 201),
+            [`/v1/recognitions/${recognitionId}`]: () =>
+              json({ recognitionId, status: 'done', transcription: shown }),
+            [verifyPath]: () =>
+              new Promise<Response>((resolve) => {
+                answer = resolve
+              }),
+          },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+        expect(container.querySelectorAll('main li button')).toHaveLength(0)
+
+        shown = other
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await settle()
+        expect(container.textContent).toContain('Иванъ Петровъ')
+        expect(mainButton('Підтвердити')).not.toHaveProperty('disabled', true)
+        await click(mainButton('Підтвердити'))
+        expect(dialog()?.textContent).toContain('Підтвердити 1 рядок як прочитаний вами?')
+
+        await act(async () => {
+          answer(json(confirmed()))
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        })
+        await settle()
+
+        expect(container.textContent).toContain('Иванъ Петровъ')
+        expect(badge()?.textContent).toBe('чернетка моделі')
+        expect(verifies(calls)).toHaveLength(1)
+        expect(dialog()?.textContent).toContain('Підтвердити 1 рядок як прочитаний вами?')
+      })
+
+      it('checks the session again after a refusal, so the button goes away', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        let verifier = true
+        const calls = read(
+          { user: olena, canVerify: true },
+          {
+            '/api/auth/get-session': () =>
+              json({ session: { id: 's' }, user: olena, canVerify: verifier }),
+            [verifyPath]: () => {
+              verifier = false
+              return json({ error: { code: 'forbidden', message: 'Лише історик' } }, 403)
+            },
+          },
+        )
+        await openReading()
+        const sessionChecks = calls.filter((call) => call.path === '/api/auth/get-session').length
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+        await settle()
+
+        expect(calls.filter((call) => call.path === '/api/auth/get-session')).toHaveLength(
+          sessionChecks + 1,
+        )
+        expect(statusBar()?.textContent).toContain('Лише історик')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+      })
+
+      it('says the text goes out without a signature when the account has no name', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({ user, canVerify: true }, { [verifyPath]: () => json(confirmed()) })
+        await openReading()
+
+        await click(mainButton('Підтвердити'))
+        expect(dialog()?.textContent).toContain(
+          'Текст стане публічним під CC BY 4.0 без підпису. Підпис можна додати в профілі.',
+        )
+        await click(dialogButton('Підтвердити'))
+
+        expect(verifies(calls)[0]?.body).toEqual({})
+      })
+
+      it('shows who confirmed a version earlier, with the signature next to the account name', async () => {
+        read(
+          null,
+          {},
+          { ...confirmed('2026-11-14T10:00:00.000Z'), verifiedSignature: 'О. Коваль, ЦДІАК' },
+        )
+        await openReading()
+
+        expect(badge()?.textContent).toBe(
+          'підтверджено · Олена К. («О. Коваль, ЦДІАК») · 14 листопада 2026 р.',
+        )
+        expect(mainButton('Наступний фрагмент')?.className).toContain('btn-primary')
+      })
+
+      it('hides the confirmation while a line is open', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({ user: olena, canVerify: true })
+        await openReading()
+
+        const line = [...container.querySelectorAll('main li button')].find((button) =>
+          button.textContent?.includes('Села Борщаговки'),
+        )
+        await click(line)
+        expect(container.querySelector('textarea')).not.toBeNull()
+        expect(mainButton('Підтвердити')).toBeUndefined()
+
+        await act(async () => {
+          container
+            .querySelector('textarea')
+            ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        })
+        await settle()
+        expect(container.querySelector('textarea')).toBeNull()
+        expect(mainButton('Підтвердити')).toBeDefined()
+      })
+
+      it('tells a reader outside the verifier list what the server said', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: failing(403, 'forbidden', 'Підтверджувати може лише історик') },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+
+        expect(statusBar()?.textContent).toContain('Підтверджувати може лише історик')
+        expect(statusBar()?.querySelector('button')?.textContent).toBe('Зрозуміло')
+        await click(statusBar()?.querySelector('button'))
+        expect(statusBar()).toBeNull()
+        expect(badge()?.textContent).toBe('чернетка моделі')
+      })
+
+      it('offers a retry after too many requests and confirms on the retry', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        let answers = 0
+        const calls = read(
+          { user: olena, canVerify: true },
+          {
+            [verifyPath]: () =>
+              (answers += 1) === 1
+                ? json({ error: { code: 'too_many_requests', message: 'Забагато запитів' } }, 429)
+                : json(confirmed()),
+          },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+
+        expect(statusBar()?.textContent).toContain('Забагато запитів')
+        expect(statusBar()?.querySelector('button')?.textContent).toBe('Спробувати ще раз')
+        await click(statusBar()?.querySelector('button'))
+
+        expect(verifies(calls)).toHaveLength(2)
+        expect(statusBar()).toBeNull()
+        expect(badge()?.textContent).toBe('підтверджено · Олена К. · сьогодні')
+      })
+
+      it('shows the newer version when the text changed before the confirmation', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const current: Transcription = {
+          ...two,
+          id: '7c2e8d2f-5b1c-4e4d-8b54-3d2f8c1a0b22',
+          version: 2,
+          lines: [{ ...two.lines[0]!, text: 'Села Борщаговки крестьянинъ' }, two.lines[1]!],
+        }
+        read(
+          { user: olena, canVerify: true },
+          {
+            [verifyPath]: () =>
+              json({ error: { code: 'version_conflict', message: 'Конфлікт' }, current }, 409),
+          },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+
+        expect(statusBar()?.textContent).toContain('Текст змінили, поки ви його читали')
+        expect(mainButton('Підтвердити')).toBeUndefined()
+        expect(container.querySelectorAll('main li button')).toHaveLength(0)
+        await click(statusBar()?.querySelector('button'))
+
+        expect(container.textContent).toContain('Села Борщаговки крестьянинъ')
+        expect(statusBar()).toBeNull()
+        expect(mainButton('Підтвердити')).toBeDefined()
+      })
+
+      it('leaves one sign-in bar when a line is opened after the session expired', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: failing(401, 'unauthorized', 'Потрібен вхід') },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+        await settle()
+        expect(statusBar()?.textContent).toContain('Увійдіть знову, щоб підтвердити')
+
+        const line = [...container.querySelectorAll('main li button')].find((button) =>
+          button.textContent?.includes('Села Борщаговки'),
+        )
+        await click(line)
+
+        expect(container.textContent).not.toContain('Увійдіть знову, щоб підтвердити')
+      })
+
+      it('asks to sign in again when the session expired on the way', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: failing(401, 'unauthorized', 'Потрібен вхід') },
+        )
+        await openReading()
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+        await settle()
+
+        expect(statusBar()?.textContent).toContain('Увійдіть знову, щоб підтвердити')
+        await click(statusBar()?.querySelector('button'))
+        expect(container.textContent).toContain('Надішлемо код для входу')
+
+        await click(accountButton())
+        await act(async () => {
+          await fakeStorage.session.set({ sessionToken: 'newer-token.signature' })
+        })
+        await settle()
+        expect(statusBar()).toBeNull()
+        expect(mainButton('Підтвердити')).toBeDefined()
+      })
+    })
   })
 })

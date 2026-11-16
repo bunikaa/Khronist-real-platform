@@ -9,7 +9,8 @@ vi.mock('wxt/browser', async () => {
 
 const { ApiFailure, VersionConflictFailure } = await import('../api/client.ts')
 const { apiOrigin } = await import('../api/origin.ts')
-const { saveLines } = await import('../api/transcriptions.ts')
+const { saveLines, verifyTranscription } = await import('../api/transcriptions.ts')
+const { problemOf } = await import('../entrypoints/sidepanel/failures.ts')
 const { answerOf } = await import('../entrypoints/sidepanel/useLineEditing.ts')
 
 const token = 'session-token.signature'
@@ -226,6 +227,100 @@ describe('what the panel makes of a failed save', () => {
       type: 'conflict',
       regionId,
       current: edited,
+    })
+  })
+})
+
+describe('confirming a transcription', () => {
+  const verifyPath = `/v1/transcriptions/${transcription.id}/verify`
+  const verified: Transcription = {
+    ...transcription,
+    status: 'verified',
+    verifiedBy: { name: 'Олена К.' },
+    verifiedSignature: 'Олена К.',
+    verifiedAt: '2026-11-16T10:00:00.000Z',
+  }
+
+  it('confirms the version the panel shows with the signature of the account', async () => {
+    await fakeStorage.session.set({ sessionToken: token })
+    const fetch = stubFetch(json(verified))
+
+    expect(await verifyTranscription(transcription, 'Олена К.', signal)).toEqual(verified)
+
+    const [url, init] = fetch.mock.calls[0] ?? []
+    expect(String(url)).toBe(`${apiOrigin}${verifyPath}`)
+    expect(init?.method).toBe('POST')
+    expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${token}`)
+    expect(new Headers(init?.headers).get('content-type')).toBe('application/json')
+    expect(JSON.parse(String(init?.body))).toEqual({ signature: 'Олена К.' })
+  })
+
+  it('sends no signature when the account has no name', async () => {
+    const fetch = stubFetch(json(verified))
+
+    await verifyTranscription(transcription, '', signal)
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({})
+  })
+
+  it('returns the newer version when the API reports a conflict', async () => {
+    stubFetch(
+      json({ error: { code: 'version_conflict', message: 'Конфлікт' }, current: edited }, 409),
+    )
+
+    const error = await verifyTranscription(transcription, '', signal).catch(
+      (caught: unknown) => caught,
+    )
+
+    expect(error).toBeInstanceOf(VersionConflictFailure)
+    expect(error).toMatchObject({ current: edited })
+  })
+
+  it('forgets a token the API rejects', async () => {
+    await fakeStorage.session.set({ sessionToken: token })
+    stubFetch(failure('unauthorized', 'Потрібен вхід', 401))
+
+    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+      code: 'unauthorized',
+    })
+    expect(fakeStorage.session.items.has('sessionToken')).toBe(false)
+  })
+
+  it.each([
+    ['bad_request', 'Некоректний підпис', 400],
+    ['forbidden', 'Підтверджувати можуть лише історики проєкту', 403],
+    ['not_found', 'Не знайдено', 404],
+    ['too_many_requests', 'Забагато запитів, спробуйте пізніше', 429],
+  ])('passes %s through with the server message', async (code, message, status) => {
+    await fakeStorage.session.set({ sessionToken: token })
+    stubFetch(failure(code, message, status))
+
+    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+      code,
+      message,
+    })
+    expect(fakeStorage.session.items.get('sessionToken')).toBe(token)
+  })
+
+  it('rejects an answer outside the contract', async () => {
+    stubFetch(json({ id: transcription.id }))
+
+    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+      name: 'ZodError',
+    })
+  })
+
+  it.each([
+    ['forbidden', false],
+    ['too_many_requests', true],
+    ['internal_error', true],
+    ['not_found', false],
+  ])('offers a retry after %s only when a retry can help', async (code, retryable) => {
+    expect(await problemOf(new ApiFailure(code, 'Повідомлення'))).toEqual({
+      kind: 'failed',
+      message: 'Повідомлення',
+      offline: false,
+      retryable,
     })
   })
 })

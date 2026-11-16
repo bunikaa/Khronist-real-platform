@@ -15,6 +15,11 @@ const lineForms: Record<Intl.LDMLPluralRule, string> = {
 const lines = (count: number) => `${count} ${lineForms[plural.select(count)]}`
 const size = (width: number, height: number) =>
   `${number.format(width)} × ${number.format(height)} px`
+const dayMonthYear = new Intl.DateTimeFormat('uk', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+})
 const shortcutKeys = (shortcut: string) => shortcut.split('+').join(' + ')
 
 export const strings = {
@@ -85,6 +90,28 @@ export const strings = {
     showCurrent: 'Показати нову версію',
     signInToSave: 'Правки не збережено: щоб зберегти їх, увійдіть',
     discard: 'Скасувати правки',
+  },
+  confirm: {
+    action: 'Підтвердити',
+    question: (count: number) =>
+      `Підтвердити ${lines(count)} як ${plural.select(count) === 'one' ? 'прочитаний' : 'прочитані'} вами?`,
+    licence: (signature: string) =>
+      signature
+        ? `Текст стане публічним під CC BY 4.0 з підписом «${signature}».`
+        : 'Текст стане публічним під CC BY 4.0 без підпису. Підпис можна додати в профілі.',
+    dontAsk: 'Більше не питати',
+    cancel: 'Скасувати',
+    next: 'Наступний фрагмент',
+    draft: 'чернетка моделі',
+    nobodyYet: 'ще ніхто не підтвердив',
+    verified: 'підтверджено',
+    today: 'сьогодні',
+    unsigned: 'без підпису',
+    disputed: 'спірне',
+    signedAs: (name: string, signature: string) => `${name} («${signature}»)`,
+    date: (date: Date) => dayMonthYear.format(date),
+    conflict: 'Текст змінили, поки ви його читали. Перегляньте нову версію перед підтвердженням',
+    signInAgain: 'Увійдіть знову, щоб підтвердити',
   },
   account: {
     signInLabel: 'Увійти',

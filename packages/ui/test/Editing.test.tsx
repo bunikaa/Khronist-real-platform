@@ -40,6 +40,26 @@ describe('PageStatusBadge', () => {
     expect(html).toContain(tone)
     expect(html).toContain(label)
   })
+
+  it('draws only the draft of the model with a dashed border, as in Figma', () => {
+    const draft = renderToStaticMarkup(<PageStatusBadge status="draft">чернетка</PageStatusBadge>)
+    const verified = renderToStaticMarkup(
+      <PageStatusBadge status="verified">підтверджено</PageStatusBadge>,
+    )
+
+    expect(draft).toContain('border-dashed')
+    expect(verified).not.toContain('border-dashed')
+  })
+
+  it('wraps a long name instead of widening the panel or hiding the signature', () => {
+    const html = renderToStaticMarkup(
+      <PageStatusBadge status="verified">{'підтверджено · ' + 'О'.repeat(80)}</PageStatusBadge>,
+    )
+
+    expect(html).toContain('max-w-full')
+    expect(html).toContain('min-h-5')
+    expect(html).toMatch(/<span class="\[overflow-wrap:anywhere\]">підтверджено · О+<\/span>/)
+  })
 })
 
 describe('TranscriptionLine states', () => {
