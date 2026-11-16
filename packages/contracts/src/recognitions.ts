@@ -8,10 +8,9 @@ import {
   readingWarningSchema,
   recognitionStatusSchema,
   shelfmarkSchema,
+  signatureSchema,
   storableText,
   transcriptionStatusSchema,
-  withoutControlCharacters,
-  withoutLoneSurrogates,
 } from './common.ts'
 import { normalizeOutputSchema } from './normalize.ts'
 
@@ -94,7 +93,6 @@ export type RecognitionEvent = z.infer<typeof recognitionEventSchema>
 
 export const maxPatchedLines = 200
 export const maxLineLength = 500
-export const maxSignatureLength = 80
 
 export const patchLinesRequestSchema = z.object({
   baseVersion: z.number().int().min(1),
@@ -117,17 +115,7 @@ export const patchLinesRequestSchema = z.object({
 })
 export type PatchLinesRequest = z.infer<typeof patchLinesRequestSchema>
 
-export const verifyRequestSchema = z.object({
-  signature: z
-    .string()
-    .trim()
-    .min(1)
-    .max(maxSignatureLength)
-    .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
-      message: 'control character or lone surrogate',
-    })
-    .optional(),
-})
+export const verifyRequestSchema = z.object({ signature: signatureSchema.optional() })
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>
 
 export const versionConflictSchema = errorSchema.extend({ current: transcriptionSchema })

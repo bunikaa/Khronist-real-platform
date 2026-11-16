@@ -19,6 +19,17 @@ export const withoutLoneSurrogates = (value: string): boolean => !/\p{Cs}/u.test
 export const storableText = (value: string): boolean =>
   !value.includes('\u0000') && withoutLoneSurrogates(value)
 
+export const maxSignatureLength = 80
+
+export const signatureSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(maxSignatureLength)
+  .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
+    message: 'control character or lone surrogate',
+  })
+
 const portalUrlSchema = z
   .httpUrl()
   .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {

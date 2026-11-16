@@ -99,11 +99,13 @@ POST /api/auth/email-otp/send-verification-otp   body: { email, type: 'sign-in' 
 POST /api/auth/sign-in/email-otp                  body: { email, otp }   → 200, заголовок set-auth-token: <токен сесії>
 POST /api/auth/sign-out                           Authorization: Bearer <токен сесії>
 GET  /api/auth/get-session                        Authorization: Bearer <токен сесії>   → 200 { session, user } | null
+POST /api/auth/update-user                        Authorization: Bearer <токен сесії>   body: { name }   → 200 { status: true } · 400 · 401
 ```
 
-- Назовні відкрито лише ці чотири маршрути Better Auth; `otp` — 6 цифр. Листи з кодом: 3 на одну адресу з однієї IP-адреси і 10 на адресу загалом за 15 хвилин (адреса без регістру й `+мітки`, у Gmail — без крапок), `SIGN_IN_CODES_PER_DAY` (300) на сервер за UTC-добу; запит, який Better Auth відхилив, ліміту не витрачає. Понад ліміт — `429 too_many_requests` з `retry-after`. У проді (`NODE_ENV=production`) Better Auth окремо пропускає 3 запити на хвилину з IP-адреси. Усі помилки — у форматі контракту; коди перевірки: `invalid_otp`, `otp_expired`, `too_many_attempts`, `invalid_origin`. Токен сесії — лише підписаний, із заголовка `set-auth-token`.
+- Назовні відкрито лише ці п'ять маршрутів Better Auth; `otp` — 6 цифр. Листи з кодом: 3 на одну адресу з однієї IP-адреси і 10 на адресу загалом за 15 хвилин (адреса без регістру й `+мітки`, у Gmail — без крапок), `SIGN_IN_CODES_PER_DAY` (300) на сервер за UTC-добу; запит, який Better Auth відхилив, ліміту не витрачає. Понад ліміт — `429 too_many_requests` з `retry-after`. У проді (`NODE_ENV=production`) Better Auth окремо пропускає 3 запити на хвилину з IP-адреси. Усі помилки — у форматі контракту; коди перевірки: `invalid_otp`, `otp_expired`, `too_many_attempts`, `invalid_origin`. Токен сесії — лише підписаний, із заголовка `set-auth-token`.
 
 - Better Auth з плагінами `emailOTP` і `bearer`. Розширення не користується cookie й CORS: панель сама надсилає код із листа (6 цифр, діє 5 хвилин), бере токен із `set-auth-token`, зберігає в `chrome.storage.session` (зникає разом із сесією браузера) і надсилає в `Authorization: Bearer`. Сесія діє 7 днів (типове значення Better Auth); вихід — `sign-out` і видалення токена зі сховища. Вебзастосунок користується cookie-сесією тих самих маршрутів.
+- `update-user` змінює лише `name` — ім'я акаунта, воно ж «Підпис підтверджень» у профілі; панель надсилає його як `signature` під час підтвердження. Правила ті самі, що в підпису: до 80 символів, без керуючих символів і одиночних сурогатів, інші поля тіла відкидаються. Вхід кодом створює акаунт з порожнім `name`.
 - Ключі API (`api_keys`, у базі лише хеш SHA-256) — для пакетної обробки (`source: 'batch'`) і MCP: заголовок `Authorization: Bearer khr_…`. Невідомий ключ із префіксом `khr_` — `401 unauthorized` до читання тіла; пошуки ще не відомих серверу ключів — не більше 10 на хвилину з IP-адреси, далі `429 too_many_requests`. Інший токен у `Bearer` (наприклад, сесії) ключем не вважається. З ключем у `POST /v1/recognitions` денний ліміт — `API_KEY_RECOGNITIONS_PER_DAY` (1000) на ключ замість гостьового, а 10 запитів на хвилину й 3 активні розпізнавання рахуються на ключ, а не на адресу. Запит із ключем зберігає `portal`, `portalUrl`, `folio` поряд із номером зображення і роки справи (`document`); якщо регіон уже має сторінку (з кешу, під час читання чи після невдалого читання), — лише на ту сторінку й лише коли шифр запиту з нею збігається, інакше нічого не створює. `folio`, зайнятий іншою сторінкою справи, не записується. Інгестія корпусу користується `ADMIN_API_KEY`.
 
 ### Службові й адміністративні
@@ -185,7 +187,7 @@ content → panel:   PageMessage = { type: 'page', shelfmark: Shelfmark | null, 
 background:        команда open-panel (sidePanel.open); повторна — панель вмикає виділення
 ```
 
-Заплановані повідомлення (з'являться разом із функціями): `lines:show`, `line:hover`, `overlay:clear` (підсвітка рядків на скані), `auth:changed` (вхід).
+Заплановані повідомлення (з'являться разом із функціями): `lines:show`, `line:hover`, `overlay:clear` (підсвітка рядків на скані). Окремого повідомлення про вхід немає: content script вхід не потрібен, а панелі в інших вікнах дізнаються про нього з `storage.onChanged` (токен сесії лежить у `chrome.storage.session`).
 
 ## 8. Промпт `normalize`
 

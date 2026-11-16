@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { signatureSchema } from './common.ts'
 
 export const signInCodeRequestSchema = z.object({
   email: z.email().max(254),
@@ -11,3 +12,11 @@ export const signInRequestSchema = z.object({
   otp: z.string().regex(/^\d{6}$/),
 })
 export type SignInRequest = z.infer<typeof signInRequestSchema>
+
+export const updateUserRequestSchema = z.object({ name: signatureSchema })
+export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>
+
+export const sessionResponseSchema = z
+  .object({ user: z.object({ id: z.string(), email: z.email(), name: z.string() }) })
+  .nullable()
+export type SessionResponse = z.infer<typeof sessionResponseSchema>
