@@ -154,6 +154,19 @@ describe('sign-in settings', () => {
     })
   })
 
+  it('reads the verifier addresses as a list and allows none', () => {
+    expect(loadConfig(base).VERIFIER_EMAILS).toEqual([])
+    expect(loadConfig({ ...base, VERIFIER_EMAILS: '' }).VERIFIER_EMAILS).toEqual([])
+    expect(
+      loadConfig({ ...base, VERIFIER_EMAILS: ' a@khronist.example, B@khronist.example ,' })
+        .VERIFIER_EMAILS,
+    ).toEqual(['a@khronist.example', 'B@khronist.example'])
+  })
+
+  it('refuses a verifier address that is not an email', () => {
+    expect(() => loadConfig({ ...base, VERIFIER_EMAILS: 'historian' })).toThrow(/VERIFIER_EMAILS/)
+  })
+
   it('refuses a mail key without the rest of the sign-in settings', () => {
     expect(() => loadConfig({ ...base, ...signIn, MAIL_FROM: '' })).toThrow(/RESEND_API_KEY/)
   })

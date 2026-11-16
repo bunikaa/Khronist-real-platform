@@ -18,11 +18,11 @@ export const createCallBudget = (db: Database, callsPerDay: number): CallBudget 
       .returning({ calls: modelCalls.calls })
     return rows.length > 0
   },
-  available: async () => {
+  available: async (share = 1) => {
     const [row] = await db
       .select({ calls: modelCalls.calls })
       .from(modelCalls)
       .where(eq(modelCalls.day, utcDay()))
-    return (row?.calls ?? 0) < callsPerDay
+    return (row?.calls ?? 0) < callsPerDay * share
   },
 })

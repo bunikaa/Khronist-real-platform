@@ -6,10 +6,12 @@ import {
   entitiesTimeoutMs,
   normalizeTimeoutMs,
   renormalizeBacklog,
+  renormalizeBudgetShare,
   renormalizeConcurrency,
 } from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { EntityExtractor } from '../services/entities.ts'
+import type { CallBudget } from '../services/llm/index.ts'
 import { assertNormalized, type Normalizer } from '../services/normalize.ts'
 import { insertEntities, loadLines, normalizedTextOf } from '../services/transcriptions.ts'
 import { isAbort } from './queue.ts'
@@ -19,6 +21,7 @@ type RenormalizeDeps = {
   db: Database
   normalizer: Normalizer
   entities: EntityExtractor
+  budget: CallBudget
   log: JobLogger
   normalizeTimeoutMs?: number | undefined
   entitiesTimeoutMs?: number | undefined
@@ -64,6 +67,10 @@ export const renormalizeVersion = async (
   )
   if (!(await hasVersion(db, normalizedBefore))) {
     log.info({}, 'no earlier version was normalized, keeping the lines as edited')
+    return 'skipped'
+  }
+  if (!(await deps.budget.available(renormalizeBudgetShare))) {
+    log.warn({}, 'the rest of the model budget is kept for readings, keeping the lines as edited')
     return 'skipped'
   }
 

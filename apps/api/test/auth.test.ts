@@ -23,6 +23,7 @@ const createApp = (options: AppOptions = {}) =>
       secret: 's'.repeat(32),
       baseURL,
       codesPerDay: options.codesPerDay ?? 100,
+      verifierEmails: [],
       sendCode: async (to, code) => {
         codes.set(to, code)
       },
