@@ -1,49 +1,20 @@
 import { explainResponseSchema } from '@khronist/contracts'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { chunks, sources, synonyms } from '../src/db/schema.ts'
+import { chunks, sources, synonyms, transcriptions } from '../src/db/schema.ts'
 import { createExplainer } from '../src/services/explain.ts'
+import { LlmLimitError, LlmOutputError, type LlmProvider } from '../src/services/llm/index.ts'
 import {
-  LlmLimitError,
-  LlmOutputError,
-  parseOutput,
-  type LlmProvider,
-  type LlmRequest,
-} from '../src/services/llm/index.ts'
-import {
+  answering,
   createTestApp,
   createTestDatabase,
-  makePng,
-  recognitionBody,
+  type ModelAnswer,
+  promptOf,
+  readTranscription,
   resetDatabase,
   type TestDatabase,
   unlimitedBudget,
 } from './helpers.ts'
-
-type Answer = (chunkIds: string[]) => Record<string, unknown>
-
-const answering = (answer: Answer) => {
-  const requests: LlmRequest<unknown>[] = []
-  const provider: LlmProvider = {
-    name: 'claude-test',
-    complete: async (request) => {
-      requests.push(request)
-      const part = request.content[0]
-      const prompt = part?.type === 'text' ? part.text : ''
-      const ids = [...prompt.matchAll(/"chunkId":"([^"]+)"/g)].map((match) => match[1] ?? '')
-      return {
-        value: parseOutput(JSON.stringify(answer(ids)), request.schema),
-        model: 'claude-test',
-        usage: { inputTokens: 1, outputTokens: 1 },
-      }
-    },
-  }
-  return { provider, requests }
-}
-
-const promptOf = (request: LlmRequest<unknown> | undefined) => {
-  const part = request?.content[0]
-  return part?.type === 'text' ? part.text : ''
-}
 
 const quote = 'хрещений батько або хрещена мати'
 
@@ -121,7 +92,7 @@ describe('POST /v1/explain', () => {
     return res
   }
 
-  const grounded: Answer = (ids) => ({
+  const grounded: ModelAnswer = (ids) => ({
     answer: 'Хрещені батьки дитини.',
     confidence: 'HIGH',
     citations: [{ chunkId: ids[0], quote }],
@@ -178,7 +149,7 @@ describe('POST /v1/explain', () => {
     expect(prompt).toContain('"title":"Енциклопедичний словник"')
   })
 
-  it.each<[string, Answer]>([
+  it.each<[string, ModelAnswer]>([
     [
       'a quote that is not in the article',
       (ids) => ({
@@ -261,19 +232,7 @@ describe('POST /v1/explain', () => {
   })
 
   it('gives the model the record of the transcription as context', async () => {
-    const { app, queue } = await createTestApp(database)
-    const created = await app.inject({
-      method: 'POST',
-      url: '/v1/recognitions',
-      payload: recognitionBody(makePng(200, 100)),
-    })
-    await queue.onIdle()
-    const state = await app.inject({
-      method: 'GET',
-      url: `/v1/recognitions/${created.json().recognitionId}`,
-    })
-    await app.close()
-    const transcription = state.json().transcription
+    const transcription = await readTranscription(database)
     const { provider, requests } = answering(grounded)
     await explainWith(provider, {
       kind: 'term',
@@ -281,6 +240,29 @@ describe('POST /v1/explain', () => {
       context: { transcriptionId: transcription.id },
     })
     expect(promptOf(requests[0])).toContain(JSON.stringify(transcription.normalizedText))
+  })
+
+  it.each<[string, () => Promise<string>]>([
+    ['an unknown transcription', async () => '0190a6b2-0000-7000-8000-000000000000'],
+    [
+      'a transcription with an empty text',
+      async () => {
+        const transcription = await readTranscription(database)
+        await database.db
+          .update(transcriptions)
+          .set({ normalizedText: ' \n ' })
+          .where(eq(transcriptions.id, transcription.id))
+        return transcription.id
+      },
+    ],
+  ])('gives the model no record for %s', async (_case, transcriptionId) => {
+    const { provider, requests } = answering(grounded)
+    await explainWith(provider, {
+      kind: 'term',
+      text: 'восприемник',
+      context: { transcriptionId: await transcriptionId() },
+    })
+    expect(promptOf(requests[0])).toContain('Record (JSON string or null, context only):\nnull')
   })
 
   it.each<[string, LlmProvider | undefined]>([
