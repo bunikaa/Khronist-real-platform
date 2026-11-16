@@ -1,23 +1,14 @@
 import json
-import time
-import urllib.request
 from pathlib import Path
 
 from PIL import Image
+
+from khronist_knowledge.scans import download
 
 EVAL = Path(__file__).parent
 FRAGMENTS = EVAL / "reference" / "fragments.jsonl"
 SCANS = EVAL / ".cache" / "scans"
 CROPS = EVAL / ".cache" / "fragments"
-
-
-def download(url: str, target: Path) -> None:
-    if target.exists():
-        return
-    request = urllib.request.Request(url, headers={"User-Agent": "khronist-eval/0.1"})
-    with urllib.request.urlopen(request) as response:
-        target.write_bytes(response.read())
-    time.sleep(2)
 
 
 def main() -> None:
