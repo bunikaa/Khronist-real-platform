@@ -1,4 +1,4 @@
-import { recognitionEventSchema } from '@khronist/contracts'
+import { recognitionEventSchema, visionToLines } from '@khronist/contracts'
 import { count, eq, inArray } from 'drizzle-orm'
 import type { RecognitionEvent } from '@khronist/contracts'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -14,7 +14,8 @@ import { closeOwnRecognitions } from '../src/jobs/shutdown.ts'
 import { maxBodyBytes } from '../src/lib/limits.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader } from '../src/services/htr/index.ts'
-import { noEntities } from '../src/services/entities.ts'
+import { createLlmEntityExtractor, noEntities } from '../src/services/entities.ts'
+import { parseOutput, type LlmProvider } from '../src/services/llm/index.ts'
 import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
 import {
   createRecordingReader,
@@ -653,6 +654,63 @@ describe('recognitions', () => {
       await queue.onIdle()
       const state = await get(app, created.json().recognitionId)
       expect(state.json().transcription.entities).toEqual([entity])
+      await app.close()
+    })
+
+    it('stores a date entity with its new style and returns it from both routes', async () => {
+      const record = 'крещенъ 12 генваря 1884 года'
+      const reader: HtrReader = {
+        kind: 'fixture',
+        read: async () => ({
+          lines: visionToLines({
+            lines: [
+              {
+                text: record,
+                words: record.split(' ').map((text) => ({ text, uncertain: false })),
+              },
+            ],
+            warnings: [],
+          }),
+          warnings: [],
+          reader: 'fixture',
+        }),
+      }
+      const model: LlmProvider = {
+        name: 'claude-test',
+        complete: async (request) => ({
+          value: parseOutput(
+            JSON.stringify({
+              entities: [
+                { type: 'date', text: '12 генваря 1884 года', normalized: '12 генваря 1884 года' },
+              ],
+            }),
+            request.schema,
+          ),
+          model: 'claude-test',
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+      }
+      const { app, queue } = await createTestApp(database, {
+        reader,
+        entities: createLlmEntityExtractor(model),
+      })
+      const created = await post(app, recognitionBody(nextPng()))
+      await queue.onIdle()
+      const state = await get(app, created.json().recognitionId)
+      const stored = {
+        type: 'date',
+        text: '12 генваря 1884 года',
+        start: 8,
+        end: 28,
+        normalized: '12 генваря 1884 года',
+        extra: { newStyle: '1884-01-24', weekday: 'четвер' },
+      }
+      expect(state.json().transcription.entities).toEqual([stored])
+      const read = await app.inject({
+        method: 'GET',
+        url: `/v1/transcriptions/${state.json().transcription.id}`,
+      })
+      expect(read.json().entities).toEqual([stored])
       await app.close()
     })
 
