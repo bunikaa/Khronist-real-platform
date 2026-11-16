@@ -1,3 +1,4 @@
+import { sessionResponseSchema } from '@khronist/contracts'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from '../src/app.ts'
 import { session, verification } from '../src/db/schema.ts'
@@ -9,7 +10,12 @@ const email = 'researcher@khronist.example'
 let database: TestDatabase
 const codes = new Map<string, string>()
 
-type AppOptions = { codesPerDay?: number; db?: TestDatabase['db']; logs?: string[] }
+type AppOptions = {
+  codesPerDay?: number
+  db?: TestDatabase['db']
+  logs?: string[]
+  verifierEmails?: string[]
+}
 
 const createApp = (options: AppOptions = {}) =>
   buildApp({
@@ -23,7 +29,7 @@ const createApp = (options: AppOptions = {}) =>
       secret: 's'.repeat(32),
       baseURL,
       codesPerDay: options.codesPerDay ?? 100,
-      verifierEmails: [],
+      verifierEmails: options.verifierEmails ?? [],
       sendCode: async (to, code) => {
         codes.set(to, code)
       },
@@ -91,6 +97,28 @@ describe('sign-in with a code from the email', () => {
     expect(session.json().user.email).toBe(email)
     await app.close()
   })
+
+  it.each([
+    ['an address from the verifier list in another case', ['RESEARCHER@khronist.example'], true],
+    ['an address outside the verifier list', ['historian@khronist.example'], false],
+    ['an empty verifier list', [], false],
+  ])(
+    'tells the session whether it may confirm for %s',
+    async (_case, verifierEmails, canVerify) => {
+      const app = await createApp({ verifierEmails })
+      const token = String((await signIn(app)).headers['set-auth-token'])
+
+      const res = await sessionOf(app, token)
+
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toHaveProperty('session')
+      expect(sessionResponseSchema.parse(res.json())).toEqual({
+        user: { id: expect.any(String), email, name: '' },
+        canVerify,
+      })
+      await app.close()
+    },
+  )
 
   it('accepts a request from any extension, whose id differs on every machine', async () => {
     const app = await createApp()

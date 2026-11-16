@@ -321,7 +321,7 @@ describe('side panel', () => {
       const calls = api({
         '/api/auth/email-otp/send-verification-otp': () => json({ success: true }),
         '/api/auth/sign-in/email-otp': () => json({ token: 'x' }, 200, { 'set-auth-token': token }),
-        '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+        '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
       })
       await render()
       expect(accountButton()?.getAttribute('aria-label')).toBe('Увійти')
@@ -370,7 +370,8 @@ describe('side panel', () => {
       await fakeStorage.session.set({ sessionToken: token })
       let name = ''
       const calls = api({
-        '/api/auth/get-session': () => json({ session: { id: 's' }, user: { ...user, name } }),
+        '/api/auth/get-session': () =>
+          json({ session: { id: 's' }, user: { ...user, name }, canVerify: false }),
         '/api/auth/update-user': (init) => {
           name = (JSON.parse(String(init?.body)) as { name: string }).name
           return json({ status: true })
@@ -495,7 +496,7 @@ describe('side panel', () => {
     it('keeps the signature editor in place while the save is on the way', async () => {
       await fakeStorage.session.set({ sessionToken: token })
       api({
-        '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+        '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
         '/api/auth/update-user': () => new Promise<Response>(() => {}),
       })
       await render()
@@ -572,7 +573,9 @@ describe('side panel', () => {
 
     it('refuses a blank signature without asking the API', async () => {
       await fakeStorage.session.set({ sessionToken: token })
-      const calls = api({ '/api/auth/get-session': () => json({ session: { id: 's' }, user }) })
+      const calls = api({
+        '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
+      })
       await render()
       await click(accountButton())
       await click(mainButton('Підпис підтверджень'))
@@ -588,7 +591,7 @@ describe('side panel', () => {
     it('goes back to the sign-in when the session expired while saving the signature', async () => {
       await fakeStorage.session.set({ sessionToken: token })
       api({
-        '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+        '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
         '/api/auth/update-user': () =>
           json({ error: { code: 'unauthorized', message: 'Потрібен вхід' } }, 401),
       })
@@ -607,7 +610,7 @@ describe('side panel', () => {
     it('goes back to reading at once on sign-out, without waiting for the API', async () => {
       await fakeStorage.session.set({ sessionToken: token })
       api({
-        '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+        '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
         '/api/auth/sign-out': () => new Promise<Response>(() => {}),
       })
       await render()
@@ -646,7 +649,7 @@ describe('side panel', () => {
 
     it('shows a hotkey changed in Chrome when the panel gets focus again', async () => {
       await fakeStorage.session.set({ sessionToken: token })
-      api({ '/api/auth/get-session': () => json({ session: { id: 's' }, user }) })
+      api({ '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }) })
       await render()
       await click(accountButton())
       expect(container.textContent).toContain('Не призначено')
@@ -678,7 +681,7 @@ describe('side panel', () => {
 
       const read = (routes: Parameters<typeof api>[0] = {}) =>
         api({
-          '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+          '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
           '/v1/recognitions': () =>
             json({ recognitionId, status: 'cached', transcriptionId: edited.id }, 201),
           [`/v1/recognitions/${recognitionId}`]: () =>

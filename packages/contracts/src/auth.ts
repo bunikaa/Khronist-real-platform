@@ -17,6 +17,9 @@ export const updateUserRequestSchema = z.object({ name: signatureSchema })
 export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>
 
 export const sessionResponseSchema = z
-  .object({ user: z.object({ id: z.string(), email: z.email(), name: z.string() }) })
+  .object({
+    user: z.object({ id: z.string(), email: z.email(), name: z.string() }),
+    canVerify: z.boolean(),
+  })
   .nullable()
 export type SessionResponse = z.infer<typeof sessionResponseSchema>

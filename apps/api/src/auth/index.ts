@@ -1,9 +1,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { bearer, emailOTP } from 'better-auth/plugins'
+import { bearer, customSession, emailOTP } from 'better-auth/plugins'
 import type { FastifyBaseLogger } from 'fastify'
 import type { Database } from '../db/client.ts'
 import { account, session, user, verification } from '../db/schema.ts'
+import { verifierCheck } from './session.ts'
 
 export type SendSignInCode = (email: string, code: string) => Promise<void>
 
@@ -13,14 +14,16 @@ export type AuthOptions = {
   baseURL: string
   sendCode: SendSignInCode
   trustedOrigins: string[]
+  verifierEmails: string[]
   clientIpHeader: string | undefined
   log: FastifyBaseLogger
 }
 
 const anyExtension = 'chrome-extension://*'
 
-export const createAuth = (options: AuthOptions) =>
-  betterAuth({
+export const createAuth = (options: AuthOptions) => {
+  const isVerifier = verifierCheck(options.verifierEmails)
+  return betterAuth({
     database: drizzleAdapter(options.db, {
       provider: 'pg',
       schema: { user, session, account, verification },
@@ -56,7 +59,13 @@ export const createAuth = (options: AuthOptions) =>
         },
       }),
       bearer({ requireSignature: true }),
+      customSession(async ({ user, session }) => ({
+        user,
+        session,
+        canVerify: isVerifier(user.email),
+      })),
     ],
   })
+}
 
 export type Auth = ReturnType<typeof createAuth>
