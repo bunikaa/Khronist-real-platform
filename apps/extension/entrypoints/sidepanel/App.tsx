@@ -39,8 +39,12 @@ export const App = () => {
   const selecting = page?.selecting === true
 
   useEffect(() => {
-    const onCommand = (command: string) => {
-      if (command === 'open-panel') startSelection()
+    const onCommand = (command: string, tab?: { id?: number }) => {
+      if (command !== 'open-panel') return
+      void activeTabId().then((tabId) => {
+        if (tab?.id === undefined || tab.id !== tabId) return
+        startSelection()
+      })
     }
     const onMessage = (message: unknown, sender: { tab?: { id?: number } }) => {
       const fragment = fragmentMessageSchema.safeParse(message)
