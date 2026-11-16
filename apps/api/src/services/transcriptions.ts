@@ -8,7 +8,7 @@ import type {
   Word,
 } from '@khronist/contracts'
 import { readingWarningSchema } from '@khronist/contracts'
-import { asc, eq, inArray, sql } from 'drizzle-orm'
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import type { Database } from '../db/client.ts'
@@ -261,3 +261,20 @@ export const loadTranscription = (
     isolationLevel: 'repeatable read',
     accessMode: 'read only',
   })
+
+export const preferredVersionId = async (
+  db: Database,
+  transcriptionId: string,
+): Promise<string | undefined> => {
+  const region = db
+    .select({ regionId: transcriptions.regionId })
+    .from(transcriptions)
+    .where(eq(transcriptions.id, transcriptionId))
+  const [preferred] = await db
+    .select({ id: transcriptions.id })
+    .from(transcriptions)
+    .where(inArray(transcriptions.regionId, region))
+    .orderBy(desc(sql`${transcriptions.status} = 'verified'`), desc(transcriptions.version))
+    .limit(1)
+  return preferred?.id
+}

@@ -14,6 +14,7 @@ export const recognitionReadsPerMinute = 120
 export const recordReadsPerMinute = 120
 export const recordEditsPerMinute = 30
 export const maxEditBodyBytes = 256 * 1024
+export const maxCiteBodyBytes = 1024
 export const streamsPerClient = 5
 export const maxOpenStreams = 300
 export const streamRetryAfterSeconds = 10

@@ -23,6 +23,7 @@ import { logMethod, safeError } from './lib/log.ts'
 import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
 import { chatRoutes } from './routes/chat.ts'
+import { citeRoutes } from './routes/cite.ts'
 import { explainRoutes } from './routes/explain.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { pageRoutes } from './routes/pages.ts'
@@ -199,6 +200,7 @@ export const buildApp = async (deps: AppDeps) => {
       ),
     )
     await app.register(pageRoutes(db))
+    await app.register(citeRoutes(db))
   }
   if (deps.explain) await app.register(explainRoutes(deps.explain, deps.guestExplainsPerDay))
   if (deps.chat) await app.register(chatRoutes(deps.chat, deps.guestChatsPerDay))
