@@ -4,6 +4,7 @@ import {
   defaultApiKeyRecognitionsPerDay,
   defaultSignInCodesPerDay,
   defaultGuestRecognitionsPerDay,
+  defaultRetrievalMinRank,
   defaultModelCallsPerDay,
 } from './lib/limits.ts'
 
@@ -55,6 +56,10 @@ const configSchema = z
     GUEST_RECOGNITIONS_PER_DAY: z.preprocess(
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultGuestRecognitionsPerDay),
+    ),
+    RETRIEVAL_MIN_RANK: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().min(0).default(defaultRetrievalMinRank),
     ),
     API_KEY_RECOGNITIONS_PER_DAY: z.preprocess(
       emptyToUndefined,

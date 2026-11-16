@@ -22,10 +22,12 @@ import {
 import { logMethod, safeError } from './lib/log.ts'
 import { adminRoutes, type AdminDeps } from './routes/admin.ts'
 import { authRoutes } from './routes/auth.ts'
+import { explainRoutes } from './routes/explain.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { pageRoutes } from './routes/pages.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
 import { transcriptionRoutes } from './routes/transcriptions.ts'
+import type { Explainer } from './services/explain.ts'
 import type { RecognitionDeps } from './services/recognitions.ts'
 
 export type AppDeps = HealthDeps & {
@@ -42,6 +44,8 @@ export type AppDeps = HealthDeps & {
     verifierEmails: string[]
   }
   admin?: AdminDeps
+  explain?: Explainer
+  guestExplainsPerDay?: number
 }
 
 const shuttingDown = {
@@ -192,6 +196,7 @@ export const buildApp = async (deps: AppDeps) => {
     )
     await app.register(pageRoutes(db))
   }
+  if (deps.explain) await app.register(explainRoutes(deps.explain, deps.guestExplainsPerDay))
   if (deps.admin) await app.register(adminRoutes(deps.admin))
   return app
 }
