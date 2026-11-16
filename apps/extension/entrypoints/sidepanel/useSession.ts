@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser'
 import { loadSession, type SessionUser } from '../../api/auth.ts'
 import { sessionTokenKey } from '../../api/token.ts'
 
-type Session =
+export type Session =
   { status: 'loading' } | { status: 'signed-out' } | { status: 'signed-in'; user: SessionUser }
 
 export const useSession = () => {

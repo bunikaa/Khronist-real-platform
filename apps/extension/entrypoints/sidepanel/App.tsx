@@ -1,5 +1,5 @@
 import { PanelHeader, strings } from '@khronist/ui'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { browser } from 'wxt/browser'
 import {
   fragmentFailedMessageSchema,
@@ -7,9 +7,11 @@ import {
   type SelectionCommand,
 } from '../../messages.ts'
 import { FirstRun, Profile, SignIn } from './account.tsx'
-import { Failed, MissingPage, Reading, ReadyToRead, Result, Selecting } from './screens.tsx'
+import { Result } from './result.tsx'
+import { Failed, MissingPage, Reading, ReadyToRead, Selecting } from './screens.tsx'
 import { activeTabId, useActivePage } from './useActivePage.ts'
 import { useFirstRun } from './useFirstRun.ts'
+import { useLineEditing } from './useLineEditing.ts'
 import { useReading } from './useReading.ts'
 import { useSession } from './useSession.ts'
 
@@ -42,10 +44,17 @@ const useShortcut = () => {
 export const App = () => {
   const page = useActivePage()
   const shortcut = useShortcut()
-  const { reading, start, retry, failSelection, cancel } = useReading()
+  const { reading, start, retry, failSelection, cancel, replace } = useReading()
   const { session, refresh } = useSession()
   const { seen: firstRunSeen, finish: finishFirstRun } = useFirstRun()
   const [accountOpen, setAccountOpen] = useState(false)
+  const openAccount = useCallback(() => setAccountOpen(true), [])
+  const editing = useLineEditing({
+    transcription: reading.phase === 'done' ? reading.transcription : undefined,
+    session,
+    onSaved: replace,
+    onSignInNeeded: openAccount,
+  })
   const selecting = page?.selecting === true
 
   useEffect(() => {
@@ -122,7 +131,14 @@ export const App = () => {
       case 'reading':
         return <Reading {...reading} onCancel={cancel} />
       case 'done':
-        return <Result transcription={reading.transcription} onSelect={startSelection} />
+        return (
+          <Result
+            transcription={reading.transcription}
+            editing={editing}
+            onSelect={startSelection}
+            onSignIn={openAccount}
+          />
+        )
       case 'failed':
         return <Failed {...reading} onSelect={startSelection} onRetry={retry} />
     }
@@ -139,7 +155,7 @@ export const App = () => {
           onStart={finishFirstRun}
           onSignIn={() => {
             finishFirstRun()
-            setAccountOpen(true)
+            openAccount()
           }}
         />
       </main>

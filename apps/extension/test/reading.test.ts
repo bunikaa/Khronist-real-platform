@@ -2,7 +2,7 @@ import type { Line, Transcription } from '@khronist/contracts'
 import { describe, expect, it } from 'vitest'
 import { ApiFailure } from '../api/client.ts'
 import type { Fragment } from '../messages.ts'
-import { modernLines } from '../entrypoints/sidepanel/screens.tsx'
+import { modernLines } from '../entrypoints/sidepanel/result.tsx'
 import { applyEvent, failureOf, finished } from '../entrypoints/sidepanel/useReading.ts'
 
 const fragment: Fragment = {

@@ -1,6 +1,6 @@
 import { sessionResponseSchema, type SessionResponse } from '@khronist/contracts'
 import { strings } from '@khronist/ui'
-import { ApiFailure, send } from './client.ts'
+import { ApiFailure, send, sendSignedIn } from './client.ts'
 import { clearToken, readToken, saveToken } from './token.ts'
 
 export type SessionUser = NonNullable<SessionResponse>['user']
@@ -48,12 +48,5 @@ export const signOut = async (): Promise<void> => {
 }
 
 export const saveName = async (name: string): Promise<void> => {
-  const token = await readToken()
-  try {
-    await send('/api/auth/update-user', postJson({ name }))
-  } catch (error) {
-    const rejected = error instanceof ApiFailure && error.code === 'unauthorized'
-    if (rejected && (await readToken()) === token) await clearToken()
-    throw error
-  }
+  await sendSignedIn('/api/auth/update-user', postJson({ name }))
 }
