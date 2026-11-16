@@ -21,6 +21,7 @@ export const PanelHeader = ({ shelfmark, account }: PanelHeaderProps) => (
         type="button"
         aria-label={account.label}
         aria-pressed={account.open}
+        onMouseDown={(event) => event.preventDefault()}
         onClick={account.onToggle}
         className={[
           'btn btn-square btn-ghost btn-xs ml-auto shrink-0',

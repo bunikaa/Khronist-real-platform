@@ -74,6 +74,18 @@ export const strings = {
     offline: 'Немає зв’язку із сервером. Перевірте мережу й спробуйте ще раз',
     badResponse: 'Сервер відповів неочікувано. Спробуйте ще раз',
   },
+  edit: {
+    editing: 'ви редагуєте',
+    hint: 'Enter — наступний рядок · Esc — відміна',
+    line: (number: number) => `Рядок ${number}`,
+    changed: 'виправлено',
+    oldLetters: 'Старі літери',
+    insert: (letter: string) => `Вставити ${letter}`,
+    conflict: 'Поки ви редагували, текст змінили. Ваші правки не збережено',
+    showCurrent: 'Показати нову версію',
+    signInToSave: 'Правки не збережено: щоб зберегти їх, увійдіть',
+    discard: 'Скасувати правки',
+  },
   account: {
     signInLabel: 'Увійти',
     profileLabel: 'Профіль',

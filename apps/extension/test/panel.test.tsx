@@ -659,5 +659,488 @@ describe('side panel', () => {
 
       expect(container.textContent).toContain('Alt + Shift + K')
     })
+
+    describe('line editing', () => {
+      const edited: Transcription = {
+        ...transcription,
+        lines: [
+          ...transcription.lines,
+          { ...transcription.lines[0]!, idx: 1, text: 'Коваленко и законная' },
+        ],
+      }
+      const linesPath = `/v1/transcriptions/${edited.id}/lines`
+      const newer = (text: string, version = 2): Transcription => ({
+        ...edited,
+        id: '7c2e8d2f-5b1c-4e4d-8b54-3d2f8c1a0b22',
+        version,
+        lines: [{ ...edited.lines[0]!, text }, edited.lines[1]!],
+      })
+
+      const read = (routes: Parameters<typeof api>[0] = {}) =>
+        api({
+          '/api/auth/get-session': () => json({ session: { id: 's' }, user }),
+          '/v1/recognitions': () =>
+            json({ recognitionId, status: 'cached', transcriptionId: edited.id }, 201),
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({ recognitionId, status: 'done', transcription: edited }),
+          ...routes,
+        })
+
+      const openReading = async () => {
+        currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
+        await render()
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+      }
+
+      const lineButton = (text: string) =>
+        [...container.querySelectorAll('main li button')].find((button) =>
+          button.textContent?.includes(text),
+        )
+      const editor = () => container.querySelector('textarea')
+
+      const write = async (value: string) => {
+        const field = editor()
+        if (!field) throw new Error('no line is open')
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+            field,
+            value,
+          )
+          field.dispatchEvent(new Event('input', { bubbles: true }))
+        })
+      }
+
+      const press = async (key: string) => {
+        await act(async () => {
+          editor()?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        })
+        await settle()
+      }
+
+      const saves = (calls: ReturnType<typeof api>) =>
+        calls.filter((call) => call.path === linesPath)
+
+      const enterToTheEnd = async () => {
+        await press('Enter')
+        await press('Enter')
+      }
+
+      it('sends a series of lines in one request once the last open line is left', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({ [linesPath]: () => json(newer('Села Борщаговки крестьянинъ')) })
+        await openReading()
+
+        await click(lineButton('Села Борщаговки'))
+        expect(container.textContent).toContain('ви редагуєте')
+        expect(container.textContent).toContain('Enter — наступний рядок · Esc — відміна')
+        expect(editor()?.value).toBe('Села Борщаговки')
+
+        await write('Села Борщаговки крестьянинъ')
+        await press('Enter')
+
+        expect(editor()?.getAttribute('aria-label')).toBe('Рядок 2')
+        expect(saves(calls)).toEqual([])
+
+        await write('Коваленко и законная жена')
+        await press('Enter')
+
+        expect(editor()).toBeNull()
+        expect(saves(calls)).toEqual([
+          {
+            path: linesPath,
+            authorization: `Bearer ${token}`,
+            body: {
+              baseVersion: 1,
+              lines: [
+                { idx: 0, text: 'Села Борщаговки крестьянинъ' },
+                { idx: 1, text: 'Коваленко и законная жена' },
+              ],
+            },
+          },
+        ])
+        expect(lineButton('Села Борщаговки крестьянинъ')?.textContent).toContain('(виправлено)')
+      })
+
+      it('sends the open series when a new fragment arrives', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const another = {
+          ...edited,
+          id: '9d4f0a3e-6c2d-4f6e-9a65-4e3f9d2b1c33',
+          regionId: '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e',
+        }
+        let readings = 0
+        const calls = read({
+          [linesPath]: () => json(newer('Села Борщаговки крестьянинъ')),
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({
+              recognitionId,
+              status: 'done',
+              transcription: (readings += 1) === 1 ? edited : another,
+            }),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await settle()
+
+        expect(saves(calls)).toEqual([
+          expect.objectContaining({
+            body: { baseVersion: 1, lines: [{ idx: 0, text: 'Села Борщаговки крестьянинъ' }] },
+          }),
+        ])
+      })
+
+      it('sends nothing for an unchanged line or after Esc', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read()
+        await openReading()
+
+        await click(lineButton('Села Борщаговки'))
+        await press('Enter')
+        await write('Коваленко и законная жена')
+        await press('Escape')
+
+        expect(editor()).toBeNull()
+        expect(saves(calls)).toEqual([])
+        expect(lineButton('Коваленко и законная')?.textContent).not.toContain('виправлено')
+        expect(container.textContent).not.toContain('ви редагуєте')
+      })
+
+      it('inserts an old letter where the caret is', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read()
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        editor()?.setSelectionRange(4, 4)
+
+        await click(container.querySelector('[aria-label="Вставити ѣ"]'))
+
+        expect(editor()?.value).toBe('Селаѣ Борщаговки')
+        expect(editor()?.selectionStart).toBe(5)
+      })
+
+      it('asks a guest to sign in and saves the line once a session appears', async () => {
+        const calls = read({ [linesPath]: () => json(newer('Села Борщаговки крестьянинъ')) })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await press('Enter')
+        expect(container.textContent).not.toContain('Надішлемо код для входу')
+
+        await press('Enter')
+
+        expect(container.textContent).toContain('Надішлемо код для входу')
+        expect(saves(calls)).toEqual([])
+
+        await click(accountButton())
+        expect(container.textContent).toContain('Правки не збережено: щоб зберегти їх, увійдіть')
+        expect(lineButton('Села Борщаговки крестьянинъ')).toBeDefined()
+
+        await act(async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+        })
+        await settle()
+
+        expect(saves(calls)).toHaveLength(1)
+        expect(container.textContent).not.toContain('Правки не збережено')
+      })
+
+      it('shows the newer version after a conflict and drops the edit', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const current = newer('Села Борщаговки, змінено іншим', 2)
+        read({
+          [linesPath]: () =>
+            json(
+              {
+                error: {
+                  code: 'version_conflict',
+                  message: 'Транскрипцію вже змінили, ось поточна версія',
+                },
+                current,
+              },
+              409,
+            ),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+
+        expect(container.textContent).toContain('Поки ви редагували, текст змінили')
+        expect(editor()).toBeNull()
+
+        await click(mainButton('Показати нову версію'))
+
+        expect(container.textContent).toContain('Села Борщаговки, змінено іншим')
+        expect(container.textContent).not.toContain('крестьянинъ')
+        expect(container.textContent).not.toContain('виправлено')
+      })
+
+      it('keeps the edit when the session expired and opens the sign-in', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({
+          [linesPath]: () =>
+            json({ error: { code: 'unauthorized', message: 'Потрібен вхід' } }, 401),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await enterToTheEnd()
+
+        expect(fakeStorage.session.items.has('sessionToken')).toBe(false)
+        expect(container.textContent).toContain('Надішлемо код для входу')
+        await click(accountButton())
+        expect(lineButton('Села Борщаговки крестьянинъ')).toBeDefined()
+      })
+
+      it('shows the message of a failed save and retries it', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        let answers = 0
+        const calls = read({
+          [linesPath]: () =>
+            (answers += 1) === 1
+              ? json(
+                  {
+                    error: {
+                      code: 'too_many_requests',
+                      message: 'Забагато запитів, спробуйте пізніше',
+                    },
+                  },
+                  429,
+                )
+              : json(newer('Села Борщаговки крестьянинъ')),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+
+        expect(container.textContent).toContain('Забагато запитів, спробуйте пізніше')
+
+        await click(mainButton('Спробувати ще раз'))
+
+        expect(saves(calls)).toHaveLength(2)
+        expect(container.textContent).not.toContain('Забагато запитів')
+      })
+
+      it('opens a clicked line at once and keeps the edit of the one that was open', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({ [linesPath]: () => json(newer('Села Борщаговки крестьянинъ')) })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await click(lineButton('Коваленко и законная'))
+
+        expect(editor()?.getAttribute('aria-label')).toBe('Рядок 2')
+        expect(lineButton('Села Борщаговки крестьянинъ')).toBeDefined()
+        expect(saves(calls)).toHaveLength(0)
+
+        await press('Escape')
+
+        expect(saves(calls)).toHaveLength(1)
+      })
+
+      it('asks a guest to sign in only for the first unsaved edit', async () => {
+        read()
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+        await click(accountButton())
+
+        await click(lineButton('Коваленко и законная'))
+        await write('Коваленко и законная жена')
+        await press('Enter')
+
+        expect(container.textContent).not.toContain('Надішлемо код для входу')
+        expect(container.textContent).toContain('Правки не збережено')
+      })
+
+      it('hides the modern spelling that no longer matches an unsaved edit', async () => {
+        const words = (text: string) =>
+          text.split(' ').map((word) => ({ text: word, uncertain: false }))
+        read({
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({
+              recognitionId,
+              status: 'done',
+              transcription: {
+                ...edited,
+                normalizedLines: [
+                  { text: 'Села Борщагівки', words: words('Села Борщагівки') },
+                  { text: 'Коваленко і законна', words: words('Коваленко і законна') },
+                ],
+              },
+            }),
+        })
+        await openReading()
+        expect(container.textContent).toContain('Сучасною орфографією')
+
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+        await click(accountButton())
+
+        expect(container.textContent).not.toContain('Сучасною орфографією')
+      })
+
+      it('sends a rejected edit once and waits for the sign-in', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({
+          [linesPath]: () =>
+            json({ error: { code: 'unauthorized', message: 'Потрібен вхід' } }, 401),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await enterToTheEnd()
+        await settle()
+
+        expect(saves(calls)).toHaveLength(1)
+      })
+
+      it('leaves the lines as text while a conflict waits for the reader', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({
+          [linesPath]: () =>
+            json(
+              {
+                error: { code: 'version_conflict', message: 'Транскрипцію вже змінили' },
+                current: newer('Села Борщаговки, змінено іншим'),
+              },
+              409,
+            ),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+
+        expect(container.querySelectorAll('main li')).toHaveLength(2)
+        expect(container.textContent).toContain('Коваленко и законная')
+        expect(container.querySelectorAll('main li button')).toHaveLength(0)
+      })
+
+      it('offers to drop an edit the API refuses instead of retrying it forever', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({
+          [linesPath]: () =>
+            json({ error: { code: 'bad_request', message: 'Некоректний запит' } }, 400),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+        expect(mainButton('Спробувати ще раз')).toBeUndefined()
+
+        await click(mainButton('Скасувати правки'))
+
+        expect(saves(calls)).toHaveLength(1)
+        expect(container.textContent).not.toContain('Некоректний запит')
+        expect(container.textContent).not.toContain('крестьянинъ')
+      })
+
+      const leave = async (to: Element | null) => {
+        await act(async () => {
+          editor()?.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to }))
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        })
+        await settle()
+      }
+
+      it('saves the line when focus leaves it and keeps it open for the old letters', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const calls = read({ [linesPath]: () => json(newer('Села Борщаговки крестьянинъ')) })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await leave(container.querySelector('[aria-label="Вставити ѣ"]'))
+        expect(editor()).not.toBeNull()
+        expect(saves(calls)).toHaveLength(0)
+
+        const next = lineButton('Коваленко и законная')
+        if (!next) throw new Error('no next line')
+        await leave(next)
+        expect(editor()).toBeNull()
+        expect(saves(calls)).toHaveLength(1)
+      })
+
+      it('keeps the focus in the field when another line is pressed', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read()
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+
+        const pressDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+        lineButton('Коваленко и законная')?.dispatchEvent(pressDown)
+
+        expect(pressDown.defaultPrevented).toBe(true)
+      })
+
+      it('offers a retry when the API rejects a token that another window replaced', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read({
+          [linesPath]: async () => {
+            await fakeStorage.session.set({ sessionToken: 'newer-token.signature' })
+            return json({ error: { code: 'unauthorized', message: 'Потрібен вхід' } }, 401)
+          },
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+
+        await enterToTheEnd()
+        await settle()
+
+        expect(container.textContent).toContain('Потрібен вхід')
+        expect(mainButton('Спробувати ще раз')).toBeDefined()
+      })
+
+      it('keeps the line open on Enter that confirms an input method candidate', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        read()
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+
+        await act(async () => {
+          editor()?.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }),
+          )
+        })
+
+        expect(editor()?.getAttribute('aria-label')).toBe('Рядок 1')
+      })
+
+      it('sends the series again once the reader signs in after the session expired', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        let answers = 0
+        const calls = read({
+          [linesPath]: () =>
+            (answers += 1) === 1
+              ? json({ error: { code: 'unauthorized', message: 'Потрібен вхід' } }, 401)
+              : json(newer('Села Борщаговки крестьянинъ')),
+        })
+        await openReading()
+        await click(lineButton('Села Борщаговки'))
+        await write('Села Борщаговки крестьянинъ')
+        await enterToTheEnd()
+        expect(container.textContent).toContain('Надішлемо код для входу')
+
+        await act(async () => {
+          await fakeStorage.session.set({ sessionToken: 'newer-token.signature' })
+        })
+        await settle()
+
+        expect(saves(calls)).toHaveLength(2)
+        expect(saves(calls)[1]?.authorization).toBe('Bearer newer-token.signature')
+      })
+    })
   })
 })

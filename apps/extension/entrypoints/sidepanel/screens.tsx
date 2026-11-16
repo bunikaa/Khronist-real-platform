@@ -1,14 +1,13 @@
-import type { Line, RecognitionStatus, Transcription } from '@khronist/contracts'
+import type { Line, RecognitionStatus } from '@khronist/contracts'
 import {
   ActionBar,
   Button,
-  LineWords,
   SectionLabel,
   StatusBar,
   strings,
   TranscriptionLine,
 } from '@khronist/ui'
-import { Check, CircleAlert, Crosshair } from 'lucide-react'
+import { Check, Crosshair } from 'lucide-react'
 import type { Fragment } from '../../messages.ts'
 import type { Failure } from './useReading.ts'
 
@@ -34,17 +33,6 @@ const FragmentPreview = ({ fragment, failed }: { fragment: Fragment; failed?: bo
       </p>
     )}
   </div>
-)
-
-const Notes = ({ notes }: { notes: string[] }) => (
-  <ul className="flex flex-col gap-1">
-    {notes.map((note) => (
-      <li key={note} className="flex gap-2 text-body-13">
-        <CircleAlert size={16} className="mt-px shrink-0 text-warning" aria-hidden />
-        {note}
-      </li>
-    ))}
-  </ul>
 )
 
 const Lines = ({ lines }: { lines: Line[] }) => (
@@ -164,67 +152,6 @@ export const Reading = ({ fragment, status, lines, onCancel }: ReadingProps) => 
         <Button kind="ghost" onClick={onCancel}>
           {strings.read.cancel}
         </Button>
-      </ActionBar>
-    </>
-  )
-}
-
-export const modernLines = (transcription: Transcription) => {
-  const normalized = transcription.normalizedLines
-  if (!normalized) return null
-  const changed = normalized.some((line, index) => line.text !== transcription.lines[index]?.text)
-  return changed ? normalized : null
-}
-
-type ResultProps = {
-  transcription: Transcription
-  onSelect: Action
-}
-
-export const Result = ({ transcription, onSelect }: ResultProps) => {
-  const modern = modernLines(transcription)
-  const expansions = transcription.expansions ?? []
-  const warnings = transcription.warnings ?? []
-  return (
-    <>
-      <div className="flex-1 overflow-y-auto">
-        {warnings.length > 0 && (
-          <section className="p-3 pb-0">
-            <Notes notes={warnings.map((warning) => strings.read.warnings[warning])} />
-          </section>
-        )}
-        <section className="flex flex-col gap-1 p-3">
-          <SectionLabel>{strings.read.transcriptionLines(transcription.lines.length)}</SectionLabel>
-          <Lines lines={transcription.lines} />
-        </section>
-        {modern && (
-          <>
-            <hr className="border-rule" />
-            <section className="flex flex-col gap-2 p-3">
-              <SectionLabel>{strings.read.normalized}</SectionLabel>
-              <div className="text-body-14">
-                {modern.map((line, index) => (
-                  <p key={index}>
-                    <LineWords text={line.text} uncertain={false} words={line.words} />
-                  </p>
-                ))}
-              </div>
-              {expansions.length > 0 && (
-                <>
-                  <SectionLabel>{strings.read.expansions}</SectionLabel>
-                  <ul className="text-body-13">
-                    {expansions.map(({ from, to }, index) => (
-                      <li key={index}>{strings.read.expansion(from, to)}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </section>
-          </>
-        )}
-      </div>
-      <ActionBar>
-        <Button onClick={onSelect}>{strings.read.selectFragment}</Button>
       </ActionBar>
     </>
   )

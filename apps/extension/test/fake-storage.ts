@@ -2,11 +2,16 @@ type Change = { newValue?: unknown; oldValue?: unknown }
 type ChangeListener = (changes: Record<string, Change>, areaName: string) => void
 
 const listeners = new Set<ChangeListener>()
+const notifications = new Set<ReturnType<typeof setTimeout>>()
 
 const area = (name: string) => {
   const items = new Map<string, unknown>()
   const notify = (changes: Record<string, Change>) => {
-    for (const listener of listeners) listener(changes, name)
+    const timer = setTimeout(() => {
+      notifications.delete(timer)
+      for (const listener of listeners) listener(changes, name)
+    }, 0)
+    notifications.add(timer)
   }
   return {
     items,
@@ -39,6 +44,8 @@ export const fakeStorage = {
 }
 
 export const resetFakeStorage = () => {
+  for (const timer of notifications) clearTimeout(timer)
+  notifications.clear()
   fakeStorage.session.items.clear()
   fakeStorage.local.items.clear()
 }

@@ -138,7 +138,15 @@ export const useReading = () => {
     setReading({ phase: 'idle' })
   }, [])
 
+  const replace = useCallback((transcription: Transcription) => {
+    setReading((previous) =>
+      previous.phase === 'done' && previous.transcription.regionId === transcription.regionId
+        ? { ...previous, transcription }
+        : previous,
+    )
+  }, [])
+
   useEffect(() => () => controller.current?.abort(), [])
 
-  return { reading, start, retry, failSelection, cancel }
+  return { reading, start, retry, failSelection, cancel, replace }
 }

@@ -2,15 +2,17 @@ import {
   createRecognitionResponseSchema,
   errorSchema,
   recognitionStateSchema,
+  versionConflictSchema,
   type CreateRecognitionRequest,
   type CreateRecognitionResponse,
   type RecognitionEvent,
   type RecognitionState,
+  type Transcription,
 } from '@khronist/contracts'
 import { strings } from '@khronist/ui'
 import { readEvents } from './events.ts'
 import { apiOrigin } from './origin.ts'
-import { readToken } from './token.ts'
+import { clearToken, readToken } from './token.ts'
 
 export class ApiFailure extends Error {
   readonly code: string
@@ -21,8 +23,21 @@ export class ApiFailure extends Error {
   }
 }
 
+export class VersionConflictFailure extends ApiFailure {
+  readonly current: Transcription
+
+  constructor(message: string, current: Transcription) {
+    super('version_conflict', message)
+    this.current = current
+  }
+}
+
 const failureOf = async (response: Response): Promise<ApiFailure> => {
-  const parsed = errorSchema.safeParse(await response.json().catch(() => null))
+  const body: unknown = await response.json().catch(() => null)
+  const conflict = versionConflictSchema.safeParse(body)
+  if (conflict.success)
+    return new VersionConflictFailure(conflict.data.error.message, conflict.data.current)
+  const parsed = errorSchema.safeParse(body)
   return parsed.success
     ? new ApiFailure(parsed.data.error.code, parsed.data.error.message)
     : new ApiFailure('internal_error', strings.read.badResponse)
@@ -35,6 +50,19 @@ export const send = async (path: string, init: RequestInit): Promise<Response> =
   const response = await fetch(`${apiOrigin}${path}`, { ...init, headers })
   if (!response.ok) throw await failureOf(response)
   return response
+}
+
+export const sendSignedIn = async (path: string, init: RequestInit): Promise<Response> => {
+  const token = await readToken()
+  const headers = new Headers(init.headers)
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  try {
+    return await send(path, { ...init, headers })
+  } catch (error) {
+    const rejected = error instanceof ApiFailure && error.code === 'unauthorized'
+    if (rejected && (await readToken()) === token) await clearToken()
+    throw error
+  }
 }
 
 export const createRecognition = async (

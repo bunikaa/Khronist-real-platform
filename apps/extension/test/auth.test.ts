@@ -210,6 +210,20 @@ describe('the session of the panel', () => {
     expect(fakeStorage.session.items.has('sessionToken')).toBe(false)
   })
 
+  it('keeps a token saved while the rejected signature was on the way', async () => {
+    await signedIn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async () => {
+        await fakeStorage.session.set({ sessionToken: 'newer-token.signature' })
+        return failure('unauthorized', 'Потрібен вхід', 401)
+      }),
+    )
+
+    await expect(saveName('Олена К.')).rejects.toMatchObject({ code: 'unauthorized' })
+    expect(fakeStorage.session.items.get('sessionToken')).toBe('newer-token.signature')
+  })
+
   it.each([
     ['a server error', failure('internal_error', 'Внутрішня помилка сервера', 500)],
     ['a refused name', failure('bad_request', 'Некоректний запит', 400)],
