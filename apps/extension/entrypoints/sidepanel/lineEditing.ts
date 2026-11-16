@@ -3,7 +3,9 @@ import type { LineChange } from '../../api/transcriptions.ts'
 
 type SaveFailure = { message: string; offline: boolean; retryable: boolean }
 
-type EditProblem = { kind: 'conflict'; current: Transcription } | ({ kind: 'failed' } & SaveFailure)
+type EditProblem =
+  | { kind: 'conflict'; current: Transcription; comparing: boolean }
+  | ({ kind: 'failed' } & SaveFailure)
 
 export type EditState = {
   regionId: string | undefined
@@ -30,7 +32,8 @@ export type EditAction =
   | { type: 'send'; changes: LineChange[] }
   | (Answer & { regionId: string })
   | { type: 'session-changed' }
-  | { type: 'resolve' }
+  | { type: 'compare' }
+  | { type: 'rebase'; dropped: number[] }
   | { type: 'discard' }
   | { type: 'retry' }
 
@@ -85,9 +88,8 @@ const answer = (state: EditState, action: Answer): EditState => {
     case 'conflict':
       return {
         ...state,
-        editing: undefined,
         sending: undefined,
-        problem: { kind: 'conflict', current: action.current },
+        problem: { kind: 'conflict', current: action.current, comparing: false },
       }
     case 'unauthorized':
       return { ...state, sending: undefined, unauthorized: true }
@@ -112,8 +114,15 @@ export const editReducer = (state: EditState, action: EditAction): EditState => 
       return { ...state, sending: action.changes }
     case 'session-changed':
       return { ...state, unauthorized: false }
-    case 'resolve':
-      return { ...state, editing: undefined, pending: [], changed: [], problem: undefined }
+    case 'compare':
+      if (state.problem?.kind !== 'conflict') return state
+      return { ...state, problem: { ...state.problem, comparing: true } }
+    case 'rebase':
+      return {
+        ...state,
+        pending: state.pending.filter((change) => !action.dropped.includes(change.idx)),
+        problem: undefined,
+      }
     case 'discard':
       return { ...state, editing: undefined, pending: [], problem: undefined }
     case 'retry':
@@ -133,3 +142,25 @@ export const shownLines = (transcription: Transcription, state: EditState): Show
       ? { changed, line: { ...line, text: queued.text, uncertain: false, words: [] } }
       : { changed, line }
   })
+
+type LineConflict = { idx: number; mine: string; theirs: string }
+
+const textAt = (transcription: Transcription, idx: number) =>
+  transcription.lines.find((line) => line.idx === idx)?.text
+
+export const rewritten = (base: Transcription, current: Transcription, idx: number) =>
+  textAt(current, idx) !== textAt(base, idx)
+
+export const conflictsOf = (
+  base: Transcription,
+  current: Transcription,
+  pending: LineChange[],
+): LineConflict[] =>
+  pending.flatMap(({ idx, text }) => {
+    const theirs = textAt(current, idx)
+    if (theirs === undefined || !rewritten(base, current, idx) || theirs === text) return []
+    return [{ idx, mine: text, theirs }]
+  })
+
+export const settledBy = (current: Transcription, pending: LineChange[]) =>
+  pending.filter(({ idx, text }) => textAt(current, idx) === text).map(({ idx }) => idx)

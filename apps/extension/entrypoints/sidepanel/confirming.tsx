@@ -5,12 +5,15 @@ import type { Confirming } from './useConfirm.ts'
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
 
-const verifierOf = ({ verifiedBy, verifiedSignature }: Transcription) => {
+const verifierName = ({ verifiedBy, verifiedSignature }: Transcription) => {
   const name = verifiedBy?.name ?? ''
   const signature = verifiedSignature ?? ''
   if (name && signature && name !== signature) return strings.confirm.signedAs(name, signature)
-  return name || signature || strings.confirm.unsigned
+  return name || signature
 }
+
+const verifierOf = (transcription: Transcription) =>
+  verifierName(transcription) || strings.confirm.unsigned
 
 const verifiedWhen = (verifiedAt: string | undefined, now: Date) => {
   if (!verifiedAt) return undefined
@@ -18,7 +21,7 @@ const verifiedWhen = (verifiedAt: string | undefined, now: Date) => {
   return sameDay(at, now) ? strings.confirm.today : strings.confirm.date(at)
 }
 
-const statusOf = (transcription: Transcription, now: Date) => {
+export const statusOf = (transcription: Transcription, now: Date) => {
   switch (transcription.status) {
     case 'draft':
       return { label: strings.confirm.draft, note: strings.confirm.nobodyYet }
@@ -38,16 +41,40 @@ const statusOf = (transcription: Transcription, now: Date) => {
   }
 }
 
-export const PageStatus = ({ transcription }: { transcription: Transcription }) => {
-  const { label, note } = statusOf(transcription, new Date())
+type PageStatusProps = { transcription: Transcription; disputed: number[] }
+
+export const PageStatus = ({ transcription, disputed }: PageStatusProps) => {
+  const shown =
+    disputed.length > 0
+      ? { status: 'disputed' as const, label: strings.edit.disputed(disputed), note: '' }
+      : { status: transcription.status, ...statusOf(transcription, new Date()) }
+  const { status, label, note } = shown
   return (
     <>
       <section className="flex items-center gap-2 p-3">
-        <PageStatusBadge status={transcription.status}>{label}</PageStatusBadge>
+        <PageStatusBadge status={status}>{label}</PageStatusBadge>
         <p className="min-w-0 flex-1 text-right font-mono text-mono-10 text-ink-muted">{note}</p>
       </section>
       <hr className="border-rule" />
     </>
+  )
+}
+
+type VerifiedAlertProps = { transcription: Transcription; confirm: Confirming; onFix: () => void }
+
+export const VerifiedAlert = ({ transcription, confirm, onFix }: VerifiedAlertProps) => {
+  const { status, verifiedAt, id } = transcription
+  if (status !== 'verified' || !verifiedAt || confirm.confirmedHere.has(id)) return null
+  return (
+    <StatusBar
+      type="success"
+      message={strings.confirm.verifiedBy(
+        verifierName(transcription),
+        strings.confirm.date(new Date(verifiedAt)),
+      )}
+      action={strings.confirm.suggestFix}
+      onAction={onFix}
+    />
   )
 }
 

@@ -16,10 +16,33 @@ const lines = (count: number) => `${count} ${lineForms[plural.select(count)]}`
 const size = (width: number, height: number) =>
   `${number.format(width)} × ${number.format(height)} px`
 const dayMonthYear = new Intl.DateTimeFormat('uk', {
-  day: 'numeric',
-  month: 'long',
+  day: '2-digit',
+  month: '2-digit',
   year: 'numeric',
 })
+const relative = new Intl.RelativeTimeFormat('uk', { style: 'short' })
+const minuteMs = 60_000
+
+const ago = (date: Date, now: Date) => {
+  const minutes = Math.floor((now.getTime() - date.getTime()) / minuteMs)
+  if (minutes < 1) return 'щойно'
+  if (minutes < 60) return relative.format(-minutes, 'minute')
+  if (minutes < 24 * 60) return relative.format(-Math.floor(minutes / 60), 'hour')
+  return dayMonthYear.format(date)
+}
+
+const fragmentForms: Record<Intl.LDMLPluralRule, string> = {
+  zero: 'фрагментів',
+  one: 'фрагмент',
+  two: 'фрагменти',
+  few: 'фрагменти',
+  many: 'фрагментів',
+  other: 'фрагмента',
+}
+
+const lineNumber = (idx: number) => String(idx + 1).padStart(2, '0')
+const lineNumbers = (idxs: number[]) =>
+  `${idxs.length === 1 ? 'рядок' : 'рядки'} ${idxs.map(lineNumber).join(', ')}`
 const shortcutKeys = (shortcut: string) => shortcut.split('+').join(' + ')
 
 export const strings = {
@@ -40,6 +63,11 @@ export const strings = {
         ? `Натисніть кнопку нижче або ${shortcutKeys(shortcut)}, потім обведіть запис на аркуші.`
         : 'Натисніть кнопку нижче, потім обведіть запис на аркуші.',
     selectFragment: 'Виділити фрагмент',
+    notRead: 'ще не прочитано',
+    alreadyRead: (count: number, verified: number) =>
+      `прочитано · ${count} ${fragmentForms[plural.select(count)]}` +
+      (verified > 0 ? ` · підтверджено ${verified}` : ''),
+    readHere: 'Уже прочитано на цьому аркуші',
     selectingTitle: 'Обведіть запис на аркуші',
     selectingHint: 'Esc — скасувати',
     selectionTooSmall: 'Виділення замале: обведіть увесь запис',
@@ -86,7 +114,17 @@ export const strings = {
     changed: 'виправлено',
     oldLetters: 'Старі літери',
     insert: (letter: string) => `Вставити ${letter}`,
-    conflict: 'Поки ви редагували, текст змінили. Ваші правки не збережено',
+    conflictBy: (idxs: number[], name: string) =>
+      name
+        ? `Поки ви редагували, ${lineNumbers(idxs)} змінив(ла) ${name}`
+        : `Поки ви редагували, ${lineNumbers(idxs)} змінили`,
+    compare: 'Порівняти',
+    disputed: (idxs: number[]) => `спірне · ${lineNumbers(idxs)}`,
+    versions: (idx: number) => `Рядок ${lineNumber(idx)} · дві версії`,
+    mine: 'Ваша',
+    theirs: (name: string, date: Date, now: Date) => `${name || 'Нова версія'} · ${ago(date, now)}`,
+    keepMine: 'Залишити моє',
+    takeTheirs: 'Прийняти чуже',
     showCurrent: 'Показати нову версію',
     signInToSave: 'Правки не збережено: щоб зберегти їх, увійдіть',
     discard: 'Скасувати правки',
@@ -107,6 +145,9 @@ export const strings = {
     verified: 'підтверджено',
     today: 'сьогодні',
     unsigned: 'без підпису',
+    verifiedBy: (who: string, date: string) =>
+      who ? `Цей фрагмент підтвердив(ла) ${who} ${date}` : `Цей фрагмент підтверджено ${date}`,
+    suggestFix: 'Запропонувати виправлення',
     disputed: 'спірне',
     signedAs: (name: string, signature: string) => `${name} («${signature}»)`,
     date: (date: Date) => dayMonthYear.format(date),

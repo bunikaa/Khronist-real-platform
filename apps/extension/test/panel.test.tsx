@@ -160,12 +160,13 @@ describe('side panel', () => {
     expect(container.textContent).toContain('Натисніть кнопку нижче, потім обведіть')
   })
 
-  it('keeps the shelfmark of the fragment over its lines when another image opens', async () => {
+  it('goes back to the new sheet when another image opens after a result', async () => {
     currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
+        .mockResolvedValueOnce(json({}))
         .mockResolvedValueOnce(
           json({ recognitionId, status: 'cached', transcriptionId: transcription.id }, 201),
         )
@@ -173,11 +174,33 @@ describe('side panel', () => {
     )
     await render()
     await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+    expect(container.textContent).toContain('Села Борщаговки')
+
     await deliver({ type: 'page', shelfmark: shelfmark(5), scan: true, selecting: false })
+
+    expect(container.textContent).not.toContain('Села Борщаговки')
+    expect(container.textContent).toContain('Виділіть фрагмент скану')
+    expect(container.querySelector('header')?.textContent).toContain('зобр. 5')
+  })
+
+  it('keeps the lines of the fragment when a tab without a scan opens', async () => {
+    currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({}))
+        .mockResolvedValueOnce(
+          json({ recognitionId, status: 'cached', transcriptionId: transcription.id }, 201),
+        )
+        .mockResolvedValueOnce(json({ recognitionId, status: 'done', transcription })),
+    )
+    await render()
+    await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+    await deliver({ type: 'page', shelfmark: null, scan: false, selecting: false })
 
     expect(container.textContent).toContain('Села Борщаговки')
     expect(container.querySelector('header')?.textContent).toContain('зобр. 4')
-    expect(container.querySelector('header')?.textContent).not.toContain('зобр. 5')
   })
 
   it('shows the warnings of the model next to the lines', async () => {
@@ -186,6 +209,7 @@ describe('side panel', () => {
       'fetch',
       vi
         .fn()
+        .mockResolvedValueOnce(json({}))
         .mockResolvedValueOnce(
           json({ recognitionId, status: 'cached', transcriptionId: transcription.id }, 201),
         )
@@ -851,35 +875,305 @@ describe('side panel', () => {
         expect(container.textContent).not.toContain('Правки не збережено')
       })
 
-      it('shows the newer version after a conflict and drops the edit', async () => {
-        await fakeStorage.session.set({ sessionToken: token })
-        const current = newer('Села Борщаговки, змінено іншим', 2)
-        read({
-          [linesPath]: () =>
-            json(
-              {
-                error: {
-                  code: 'version_conflict',
-                  message: 'Транскрипцію вже змінили, ось поточна версія',
-                },
-                current,
-              },
-              409,
-            ),
+      describe('conflict of edits (E4)', () => {
+        const twoMinutesAgo = () => new Date(Date.now() - 2 * 60_000 - 5_000).toISOString()
+        const theirs = (lines: [string, string]): Transcription => ({
+          ...newer(lines[0], 2),
+          lines: [
+            { ...edited.lines[0]!, text: lines[0] },
+            { ...edited.lines[1]!, text: lines[1] },
+          ],
+          author: { name: 'Андрій М.' },
+          createdAt: twoMinutesAgo(),
         })
-        await openReading()
-        await click(lineButton('Села Борщаговки'))
-        await write('Села Борщаговки крестьянинъ')
-        await enterToTheEnd()
+        const conflictWith = (current: Transcription) => () =>
+          json(
+            {
+              error: { code: 'version_conflict', message: 'Транскрипцію вже змінили' },
+              current,
+            },
+            409,
+          )
+        const card = () => container.querySelector('main section[aria-label="Порівняти"]')
+        const cardButton = (text: string) =>
+          [...(card()?.querySelectorAll('button') ?? [])].find(
+            (button) => button.textContent === text,
+          )
 
-        expect(container.textContent).toContain('Поки ви редагували, текст змінили')
-        expect(editor()).toBeNull()
+        it('shows both versions of a line both readers changed and keeps mine', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщагівки, змінено іншим', 'Коваленко и законная'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          const calls = read({
+            [linesPath]: conflictWith(current),
+            [currentPath]: () =>
+              json({ ...current, id: '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a', version: 3 }),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
 
-        await click(mainButton('Показати нову версію'))
+          expect(container.querySelector('[role="status"]')?.textContent).toContain(
+            'Поки ви редагували, рядок 01 змінив(ла) Андрій М.',
+          )
+          expect(container.querySelector('main section > span')?.textContent).toBe(
+            'спірне · рядок 01',
+          )
+          expect(container.querySelectorAll('main li button')).toHaveLength(0)
+          expect(card()).toBeNull()
 
-        expect(container.textContent).toContain('Села Борщаговки, змінено іншим')
-        expect(container.textContent).not.toContain('крестьянинъ')
-        expect(container.textContent).not.toContain('виправлено')
+          await click(container.querySelector('[role="status"] button'))
+
+          expect(card()?.textContent).toContain('Рядок 01 · дві версії')
+          expect(card()?.textContent).toContain('ВашаСела Борщаговки крестьянинъ')
+          expect(card()?.textContent).toContain(
+            'Андрій М. · 2 хв томуСела Борщагівки, змінено іншим',
+          )
+
+          await click(cardButton('Залишити моє'))
+
+          expect(card()).toBeNull()
+          expect(container.querySelector('[role="status"]')).toBeNull()
+          expect(calls.filter((call) => call.path === currentPath)).toEqual([
+            {
+              path: currentPath,
+              authorization: `Bearer ${token}`,
+              body: { baseVersion: 2, lines: [{ idx: 0, text: 'Села Борщаговки крестьянинъ' }] },
+            },
+          ])
+        })
+
+        it('keeps the line being typed when a conflict comes back and checks it too', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщаговки', 'Коваленко и законная, змінено іншим'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          let answer: (response: Response) => void = () => undefined
+          const calls = read({
+            [linesPath]: () =>
+              new Promise<Response>((resolve) => {
+                answer = resolve
+              }),
+            [currentPath]: () =>
+              json({ ...current, id: '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a', version: 3 }),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await click(lineButton('Коваленко и законная'))
+          await write('Коваленко и законная жена его')
+
+          await act(async () => {
+            answer(conflictWith(current)())
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          })
+          await settle()
+
+          expect(editor()).toBeNull()
+          expect(container.querySelector('[role="status"]')?.textContent).toContain(
+            'Поки ви редагували, рядок 02 змінив(ла) Андрій М.',
+          )
+          await click(container.querySelector('[role="status"] button'))
+          expect(card()?.textContent).toContain('ВашаКоваленко и законная жена его')
+
+          await click(cardButton('Залишити моє'))
+
+          expect(calls.filter((call) => call.path === currentPath)[0]?.body).toEqual({
+            baseVersion: 2,
+            lines: [
+              { idx: 0, text: 'Села Борщаговки крестьянинъ' },
+              { idx: 1, text: 'Коваленко и законная жена его' },
+            ],
+          })
+        })
+
+        it('closes an untouched open line on a conflict and shows the newer text', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщаговки', 'Коваленко и законная, змінено іншим'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          let answer: (response: Response) => void = () => undefined
+          const calls = read({
+            [linesPath]: () =>
+              new Promise<Response>((resolve) => {
+                answer = resolve
+              }),
+            [currentPath]: () =>
+              json({ ...current, id: '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a', version: 3 }),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await click(lineButton('Коваленко и законная'))
+
+          await act(async () => {
+            answer(conflictWith(current)())
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          })
+          await settle()
+
+          expect(editor()).toBeNull()
+          expect(container.querySelector('[role="status"]')).toBeNull()
+          expect(container.textContent).toContain('Коваленко и законная, змінено іншим')
+          expect(calls.filter((call) => call.path === currentPath)[0]?.body).toEqual({
+            baseVersion: 2,
+            lines: [{ idx: 0, text: 'Села Борщаговки крестьянинъ' }],
+          })
+        })
+
+        it('leaves a line the other reader did not touch open while the edit moves over', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const three: Transcription = {
+            ...edited,
+            lines: [...edited.lines, { ...edited.lines[0]!, idx: 2, text: 'оба православнаго' }],
+          }
+          const current: Transcription = {
+            ...three,
+            id: '7c2e8d2f-5b1c-4e4d-8b54-3d2f8c1a0b22',
+            version: 2,
+            lines: [
+              three.lines[0]!,
+              { ...three.lines[1]!, text: 'Коваленко, змінено іншим' },
+              three.lines[2]!,
+            ],
+            author: { name: 'Андрій М.' },
+          }
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          let answer: (response: Response) => void = () => undefined
+          const calls = api({
+            '/api/auth/get-session': () => json({ session: { id: 's' }, user, canVerify: false }),
+            '/v1/recognitions': () =>
+              json({ recognitionId, status: 'cached', transcriptionId: three.id }, 201),
+            [`/v1/recognitions/${recognitionId}`]: () =>
+              json({ recognitionId, status: 'done', transcription: three }),
+            [linesPath]: () =>
+              new Promise<Response>((resolve) => {
+                answer = resolve
+              }),
+            [currentPath]: () =>
+              json({ ...current, id: '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a', version: 3 }),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await press('Enter')
+          await press('Enter')
+          await press('Enter')
+          await click(lineButton('оба православнаго'))
+          await write('оба православнаго исповѣданія')
+          expect(saves(calls)).toHaveLength(1)
+
+          await act(async () => {
+            answer(conflictWith(current)())
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          })
+          await settle()
+
+          expect(container.querySelector('[role="status"]')).toBeNull()
+          expect(editor()?.value).toBe('оба православнаго исповѣданія')
+          expect(container.textContent).toContain('Коваленко, змінено іншим')
+          expect(calls.filter((call) => call.path === currentPath)).toHaveLength(0)
+
+          await press('Enter')
+
+          expect(calls.filter((call) => call.path === currentPath)[0]?.body).toEqual({
+            baseVersion: 2,
+            lines: [
+              { idx: 0, text: 'Села Борщаговки крестьянинъ' },
+              { idx: 2, text: 'оба православнаго исповѣданія' },
+            ],
+          })
+        })
+
+        it('drops an edit the reader took back when the other reader rewrote the same line', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщагівки, змінено іншим', 'Коваленко и законная'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          let answer: (response: Response) => void = () => undefined
+          const calls = read({
+            [linesPath]: () =>
+              new Promise<Response>((resolve) => {
+                answer = resolve
+              }),
+            [currentPath]: () => json(current),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки')
+
+          await act(async () => {
+            answer(conflictWith(current)())
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          })
+          await settle()
+
+          expect(editor()).toBeNull()
+          expect(container.querySelector('[role="status"]')).toBeNull()
+          expect(container.textContent).toContain('Села Борщагівки, змінено іншим')
+          expect(calls.filter((call) => call.path === currentPath)).toEqual([])
+        })
+
+        it('stays on the lines while one is open when another image opens', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          read()
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+
+          await deliver({ type: 'page', shelfmark: shelfmark(5), scan: true, selecting: false })
+
+          expect(editor()?.value).toBe('Села Борщаговки')
+          expect(container.querySelector('header')?.textContent).toContain('зобр. 4')
+        })
+
+        it('takes the other version and drops only the line in conflict', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщагівки, змінено іншим', 'Коваленко и законная'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          const calls = read({ [linesPath]: conflictWith(current) })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await click(container.querySelector('[role="status"] button'))
+
+          await click(cardButton('Прийняти чуже'))
+
+          expect(card()).toBeNull()
+          expect(container.textContent).toContain('Села Борщагівки, змінено іншим')
+          expect(container.textContent).not.toContain('крестьянинъ')
+          expect(calls.filter((call) => call.path === currentPath)).toEqual([])
+          expect(lineButton('Села Борщагівки')).toBeDefined()
+        })
+
+        it('moves the edit onto the newer version when the other reader changed other lines', async () => {
+          await fakeStorage.session.set({ sessionToken: token })
+          const current = theirs(['Села Борщаговки', 'Коваленко и законная жена его'])
+          const currentPath = `/v1/transcriptions/${current.id}/lines`
+          const calls = read({
+            [linesPath]: conflictWith(current),
+            [currentPath]: () =>
+              json({ ...current, id: '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a', version: 3 }),
+          })
+          await openReading()
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await settle()
+
+          expect(container.querySelector('[role="status"]')).toBeNull()
+          expect(calls.filter((call) => call.path === currentPath)).toEqual([
+            {
+              path: currentPath,
+              authorization: `Bearer ${token}`,
+              body: { baseVersion: 2, lines: [{ idx: 0, text: 'Села Борщаговки крестьянинъ' }] },
+            },
+          ])
+          expect(container.textContent).toContain('Коваленко и законная жена его')
+        })
       })
 
       it('keeps the edit when the session expired and opens the sign-in', async () => {
@@ -1244,6 +1538,7 @@ describe('side panel', () => {
         expect(dialog()).toBeNull()
         expect(badge()?.textContent).toBe('підтверджено · Олена К. · сьогодні')
         expect(container.textContent).not.toContain('ще ніхто не підтвердив')
+        expect(container.textContent).not.toContain('Цей фрагмент підтвердив')
         expect(mainButton('Підтвердити')).toBeUndefined()
 
         await click(mainButton('Наступний фрагмент'))
@@ -1489,7 +1784,7 @@ describe('side panel', () => {
         await openReading()
 
         expect(badge()?.textContent).toBe(
-          'підтверджено · Олена К. («О. Коваль, ЦДІАК») · 14 листопада 2026 р.',
+          'підтверджено · Олена К. («О. Коваль, ЦДІАК») · 14.11.2026',
         )
         expect(mainButton('Наступний фрагмент')?.className).toContain('btn-primary')
       })
@@ -1629,6 +1924,212 @@ describe('side panel', () => {
         await settle()
         expect(statusBar()).toBeNull()
         expect(mainButton('Підтвердити')).toBeDefined()
+      })
+    })
+
+    describe('already read (E1)', () => {
+      const verifiedOne: Transcription = {
+        ...transcription,
+        shelfmark: shelfmark(4),
+        status: 'verified',
+        verifiedBy: { name: 'Олена К.' },
+        verifiedSignature: 'Олена К.',
+        verifiedAt: '2026-11-12T10:00:00.000Z',
+        lines: [
+          { ...transcription.lines[0]!, text: 'Села Борщаговки крестьянинъ' },
+          { ...transcription.lines[0]!, idx: 1, text: 'Коваленко и законная' },
+        ],
+      }
+      const draftOne: Transcription = {
+        ...transcription,
+        id: '9d3f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b',
+        regionId: '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e',
+        lines: [{ ...transcription.lines[0]!, text: 'Иванъ Петровъ' }],
+      }
+      const summary = ({ id, regionId, box, version, status, createdAt }: Transcription) => ({
+        id,
+        regionId,
+        box,
+        version,
+        status,
+        createdAt,
+      })
+      const page = (transcriptions: Transcription[]) => ({
+        page: {
+          id: '0b6a9d3e-1c2f-4e5a-8b7c-9d0e1f2a3b4c',
+          shelfmark: shelfmark(4),
+          transcriptions: transcriptions.map(summary),
+        },
+      })
+      const routes = (lookup: () => Response) => ({
+        '/v1/pages/lookup': lookup,
+        [`/v1/transcriptions/${verifiedOne.id}`]: () => json(verifiedOne),
+        [`/v1/transcriptions/${draftOne.id}`]: () => json(draftOne),
+      })
+      const openPage = async () => {
+        currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
+        await render()
+        await settle()
+      }
+      const badge = () => container.querySelector('main section > span')
+      const listed = () => [...container.querySelectorAll('main ul li button')]
+
+      it('lists what was already read on the sheet with each status', async () => {
+        const calls = api(routes(() => json(page([verifiedOne, draftOne]))))
+        await openPage()
+
+        expect(badge()?.textContent).toBe('прочитано · 2 фрагменти · підтверджено 1')
+        expect(container.textContent).toContain('Уже прочитано на цьому аркуші')
+        expect(listed().map((button) => button.textContent)).toEqual([
+          'Села Борщаговки крестьянинъпідтверджено · Олена К. · 12.11.2026',
+          'Иванъ Петровъчернетка моделі',
+        ])
+        expect(mainButton('Виділити фрагмент')).toBeDefined()
+        expect(calls.find((call) => call.path === '/v1/pages/lookup')).toBeDefined()
+      })
+
+      it('counts what the page has even when a fragment fails to load', async () => {
+        api({
+          ...routes(() => json(page([verifiedOne, draftOne]))),
+          [`/v1/transcriptions/${draftOne.id}`]: () =>
+            json({ error: { code: 'too_many_requests', message: 'Забагато' } }, 429),
+        })
+        await openPage()
+
+        expect(badge()?.textContent).toBe('прочитано · 2 фрагменти · підтверджено 1')
+        expect(listed()).toHaveLength(1)
+      })
+
+      it('says the sheet is not read yet when the page has nothing', async () => {
+        api(routes(() => json({})))
+        await openPage()
+
+        expect(badge()?.textContent).toBe('ще не прочитано')
+        expect(listed()).toHaveLength(0)
+      })
+
+      it('shows no reading status when the lookup failed', async () => {
+        api(routes(() => json({ error: { code: 'internal_error', message: 'Збій' } }, 500)))
+        await openPage()
+
+        expect(badge()).toBeNull()
+        expect(container.textContent).toContain('Виділіть фрагмент скану')
+      })
+
+      it('opens a confirmed fragment with who confirmed it and offers a correction', async () => {
+        api(routes(() => json(page([verifiedOne, draftOne]))))
+        await openPage()
+
+        await click(listed()[0])
+
+        const status = container.querySelector('[role="status"]')
+        expect(status?.textContent).toContain('Цей фрагмент підтвердив(ла) Олена К. 12.11.2026')
+        expect(badge()?.textContent).toBe('підтверджено · Олена К. · 12.11.2026')
+        expect(container.textContent).toContain('Коваленко и законная')
+
+        await click(status?.querySelector('button'))
+
+        expect(container.querySelector('textarea')?.value).toBe('Села Борщаговки крестьянинъ')
+      })
+
+      it('asks again when the panel comes back to the sheet', async () => {
+        let lookups = 0
+        api({
+          ...routes(() => ((lookups += 1) === 1 ? json({}) : json(page([draftOne])))),
+          '/v1/recognitions': () => new Promise<Response>(() => undefined),
+        })
+        await openPage()
+        expect(badge()?.textContent).toBe('ще не прочитано')
+
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await click(mainButton('Скасувати'))
+        await settle()
+
+        expect(lookups).toBe(2)
+        expect(badge()?.textContent).toBe('прочитано · 1 фрагмент')
+        expect(listed()).toHaveLength(1)
+      })
+
+      it('drops the old list when asking again fails', async () => {
+        let lookups = 0
+        api({
+          ...routes(() =>
+            (lookups += 1) === 1
+              ? json(page([draftOne]))
+              : json({ error: { code: 'internal_error', message: 'Збій' } }, 500),
+          ),
+          '/v1/recognitions': () => new Promise<Response>(() => undefined),
+        })
+        await openPage()
+        expect(listed()).toHaveLength(1)
+
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await click(mainButton('Скасувати'))
+        await settle()
+
+        expect(lookups).toBe(2)
+        expect(badge()).toBeNull()
+        expect(listed()).toHaveLength(0)
+      })
+
+      it('shows the confirmed bar for a fragment that comes from the cache', async () => {
+        api({
+          ...routes(() => json({})),
+          '/v1/recognitions': () =>
+            json({ recognitionId, status: 'cached', transcriptionId: verifiedOne.id }, 201),
+          [`/v1/recognitions/${recognitionId}`]: () =>
+            json({ recognitionId, status: 'done', transcription: verifiedOne }),
+        })
+        await openPage()
+        await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+        await settle()
+
+        expect(container.querySelector('[role="status"]')?.textContent).toContain(
+          'Цей фрагмент підтвердив(ла) Олена К. 12.11.2026',
+        )
+      })
+
+      it('keeps one bar at a time when a guest edits a confirmed fragment', async () => {
+        api(routes(() => json(page([verifiedOne]))))
+        await openPage()
+        await click(listed()[0])
+        await click(container.querySelector('[role="status"] button'))
+        const field = container.querySelector('textarea')
+        if (!field) throw new Error('no line is open')
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+            field,
+            'Села Борщаговки крестьянинъ Іоаннъ',
+          )
+          field.dispatchEvent(new Event('input', { bubbles: true }))
+        })
+        await act(async () => {
+          field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        })
+        await act(async () => {
+          container
+            .querySelector('textarea')
+            ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        })
+        await settle()
+        await click(accountButton())
+
+        const bars = [...container.querySelectorAll('[role="status"]')].map(
+          (bar) => bar.textContent,
+        )
+        expect(bars).toHaveLength(1)
+        expect(bars[0]).toContain('Правки не збережено')
+      })
+
+      it('opens a draft fragment without the confirmed bar', async () => {
+        api(routes(() => json(page([verifiedOne, draftOne]))))
+        await openPage()
+
+        await click(listed()[1])
+
+        expect(container.querySelector('[role="status"]')).toBeNull()
+        expect(badge()?.textContent).toBe('чернетка моделі')
+        expect(container.textContent).toContain('Иванъ Петровъ')
       })
     })
   })

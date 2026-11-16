@@ -1,8 +1,8 @@
 import type { Transcription } from '@khronist/contracts'
 import { LineWords, SectionLabel, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
-import { ConfirmActions, ConfirmAlert, PageStatus } from './confirming.tsx'
-import { EditableLines, EditAlert, EditingHint } from './editing.tsx'
+import { ConfirmActions, ConfirmAlert, PageStatus, VerifiedAlert } from './confirming.tsx'
+import { ConflictCompare, EditableLines, EditAlert, EditingHint } from './editing.tsx'
 import type { Confirming } from './useConfirm.ts'
 import type { LineEditing } from './useLineEditing.ts'
 
@@ -75,8 +75,29 @@ export const Result = ({
     <>
       <EditAlert editing={editing} onSignIn={onSignIn} />
       <ConfirmAlert confirm={confirm} signedIn={signedIn} onSignIn={onSignIn} />
+      {editing.editable &&
+        !editing.editing &&
+        !editing.problem &&
+        !editing.waitingForSignIn &&
+        !confirm.problem && (
+          <VerifiedAlert
+            transcription={transcription}
+            confirm={confirm}
+            onFix={() => {
+              const first = transcription.lines[0]
+              if (first) editing.open(first.idx)
+            }}
+          />
+        )}
       <div className="flex-1 overflow-y-auto">
-        {editing.editing ? <EditingHint /> : <PageStatus transcription={transcription} />}
+        {editing.editing ? (
+          <EditingHint />
+        ) : (
+          <PageStatus
+            transcription={transcription}
+            disputed={editing.conflicts.map(({ idx }) => idx)}
+          />
+        )}
         {warnings.length > 0 && (
           <section className="p-3 pb-0">
             <Notes notes={warnings.map((warning) => strings.read.warnings[warning])} />
@@ -99,7 +120,12 @@ export const Result = ({
           </>
         )}
       </div>
-      <ConfirmActions transcription={transcription} confirm={confirm} onSelect={onSelect} />
+      <div className="relative">
+        <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
+          <ConflictCompare editing={editing} />
+        </div>
+        <ConfirmActions transcription={transcription} confirm={confirm} onSelect={onSelect} />
+      </div>
     </>
   )
 }

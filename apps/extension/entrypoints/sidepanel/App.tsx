@@ -13,6 +13,7 @@ import { activeTabId, useActivePage } from './useActivePage.ts'
 import { useConfirm } from './useConfirm.ts'
 import { useFirstRun } from './useFirstRun.ts'
 import { useLineEditing } from './useLineEditing.ts'
+import { sheetKey, usePageReadings } from './usePageReadings.ts'
 import { useReading } from './useReading.ts'
 import { useSession } from './useSession.ts'
 
@@ -45,7 +46,7 @@ const useShortcut = () => {
 export const App = () => {
   const page = useActivePage()
   const shortcut = useShortcut()
-  const { reading, start, retry, failSelection, cancel, replace } = useReading()
+  const { reading, start, retry, failSelection, cancel, replace, show } = useReading()
   const { session, refresh } = useSession()
   const { seen: firstRunSeen, finish: finishFirstRun } = useFirstRun()
   const [accountOpen, setAccountOpen] = useState(false)
@@ -65,6 +66,21 @@ export const App = () => {
     shown: !accountOpen && page?.selecting !== true,
   })
   const selecting = page?.selecting === true
+  const readings = usePageReadings(page?.shelfmark, reading.phase === 'idle' && page?.scan === true)
+  const openSheet = page?.scan ? sheetKey(page.shelfmark) : undefined
+  const shownSheet = reading.phase === 'idle' ? undefined : sheetKey(reading.shelfmark)
+  const settled =
+    !editing.editing &&
+    !editing.unsaved &&
+    !editing.problem &&
+    !confirm.asking &&
+    !confirm.sending &&
+    (reading.phase === 'done' || reading.phase === 'failed')
+  const anotherSheet = openSheet !== undefined && openSheet !== shownSheet && settled
+
+  useEffect(() => {
+    if (anotherSheet) cancel()
+  }, [anotherSheet, cancel])
 
   useEffect(() => {
     const showReading = () => {
@@ -136,7 +152,14 @@ export const App = () => {
       case 'idle':
         if (page === undefined) return null
         if (!page?.scan) return <MissingPage />
-        return <ReadyToRead onSelect={startSelection} shortcut={shortcut} />
+        return (
+          <ReadyToRead
+            onSelect={startSelection}
+            shortcut={shortcut}
+            readings={readings}
+            onOpen={(transcription) => show(transcription, page.shelfmark)}
+          />
+        )
       case 'reading':
         return <Reading {...reading} onCancel={cancel} />
       case 'done':
