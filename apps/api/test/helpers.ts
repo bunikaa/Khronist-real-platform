@@ -15,6 +15,7 @@ import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader, ReadInput } from '../src/services/htr/index.ts'
 import type { CallBudget } from '../src/services/llm/index.ts'
 import { noEntities, type EntityExtractor } from '../src/services/entities.ts'
+import type { Explainer } from '../src/services/explain.ts'
 import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
 
 export const createTestDatabase = async () => {
@@ -127,6 +128,8 @@ export type TestAppOptions = {
   reader?: HtrReader | undefined
   normalizer?: Normalizer
   entities?: EntityExtractor
+  explain?: Explainer
+  guestExplainsPerDay?: number
   budget?: CallBudget
   isShuttingDown?: () => boolean
   readTimeoutMs?: number
@@ -159,6 +162,8 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     guestRecognitionsPerDay: options.guestRecognitionsPerDay,
     apiKeyRecognitionsPerDay: options.apiKeyRecognitionsPerDay,
     isShuttingDown: options.isShuttingDown,
+    ...(options.explain && { explain: options.explain }),
+    guestExplainsPerDay: options.guestExplainsPerDay,
     ...(options.adminApiKey !== undefined && {
       admin: { db: database.db, apiKey: options.adminApiKey, modelCallsPerDay: 2000 },
     }),

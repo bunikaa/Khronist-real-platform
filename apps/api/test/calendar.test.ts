@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateExtra, julianToGregorian, parseDate } from '../src/services/calendar.ts'
+import { dateExtra, describeDate, julianToGregorian, parseDate } from '../src/services/calendar.ts'
 
 type Ymd = [number, number, number]
 
@@ -82,4 +82,18 @@ describe('dateExtra', () => {
       expect(dateExtra(text)).toBeUndefined()
     },
   )
+})
+
+describe('describeDate', () => {
+  it('names both dates and the weekday in Ukrainian', () => {
+    expect(describeDate('12 генваря 1884')).toEqual({
+      julian: '12 січня 1884',
+      gregorian: '24 січня 1884',
+      weekday: 'четвер',
+    })
+  })
+
+  it.each([['в 1884 году'], ['31 іюня 1884'], ['5 марта 1925']])('gives nothing for %j', (text) => {
+    expect(describeDate(text)).toBeUndefined()
+  })
 })

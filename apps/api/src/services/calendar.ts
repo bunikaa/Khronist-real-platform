@@ -73,11 +73,40 @@ export const julianToGregorian = (date: CalendarDate) => {
   return { date: gregorianOf(dayNumber), weekday: weekdays[(dayNumber + 1) % 7] ?? '' }
 }
 
+const ukrainianMonths = [
+  'січня',
+  'лютого',
+  'березня',
+  'квітня',
+  'травня',
+  'червня',
+  'липня',
+  'серпня',
+  'вересня',
+  'жовтня',
+  'листопада',
+  'грудня',
+]
+
+const named = ({ year, month, day }: CalendarDate) => `${day} ${ukrainianMonths[month - 1]} ${year}`
+
+const converted = (text: string) => {
+  const julian = parseDate(text)
+  const gregorian = julian && julianToGregorian(julian)
+  return julian && gregorian ? { julian, ...gregorian } : undefined
+}
+
+export const describeDate = (text: string) => {
+  const found = converted(text)
+  return found
+    ? { julian: named(found.julian), gregorian: named(found.date), weekday: found.weekday }
+    : undefined
+}
+
 const iso = ({ year, month, day }: CalendarDate) =>
   `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 
 export const dateExtra = (text: string) => {
-  const julian = parseDate(text)
-  const gregorian = julian && julianToGregorian(julian)
-  return gregorian ? { newStyle: iso(gregorian.date), weekday: gregorian.weekday } : undefined
+  const found = converted(text)
+  return found ? { newStyle: iso(found.date), weekday: found.weekday } : undefined
 }
