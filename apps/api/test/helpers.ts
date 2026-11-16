@@ -13,7 +13,13 @@ import type { JobLogger } from '../src/jobs/recognize.ts'
 import { pngEnd } from '../src/lib/image.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader, ReadInput } from '../src/services/htr/index.ts'
-import type { CallBudget } from '../src/services/llm/index.ts'
+import {
+  parseOutput,
+  type CallBudget,
+  type LlmProvider,
+  type LlmRequest,
+} from '../src/services/llm/index.ts'
+import type { ChatResponder } from '../src/services/chat.ts'
 import { noEntities, type EntityExtractor } from '../src/services/entities.ts'
 import type { Explainer } from '../src/services/explain.ts'
 import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
@@ -45,6 +51,32 @@ export const silentLog: JobLogger = {
 export const unlimitedBudget: CallBudget = {
   spend: async () => true,
   available: async () => true,
+}
+
+export type ModelAnswer = (chunkIds: string[]) => Record<string, unknown>
+
+export const promptOf = (request: LlmRequest<unknown> | undefined) => {
+  const part = request?.content[0]
+  return part?.type === 'text' ? part.text : ''
+}
+
+export const answering = (answer: ModelAnswer) => {
+  const requests: LlmRequest<unknown>[] = []
+  const provider: LlmProvider = {
+    name: 'claude-test',
+    complete: async (request) => {
+      requests.push(request)
+      const ids = [...promptOf(request).matchAll(/"chunkId":"([^"]+)"/g)].map(
+        (match) => match[1] ?? '',
+      )
+      return {
+        value: parseOutput(JSON.stringify(answer(ids)), request.schema),
+        model: 'claude-test',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      }
+    },
+  }
+  return { provider, requests }
 }
 
 const dropHardSign = (text: string) => text.replace(/ъ(?=\s|$)/g, '')
@@ -130,6 +162,8 @@ export type TestAppOptions = {
   entities?: EntityExtractor
   explain?: Explainer
   guestExplainsPerDay?: number
+  chat?: ChatResponder
+  guestChatsPerDay?: number
   budget?: CallBudget
   isShuttingDown?: () => boolean
   readTimeoutMs?: number
@@ -164,6 +198,8 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     isShuttingDown: options.isShuttingDown,
     ...(options.explain && { explain: options.explain }),
     guestExplainsPerDay: options.guestExplainsPerDay,
+    ...(options.chat && { chat: options.chat }),
+    guestChatsPerDay: options.guestChatsPerDay,
     ...(options.adminApiKey !== undefined && {
       admin: { db: database.db, apiKey: options.adminApiKey, modelCallsPerDay: 2000 },
     }),
@@ -197,6 +233,22 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     },
   })
   return { app, hub, queue }
+}
+
+export const readTranscription = async (database: TestDatabase) => {
+  const { app, queue } = await createTestApp(database)
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/recognitions',
+    payload: recognitionBody(makePng(200, 100)),
+  })
+  await queue.onIdle()
+  const state = await app.inject({
+    method: 'GET',
+    url: `/v1/recognitions/${created.json().recognitionId}`,
+  })
+  await app.close()
+  return state.json().transcription as { id: string; normalizedText: string }
 }
 
 export const parseSse = (body: string): { event: string; data: unknown }[] =>
