@@ -46,6 +46,21 @@ export const unlimitedBudget: CallBudget = {
   available: async () => true,
 }
 
+const dropHardSign = (text: string) => text.replace(/ъ(?=\s|$)/g, '')
+
+export const dropHardSigns: Normalizer = {
+  normalize: async ({ lines }) => ({
+    lines: lines.map((line) => ({
+      text: dropHardSign(line.text),
+      words: line.words.map((word) => ({
+        text: dropHardSign(word.text),
+        uncertain: word.uncertain,
+      })),
+    })),
+    expansions: [],
+  }),
+}
+
 export const makePng = (width: number, height: number): Buffer => {
   const header = Buffer.alloc(33)
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header, 0)
@@ -126,7 +141,10 @@ export type TestAppOptions = {
   guestRecognitionsPerDay?: number
   apiKeyRecognitionsPerDay?: number
   adminApiKey?: string
+  signIn?: { codes: Map<string, string>; verifierEmails?: string[] }
 }
+
+const authBaseURL = 'http://localhost:3000'
 
 export const createTestApp = async (database: TestDatabase, options: TestAppOptions = {}) => {
   const hub = createEventHub()
@@ -143,6 +161,18 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
     isShuttingDown: options.isShuttingDown,
     ...(options.adminApiKey !== undefined && {
       admin: { db: database.db, apiKey: options.adminApiKey, modelCallsPerDay: 2000 },
+    }),
+    ...(options.signIn && {
+      auth: {
+        db: database.db,
+        secret: 's'.repeat(32),
+        baseURL: authBaseURL,
+        codesPerDay: 100,
+        verifierEmails: options.signIn.verifierEmails ?? [],
+        sendCode: async (to: string, code: string) => {
+          options.signIn?.codes.set(to, code)
+        },
+      },
     }),
     recognitions: {
       db: database.db,
@@ -183,6 +213,31 @@ export const parseSse = (body: string): { event: string; data: unknown }[] =>
           .trim() ?? 'null'
       return { event, data: JSON.parse(data) as unknown }
     })
+
+type InjectingApp = Awaited<ReturnType<typeof createTestApp>>['app']
+
+export const signIn = async (
+  app: InjectingApp,
+  codes: Map<string, string>,
+  email: string,
+): Promise<string> => {
+  codes.delete(email)
+  const sent = await app.inject({
+    method: 'POST',
+    url: '/api/auth/email-otp/send-verification-otp',
+    payload: { email, type: 'sign-in' },
+  })
+  if (sent.statusCode !== 200) throw new Error(`the code was not sent: ${sent.statusCode}`)
+  await waitUntil(() => codes.has(email))
+  const signedIn = await app.inject({
+    method: 'POST',
+    url: '/api/auth/sign-in/email-otp',
+    payload: { email, otp: codes.get(email) },
+  })
+  const token = signedIn.headers['set-auth-token']
+  if (typeof token !== 'string') throw new Error(`sign-in failed: ${signedIn.statusCode}`)
+  return token
+}
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 

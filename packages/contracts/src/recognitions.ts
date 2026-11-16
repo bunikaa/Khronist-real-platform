@@ -2,17 +2,22 @@ import { z } from 'zod'
 import {
   boxSchema,
   entitySchema,
+  errorSchema,
   hintsSchema,
   lineSchema,
   readingWarningSchema,
   recognitionStatusSchema,
   shelfmarkSchema,
+  storableText,
   transcriptionStatusSchema,
   withoutControlCharacters,
+  withoutLoneSurrogates,
 } from './common.ts'
 import { normalizeOutputSchema } from './normalize.ts'
 
 export const yearSchema = z.number().int().min(1000).max(2100)
+
+const personNameSchema = z.object({ name: z.string() })
 
 export const transcriptionSchema = z.object({
   id: z.uuid(),
@@ -28,8 +33,8 @@ export const transcriptionSchema = z.object({
   entities: z.array(entitySchema),
   warnings: z.array(readingWarningSchema).optional(),
   reader: z.string(),
-  author: z.object({ name: z.string() }).optional(),
-  verifiedBy: z.object({ name: z.string() }).optional(),
+  author: personNameSchema.optional(),
+  verifiedBy: personNameSchema.optional(),
   verifiedSignature: z.string().optional(),
   verifiedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
@@ -100,7 +105,8 @@ export const patchLinesRequestSchema = z.object({
         text: z
           .string()
           .max(maxLineLength)
-          .refine((text) => !/[\r\n]/.test(text), { message: 'a line has no line breaks' }),
+          .refine((text) => !/[\r\n]/.test(text), { message: 'a line has no line breaks' })
+          .refine(storableText, { message: 'NUL character or lone surrogate' }),
       }),
     )
     .min(1)
@@ -117,7 +123,29 @@ export const verifyRequestSchema = z.object({
     .trim()
     .min(1)
     .max(maxSignatureLength)
-    .refine(withoutControlCharacters, { message: 'control character' })
+    .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
+      message: 'control character or lone surrogate',
+    })
     .optional(),
 })
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>
+
+export const versionConflictSchema = errorSchema.extend({ current: transcriptionSchema })
+export type VersionConflict = z.infer<typeof versionConflictSchema>
+
+const transcriptionEditSchema = z.object({
+  version: z.number().int().min(1),
+  lineIdx: z.number().int().min(0),
+  before: z.string(),
+  after: z.string(),
+  author: personNameSchema.optional(),
+  createdAt: z.iso.datetime(),
+})
+
+export const maxHistoryEdits = 1000
+
+export const transcriptionHistorySchema = z.object({
+  edits: z.array(transcriptionEditSchema).max(maxHistoryEdits),
+  truncated: z.literal(true).optional(),
+})
+export type TranscriptionHistory = z.infer<typeof transcriptionHistorySchema>

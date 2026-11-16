@@ -10,24 +10,23 @@ import {
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value)
 const modelName = z.string().regex(/^(claude|gemini)-/, 'expected a claude-* or gemini-* model')
 const modelEffort = z.enum(['low', 'medium', 'high', 'xhigh', 'max'])
-const corsOrigins = z
-  .string()
-  .transform((value) =>
-    value
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  )
-  .pipe(
-    z.array(
-      z
-        .string()
-        .regex(
-          /^(https?|chrome-extension):\/\/[^/\s*]+$/,
-          'expected an exact origin without a trailing slash',
-        ),
-    ),
-  )
+const commaList = z.string().transform((value) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean),
+)
+const emailList = commaList.pipe(z.array(z.email()))
+const corsOrigins = commaList.pipe(
+  z.array(
+    z
+      .string()
+      .regex(
+        /^(https?|chrome-extension):\/\/[^/\s*]+$/,
+        'expected an exact origin without a trailing slash',
+      ),
+  ),
+)
 
 const databaseUrl = z.string().min(1)
 const minProductionAdminKeyLength = 32
@@ -88,6 +87,7 @@ const configSchema = z
     BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     MAIL_FROM: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    VERIFIER_EMAILS: z.preprocess(emptyToUndefined, emailList.default([])),
     SIGN_IN_CODES_PER_DAY: z.preprocess(
       emptyToUndefined,
       z.coerce.number().int().min(1).default(defaultSignInCodesPerDay),

@@ -1,10 +1,7 @@
 import { z } from 'zod'
-import { withoutControlCharacters, withoutLoneSurrogates } from './common.ts'
+import { storableText, withoutControlCharacters, withoutLoneSurrogates } from './common.ts'
 
 const century = z.number().int().min(1).max(21)
-
-const storableText = (value: string): boolean =>
-  !value.includes('\u0000') && withoutLoneSurrogates(value)
 
 const corpusText = z
   .string()

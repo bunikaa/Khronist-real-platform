@@ -1,6 +1,6 @@
 # 07 · Контракти між частинами
 
-Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id`, `GET /v1/pages/lookup` і `/v1/admin/*` (з `ADMIN_API_KEY`); решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
+Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id`, `GET /v1/transcriptions/:id/history`, `PATCH /v1/transcriptions/:id/lines` і `POST /v1/transcriptions/:id/verify` (обидва лише тоді, коли налаштовано вхід), `GET /v1/pages/lookup` і `/v1/admin/*` (з `ADMIN_API_KEY`); решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
 
 Спільні правила: JSON, UTF-8; ідентифікатори — UUID; час — ISO 8601 UTC; координати — частки 0…1 від ширини й висоти зображення (`x`, `y` — лівий верхній кут); помилки — `{ "error": { "code": "snake_case", "message": "людською мовою українською" } }`. Будь-який запит під час зупинки сервера отримує `503 { error: { code: 'shutting_down' } }` із `retry-after`. Кожна відповідь несе `x-request-id` (з `x-railway-request-id`, якщо його поставив Railway).
 
@@ -52,19 +52,21 @@ GET  /v1/pages/lookup?archive&fond&opys&sprava&folio&image
 GET  /v1/transcriptions/:id
   200: Transcription = { id, regionId, shelfmark?, box, version, status, lines: Line[], normalizedText, normalizedLines?: NormalizedLine[], expansions?: { from, to }[], entities: Entity[], warnings?: ReadingWarning[], reader, author?: { name }, verifiedBy?: { name }, verifiedSignature?, verifiedAt?, createdAt }
 PATCH /v1/transcriptions/:id/lines          (вхід обов'язковий)
-  body: { baseVersion: number; lines: [{ idx, text }] }          // до 200 рядків, текст до 500 символів без переносу, idx без повторів
-  200: Transcription (нова версія) · 409 { error: { code: 'version_conflict' }, current: Transcription }   → стан E4
+  body: { baseVersion: number; lines: [{ idx, text }] }          // до 200 рядків, текст до 500 символів без переносу, NUL і одиночних сурогатів, idx без повторів; тіло до 256 КіБ
+  200: Transcription (нова версія) · 400 bad_request (idx, якого немає у версії) · 401 unauthorized · 404 not_found · 409 { error: { code: 'version_conflict' }, current: Transcription }   → стан E4 · 413 too_large · 429 too_many_requests
 POST /v1/transcriptions/:id/verify          (вхід обов'язковий, лише VERIFIER_EMAILS)
-  body: { signature?: string }               // до 80 символів, без керуючих
-  200: Transcription (status: 'verified') · 403 forbidden · 409 { error: { code: 'version_conflict' }, current }
+  body: { signature?: string }               // до 80 символів, без керуючих і одиночних сурогатів
+  200: Transcription (status: 'verified') · 400 bad_request · 401 unauthorized · 403 forbidden · 404 not_found · 409 { error: { code: 'version_conflict' }, current } · 429 too_many_requests
 GET  /v1/transcriptions/:id/history
-  200: { edits: [{ version, lineIdx, before, after, author, createdAt }] }     // усі версії регіону
+  200: { edits: [{ version, lineIdx, before, after, author?: { name }, createdAt }], truncated?: true }     // усі версії регіону, останні 1000 правок за версією й номером рядка; truncated — старіші не показано · 404 not_found
 ```
 
 - `:id` — завжди рядок конкретної версії. Нова версія регіону — новий рядок з новим `id`. `PATCH` і `verify` приймають лише останню версію регіону (для `PATCH` ще й `baseVersion` = її `version`), інакше `409 version_conflict` з поточною версією.
+- Правка створює нову версію `draft` з автором правки. Виправлений рядок отримує слова з його тексту, поділеного за пробілами, усі без позначки непевності; решта рядків зберігає слова й позначки. До повторної нормалізації `normalizedText` — виправлені рядки, без `normalizedLines` і сутностей; вона йде, лише поки за UTC-добу витрачено менше 75 % `MODEL_CALLS_PER_DAY`, інакше версія лишається як виправлена. Правка, у якій жоден рядок не змінився, — `200` з поточною версією без нової версії.
+- Підтвердження змінює саму версію, нової не створює. Повторне підтвердження вже підтвердженої версії — `200` без змін: підтвердник, час і підпис лишаються першими.
 - `normalizedLines` і `expansions` є лише тоді, коли нормалізація справді відбулася; без них `normalizedText` — прочитані рядки. `warnings` — попередження моделі про виділення й аркуш (порожній список не передається).
 - `pages/lookup` шукає сторінку за номером зображення, якщо він є в запиті, інакше за аркушем (так само сторінку створює `POST /v1/recognitions`); сторінки немає — `200 {}`. `transcriptions` — остання версія кожного регіону сторінки в порядку створення регіонів.
-- Ліміт гостя за IP: 120 `GET /v1/pages/lookup` на хвилину і окремо 120 `GET /v1/transcriptions/:id`; понад — `429 too_many_requests` з `retry-after`.
+- Ліміт гостя за IP: 120 `GET /v1/pages/lookup` на хвилину і окремо по 120 `GET /v1/transcriptions/:id` і `GET /v1/transcriptions/:id/history`; понад — `429 too_many_requests` з `retry-after`. Правки й підтвердження — окремо по 30 на хвилину з IP-адреси, з тією ж відповіддю понад ліміт.
 - Підтверджувати може лише вхід з адресою зі списку `VERIFIER_EMAILS` (команда й історик) — інакше `403 forbidden`. Підпис зберігається в `transcriptions.verified_signature` і завжди показується поряд з іменем акаунта.
 
 ### Пояснення і чат

@@ -5,6 +5,7 @@ import type {
   ReadingWarning,
   Shelfmark,
   Transcription,
+  Word,
 } from '@khronist/contracts'
 import { readingWarningSchema } from '@khronist/contracts'
 import { asc, eq, inArray, sql } from 'drizzle-orm'
@@ -24,6 +25,8 @@ import {
 
 const extraSchema = z.record(z.string(), z.unknown())
 
+const wordRowsPerInsert = 5000
+
 export type NewVersion = {
   regionId: string
   reader: string
@@ -31,7 +34,14 @@ export type NewVersion = {
   warnings: ReadingWarning[]
   normalized: NormalizeOutput | null
   entities: Entity[]
+  authorId?: string
 }
+
+export const warningsOf = (stored: string[]): ReadingWarning[] =>
+  stored.flatMap((warning) => {
+    const parsed = readingWarningSchema.safeParse(warning)
+    return parsed.success ? [parsed.data] : []
+  })
 
 export const shelfmarkOf = (
   document: typeof documents.$inferSelect,
@@ -91,6 +101,7 @@ export const insertTranscriptionVersion = async (
       expansions: normalized?.expansions ?? null,
       warnings,
       reader,
+      authorId: version.authorId ?? null,
     })
     .returning({ id: transcriptions.id })
   if (!transcription) throw new Error('transcription was not inserted')
@@ -119,7 +130,9 @@ export const insertTranscriptionVersion = async (
       confidence: word.confidence ?? null,
     })),
   )
-  if (wordRows.length > 0) await tx.insert(lineWords).values(wordRows)
+  for (let start = 0; start < wordRows.length; start += wordRowsPerInsert) {
+    await tx.insert(lineWords).values(wordRows.slice(start, start + wordRowsPerInsert))
+  }
 
   await insertEntities(tx, transcription.id, found)
   return transcription.id
@@ -144,14 +157,18 @@ export const loadLines = async (db: Database, transcriptionId: string): Promise<
             ),
           )
           .orderBy(asc(lineWords.idx))
+  const wordsByLine = new Map<string, Word[]>()
+  for (const word of wordRows) {
+    const words = wordsByLine.get(word.lineId) ?? []
+    words.push({
+      text: word.text,
+      uncertain: word.uncertain,
+      ...(word.confidence !== null && { confidence: word.confidence }),
+    })
+    wordsByLine.set(word.lineId, words)
+  }
   return lineRows.map((line) => {
-    const words = wordRows
-      .filter((word) => word.lineId === line.id)
-      .map((word) => ({
-        text: word.text,
-        uncertain: word.uncertain,
-        ...(word.confidence !== null && { confidence: word.confidence }),
-      }))
+    const words = wordsByLine.get(line.id) ?? []
     return {
       idx: line.idx,
       text: line.text,
@@ -163,7 +180,7 @@ export const loadLines = async (db: Database, transcriptionId: string): Promise<
   })
 }
 
-export const loadTranscription = async (
+const readTranscription = async (
   db: Database,
   transcriptionId: string,
 ): Promise<Transcription | undefined> => {
@@ -226,16 +243,21 @@ export const loadTranscription = async (
         ...(extra.success && { extra: extra.data }),
       }
     }),
-    ...(t.warnings.length > 0 && {
-      warnings: t.warnings.flatMap((warning) => {
-        const parsed = readingWarningSchema.safeParse(warning)
-        return parsed.success ? [parsed.data] : []
-      }),
-    }),
+    ...(t.warnings.length > 0 && { warnings: warningsOf(t.warnings) }),
     reader: t.reader,
     ...(author && { author }),
     ...(verifiedBy && { verifiedBy }),
+    ...(t.verifiedSignature !== null && { verifiedSignature: t.verifiedSignature }),
     ...(t.verifiedAt && { verifiedAt: t.verifiedAt.toISOString() }),
     createdAt: t.createdAt.toISOString(),
   }
 }
+
+export const loadTranscription = (
+  db: Database,
+  transcriptionId: string,
+): Promise<Transcription | undefined> =>
+  db.transaction((snapshot) => readTranscription(snapshot, transcriptionId), {
+    isolationLevel: 'repeatable read',
+    accessMode: 'read only',
+  })

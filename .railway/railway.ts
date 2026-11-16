@@ -51,6 +51,7 @@ export default defineRailway(() => {
       BETTER_AUTH_SECRET: preserve(),
       RESEND_API_KEY: preserve(),
       ADMIN_API_KEY: preserve(),
+      VERIFIER_EMAILS: preserve(),
     },
   })
 

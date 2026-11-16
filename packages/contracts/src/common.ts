@@ -16,6 +16,9 @@ const maxPortalUrlLength = 2048
 
 export const withoutLoneSurrogates = (value: string): boolean => !/\p{Cs}/u.test(value)
 
+export const storableText = (value: string): boolean =>
+  !value.includes('\u0000') && withoutLoneSurrogates(value)
+
 const portalUrlSchema = z
   .httpUrl()
   .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
