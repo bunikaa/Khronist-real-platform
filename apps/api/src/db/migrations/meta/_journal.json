@@ -50,6 +50,13 @@
       "when": 1794820506020,
       "tag": "0006_verified_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794851497761,
+      "tag": "0007_synonyms_lower",
+      "breakpoints": true
     }
   ]
 }

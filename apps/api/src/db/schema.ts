@@ -384,6 +384,8 @@ export const synonyms = pgTable(
   },
   (t) => [
     unique('synonyms_term_variant_unique').on(t.term, t.variant),
+    index('synonyms_term_lower_idx').on(sql`lower(${t.term})`),
+    index('synonyms_variant_lower_idx').on(sql`lower(${t.variant})`),
     index('synonyms_variant_trgm_idx').using('gin', t.variant.op('gin_trgm_ops')),
   ],
 )
