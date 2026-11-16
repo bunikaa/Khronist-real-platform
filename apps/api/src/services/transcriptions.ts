@@ -5,6 +5,7 @@ import type {
   ReadingWarning,
   Shelfmark,
   Transcription,
+  Word,
 } from '@khronist/contracts'
 import { readingWarningSchema } from '@khronist/contracts'
 import { asc, eq, inArray, sql } from 'drizzle-orm'
@@ -144,14 +145,18 @@ export const loadLines = async (db: Database, transcriptionId: string): Promise<
             ),
           )
           .orderBy(asc(lineWords.idx))
+  const wordsByLine = new Map<string, Word[]>()
+  for (const word of wordRows) {
+    const words = wordsByLine.get(word.lineId) ?? []
+    words.push({
+      text: word.text,
+      uncertain: word.uncertain,
+      ...(word.confidence !== null && { confidence: word.confidence }),
+    })
+    wordsByLine.set(word.lineId, words)
+  }
   return lineRows.map((line) => {
-    const words = wordRows
-      .filter((word) => word.lineId === line.id)
-      .map((word) => ({
-        text: word.text,
-        uncertain: word.uncertain,
-        ...(word.confidence !== null && { confidence: word.confidence }),
-      }))
+    const words = wordsByLine.get(line.id) ?? []
     return {
       idx: line.idx,
       text: line.text,
