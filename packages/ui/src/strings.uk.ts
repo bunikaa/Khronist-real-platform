@@ -1,4 +1,4 @@
-import type { ReadingWarning, Shelfmark } from '@khronist/contracts'
+import { maxSignatureLength, type ReadingWarning, type Shelfmark } from '@khronist/contracts'
 
 const plural = new Intl.PluralRules('uk')
 const number = new Intl.NumberFormat('uk')
@@ -15,6 +15,7 @@ const lineForms: Record<Intl.LDMLPluralRule, string> = {
 const lines = (count: number) => `${count} ${lineForms[plural.select(count)]}`
 const size = (width: number, height: number) =>
   `${number.format(width)} × ${number.format(height)} px`
+const shortcutKeys = (shortcut: string) => shortcut.split('+').join(' + ')
 
 export const strings = {
   brand: 'Хроніст',
@@ -31,7 +32,7 @@ export const strings = {
     promptTitle: 'Виділіть фрагмент скану',
     promptBody: (shortcut: string | undefined) =>
       shortcut
-        ? `Натисніть кнопку нижче або ${shortcut.split('+').join(' + ')}, потім обведіть запис на аркуші.`
+        ? `Натисніть кнопку нижче або ${shortcutKeys(shortcut)}, потім обведіть запис на аркуші.`
         : 'Натисніть кнопку нижче, потім обведіть запис на аркуші.',
     selectFragment: 'Виділити фрагмент',
     selectingTitle: 'Обведіть запис на аркуші',
@@ -73,4 +74,51 @@ export const strings = {
     offline: 'Немає зв’язку із сервером. Перевірте мережу й спробуйте ще раз',
     badResponse: 'Сервер відповів неочікувано. Спробуйте ще раз',
   },
+  account: {
+    signInLabel: 'Увійти',
+    profileLabel: 'Профіль',
+    dismiss: 'Зрозуміло',
+    firstRun: {
+      intro:
+        'Читайте архівні скани прямо на порталі: рукопис стає текстом, терміни й дати отримують пояснення з джерелами.',
+      steps: [
+        'Відкрийте скан на archium',
+        'Виділіть фрагмент — Хроніст прочитає його за кілька секунд',
+        'Виправте й підтвердьте — сторінка стане читабельною для всіх',
+      ],
+      shortcut: 'Гаряча клавіша',
+      start: 'Почати без входу',
+      signIn: 'Увійти',
+      why: 'Вхід потрібен лише для правок і підтвердження.',
+    },
+    signIn: {
+      title: 'Увійти',
+      intro: 'Надішлемо код для входу. Пароль не потрібен.',
+      email: 'Електронна пошта',
+      emailPlaceholder: 'ваша@пошта.ua',
+      send: 'Надіслати код',
+      sent: 'Код надіслано',
+      sentBody: (email: string) =>
+        `Код надіслано на ${email}. Введіть 6 цифр із листа — код діє 5 хвилин.`,
+      code: 'Код із листа',
+      submit: 'Увійти',
+      resend: 'Надіслати ще раз',
+      resendIn: (seconds: number) =>
+        `Надіслати ще раз через ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
+      otherEmail: 'Інша адреса',
+    },
+    profile: {
+      noName: 'Підпис не задано',
+      signature: 'Підпис підтверджень',
+      signatureMissing: 'Не задано',
+      signatureHint: 'Підпис видно всім поруч із вашими правками й підтвердженнями.',
+      signatureInvalid: `Підпис — від 1 до ${maxSignatureLength} символів, без керуючих символів`,
+      save: 'Зберегти',
+      cancel: 'Скасувати',
+      shortcut: 'Гаряча клавіша',
+      shortcutMissing: 'Не призначено',
+      signOut: 'Вийти',
+    },
+  },
+  shortcutKeys,
 }
