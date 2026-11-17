@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from khronist_knowledge.corpus import load_corpus
-from khronist_knowledge.qa import QaError, QaItem
+from khronist_knowledge.qa import QaError, QaItem, QaMode
 
 Outcome = Literal[
     "correct",
@@ -22,7 +22,7 @@ OUTCOME_LABELS: dict[Outcome, str] = {
     "correct": "відповідь із релевантними цитатами",
     "missed": "«не знаю», хоча відповідь у корпусі є",
     "unsourced": "відповідь без джерела",
-    "unknown_source": "цитата з джерела, якого немає в корпусі",
+    "unknown_source": "цитата не з корпусу (невідоме джерело або запис аркуша)",
     "irrelevant": "цитата з нерелевантної статті",
     "false_answer": "відповідь, хоча в корпусі її немає",
     "correct_no_answer": "правильне «не знаю»",
@@ -30,6 +30,12 @@ OUTCOME_LABELS: dict[Outcome, str] = {
 }
 
 RIGHT: frozenset[Outcome] = frozenset({"correct", "correct_no_answer"})
+
+MODE_TITLES: dict[QaMode, str] = {"explain": "Оцінка «Пояснити»", "chat": "Оцінка чату"}
+MODE_NOTES: dict[QaMode, str] = {
+    "explain": "",
+    "chat": " Чат — без запису аркуша й без попередніх повідомлень: одне запитання користувача.",
+}
 
 
 class Row(BaseModel):
@@ -39,12 +45,12 @@ class Row(BaseModel):
 class Citation(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    chunkId: str
-    title: str
+    kind: Literal["chunk", "record"] = "chunk"
+    title: str | None = None
     quote: str
 
 
-class ExplainReply(BaseModel):
+class Reply(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     answer: str | None
@@ -56,7 +62,7 @@ class ExplainReply(BaseModel):
 class Asked(Row):
     min_rank: str = Field(min_length=1)
     id: str = Field(min_length=1)
-    reply: ExplainReply | None = None
+    reply: Reply | None = None
     error: str | None = None
 
     @model_validator(mode="after")
@@ -117,7 +123,7 @@ def judge(case: QaItem, asked: Asked | None, titles: dict[str, frozenset[str]]) 
     relevant = set(case.relevant)
     outcome: Outcome = "correct"
     for citation in reply.citations:
-        keys = titles.get(citation.title)
+        keys = titles.get(citation.title or "") if citation.kind == "chunk" else None
         if keys is None:
             return "unknown_source"
         if not keys & relevant:
@@ -126,14 +132,16 @@ def judge(case: QaItem, asked: Asked | None, titles: dict[str, frozenset[str]]) 
 
 
 def score_run(
-    cases: list[QaItem], asked: dict[str, Asked], titles: dict[str, frozenset[str]]
+    cases: list[QaItem],
+    asked: dict[str, Asked],
+    titles: dict[str, frozenset[str]],
+    mode: QaMode,
 ) -> dict[str, Outcome]:
-    unknown = sorted(set(asked) - {case.id for case in cases})
+    chosen = [case for case in cases if case.mode == mode]
+    unknown = sorted(set(asked) - {case.id for case in chosen})
     if unknown:
-        raise QaError(f"run has ids missing from the questions: {', '.join(unknown)}")
-    return {
-        case.id: judge(case, asked.get(case.id), titles) for case in cases if case.mode == "explain"
-    }
+        raise QaError(f"run has ids that are not {mode} questions: {', '.join(unknown)}")
+    return {case.id: judge(case, asked.get(case.id), titles) for case in chosen}
 
 
 def floor_percent(part: int, whole: int) -> str:
@@ -151,15 +159,22 @@ def count(outcomes: dict[str, Outcome], *wanted: Outcome) -> int:
     return sum(1 for outcome in outcomes.values() if outcome in wanted)
 
 
+def citation_label(citation: Citation) -> str:
+    if citation.kind == "record":
+        return "запис аркуша"
+    return f"«{citation.title}»"
+
+
 def describe(case: QaItem, outcome: Outcome, asked: Asked | None) -> str:
-    parts = [f"- `{case.id}` ({case.kind}) «{case.text}» — {OUTCOME_LABELS[outcome]}"]
+    kind = f" ({case.kind})" if case.kind else ""
+    parts = [f"- `{case.id}`{kind} «{case.text}» — {OUTCOME_LABELS[outcome]}"]
     if asked is not None and asked.error is not None:
         parts.append(f"помилка: `{' '.join(asked.error.split())}`")
     if asked is not None and asked.reply is not None:
         reply = asked.reply
-        cited = list(dict.fromkeys(citation.title for citation in reply.citations))
+        cited = list(dict.fromkeys(citation_label(citation) for citation in reply.citations))
         if cited:
-            parts.append("цитати: " + "; ".join(f"«{title}»" for title in cited))
+            parts.append("цитати: " + "; ".join(cited))
         if reply.reason:
             parts.append(f"`reason: {reply.reason}`")
         if reply.confidence:
@@ -178,20 +193,26 @@ def shared_sources(titles: dict[str, frozenset[str]]) -> list[str]:
 
 
 def render(
-    qa_path: str, cases: list[QaItem], runs: list[Run], titles: dict[str, frozenset[str]]
+    qa_path: str,
+    cases: list[QaItem],
+    runs: list[Run],
+    titles: dict[str, frozenset[str]],
+    mode: QaMode,
 ) -> str:
-    explain = [case for case in cases if case.mode == "explain"]
-    with_answer = [case for case in explain if case.expected == "answer"]
-    without = [case for case in explain if case.expected == "no_answer"]
+    chosen = [case for case in cases if case.mode == mode]
+    with_answer = [case for case in chosen if case.expected == "answer"]
+    without = [case for case in chosen if case.expected == "no_answer"]
     out = [
-        "# Оцінка «Пояснити»",
+        f"# {MODE_TITLES[mode]}",
         "",
-        f"Запитання: `{qa_path}`, режим `explain` — {len(explain)}: з відповіддю в корпусі — "
-        f"{len(with_answer)}, без відповіді — {len(without)}. Запитання чату "
-        f"({len(cases) - len(explain)}) не оцінювались: `run_qa.py` викликає лише "
-        "`POST /v1/explain`.",
+        f"Запитання: `{qa_path}`, режим `{mode}` — {len(chosen)}: з відповіддю в корпусі — "
+        f"{len(with_answer)}, без відповіді — {len(without)}. Запитання іншого режиму "
+        f"({len(cases) - len(chosen)}) тут не оцінювались; маршрут — `POST /v1/{mode}`."
+        + MODE_NOTES[mode],
+        "",
         "Поріг `RETRIEVAL_MIN_RANK` — змінна API, тож для кожного значення API перезапускався; "
         "у таблиці — значення, з яким запускали прогін.",
+        "",
         "Цитата належить статті, якщо назва її джерела збігається з `source_title` статті в "
         "`data/entries`. Відповідь правильна, лише коли всі її цитати — зі статей, перелічених у "
         "`relevant` запитання.",
@@ -210,7 +231,7 @@ def render(
         "| Відповідь, хоча її немає | Запит не вдався |",
         "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    scored = [(rank, asked, score_run(cases, asked, titles)) for rank, asked in runs]
+    scored = [(rank, asked, score_run(cases, asked, titles, mode)) for rank, asked in runs]
     for rank, _, outcomes in scored:
         out.append(
             f"| {rank} | {count(outcomes, 'unsourced')} "
