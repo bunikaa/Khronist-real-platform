@@ -1,13 +1,14 @@
 import type { Entity, Transcription } from '@khronist/contracts'
 import { EntityChip, LineWords, SectionLabel, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
-import { useMemo } from 'react'
-import { ConfirmActions, ConfirmAlert, PageStatus, VerifiedAlert } from './confirming.tsx'
+import { useMemo, useState } from 'react'
+import { CitationPanel, refusedCitations } from './citing.tsx'
+import { ConfirmAlert, PageStatus, ResultActionBar, VerifiedAlert } from './confirming.tsx'
 import { ConflictCompare, EditableLines, EditAlert, EditingHint } from './editing.tsx'
 import { Explanation } from './explain.tsx'
 import type { Confirming } from './useConfirm.ts'
 import { canExplain, useExplain, type Explaining, type ShownEntity } from './useExplain.ts'
-import type { LineEditing } from './useLineEditing.ts'
+import { savedVersionReady, type LineEditing } from './useLineEditing.ts'
 
 export const modernLines = (transcription: Transcription) => {
   const normalized = transcription.normalizedLines
@@ -111,6 +112,49 @@ const Entities = ({ entities, explaining, explainable }: EntitiesProps) => {
   )
 }
 
+type ResultActionsProps = {
+  transcription: Transcription
+  editing: LineEditing
+  confirm: Confirming
+  onSelect: () => void
+  onAsk: () => void
+}
+
+const ResultActions = ({
+  transcription,
+  editing,
+  confirm,
+  onSelect,
+  onAsk,
+}: ResultActionsProps) => {
+  const { id } = transcription
+  const [citingId, setCitingId] = useState<string>()
+  const [mainFocusRequest, setMainFocusRequest] = useState(0)
+  const citable = savedVersionReady(transcription, editing) && !refusedCitations.has(id)
+  const citing = citingId === id && citable
+  if (citingId !== undefined && !citing) setCitingId(undefined)
+  const closeCitation = () => {
+    setCitingId(undefined)
+    setMainFocusRequest((request) => request + 1)
+  }
+  return (
+    <div className="relative">
+      <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
+        <ConflictCompare editing={editing} />
+      </div>
+      <ResultActionBar
+        transcription={transcription}
+        confirm={confirm}
+        mainFocusRequest={mainFocusRequest}
+        onSelect={onSelect}
+        onAsk={onAsk}
+        onCite={citable ? () => setCitingId(id) : undefined}
+      />
+      {citing && <CitationPanel key={id} transcriptionId={id} onClose={closeCitation} />}
+    </div>
+  )
+}
+
 type ResultProps = {
   transcription: Transcription
   editing: LineEditing
@@ -189,17 +233,13 @@ export const Result = ({
           />
         )}
       </div>
-      <div className="relative">
-        <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
-          <ConflictCompare editing={editing} />
-        </div>
-        <ConfirmActions
-          transcription={transcription}
-          confirm={confirm}
-          onSelect={onSelect}
-          onAsk={onAsk}
-        />
-      </div>
+      <ResultActions
+        transcription={transcription}
+        editing={editing}
+        confirm={confirm}
+        onSelect={onSelect}
+        onAsk={onAsk}
+      />
       <Explanation explaining={explaining} />
     </>
   )

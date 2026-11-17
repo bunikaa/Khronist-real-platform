@@ -4,7 +4,7 @@ import { browser } from 'wxt/browser'
 import { ApiFailure } from '../../api/client.ts'
 import { verifyTranscription } from '../../api/transcriptions.ts'
 import { problemOf, type RequestProblem } from './failures.ts'
-import type { LineEditing } from './useLineEditing.ts'
+import { editsSettled, savedVersionReady, type LineEditing } from './useLineEditing.ts'
 import type { Session } from './useSession.ts'
 
 const dontAskKey = 'confirmWithoutAsking'
@@ -67,13 +67,12 @@ export const useConfirm = (options: ConfirmOptions) => {
     }))
 
   const signedIn = session.status === 'signed-in' ? session : undefined
-  const busyEditing = Boolean(editing.editing || editing.unsaved || editing.problem)
+  const busyEditing = !editsSettled(editing)
   const blocked = state.problem !== undefined && state.problem.kind !== 'failed'
   const available =
     signedIn?.canVerify === true &&
     transcription?.status === 'draft' &&
-    transcription.shelfmark !== undefined &&
-    !busyEditing &&
+    savedVersionReady(transcription, editing) &&
     !blocked
   const asking = state.asking && available && shown
 

@@ -1,6 +1,7 @@
 import type { Transcription } from '@khronist/contracts'
 import { ActionBar, Button, ConfirmDialog, PageStatusBadge, StatusBar, strings } from '@khronist/ui'
 import { useEffect, useRef } from 'react'
+import { failureAlertOf } from './failures.ts'
 import type { Confirming } from './useConfirm.ts'
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
@@ -103,82 +104,120 @@ export const ConfirmAlert = ({ confirm, signedIn, onSignIn }: ConfirmAlertProps)
   if (problem?.kind === 'failed')
     return (
       <StatusBar
-        type={problem.offline ? 'error' : 'warning'}
-        message={problem.message}
-        action={problem.retryable ? strings.read.retry : strings.account.dismiss}
-        onAction={problem.retryable ? confirm.retry : confirm.dismiss}
+        {...failureAlertOf(problem, { onRetry: confirm.retry, onDismiss: confirm.dismiss })}
       />
     )
   return null
 }
 
-type ConfirmActionsProps = {
-  transcription: Transcription
-  confirm: Confirming
-  onSelect: () => void
-  onAsk: () => void
-}
+type ConfirmQuestionProps = { transcription: Transcription; confirm: Confirming }
 
-const useFocusAfterConfirming = (busy: boolean) => {
+const ConfirmQuestion = ({ transcription, confirm }: ConfirmQuestionProps) => (
+  <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
+    <ConfirmDialog
+      title={strings.confirm.question(transcription.lines.length)}
+      body={strings.confirm.licence(confirm.signature)}
+      confirmLabel={strings.confirm.action}
+      cancelLabel={strings.confirm.cancel}
+      dontAskLabel={strings.confirm.dontAsk}
+      dontAsk={confirm.ticked}
+      busy={confirm.sending}
+      onDontAskChange={confirm.tick}
+      onConfirm={confirm.confirm}
+      onCancel={confirm.cancel}
+    />
+  </div>
+)
+
+const useFocusBackToMainAction = (busy: boolean, mainFocusRequest: number) => {
   const trigger = useRef<HTMLButtonElement>(null)
   const select = useRef<HTMLButtonElement>(null)
   const wasBusy = useRef(busy)
+  const focusMainIfLost = () => {
+    const lost = document.activeElement === null || document.activeElement === document.body
+    if (lost) (trigger.current ?? select.current)?.focus()
+  }
   useEffect(() => {
     const done = wasBusy.current && !busy
     wasBusy.current = busy
-    const lost = document.activeElement === null || document.activeElement === document.body
-    if (done && lost) (trigger.current ?? select.current)?.focus()
+    if (done) focusMainIfLost()
   }, [busy])
+  useEffect(() => {
+    if (mainFocusRequest > 0) focusMainIfLost()
+  }, [mainFocusRequest])
   return { trigger, select }
 }
 
-export const ConfirmActions = ({
-  transcription,
-  confirm,
-  onSelect,
-  onAsk,
-}: ConfirmActionsProps) => {
-  const { trigger, select } = useFocusAfterConfirming(confirm.asking || confirm.sending)
-  const verified = transcription.status === 'verified'
-  const selectNext = () => {
-    confirm.cancel()
-    onSelect()
-  }
-  return (
-    <div className="relative">
-      {confirm.asking && (
-        <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
-          <ConfirmDialog
-            title={strings.confirm.question(transcription.lines.length)}
-            body={strings.confirm.licence(confirm.signature)}
-            confirmLabel={strings.confirm.action}
-            cancelLabel={strings.confirm.cancel}
-            dontAskLabel={strings.confirm.dontAsk}
-            dontAsk={confirm.ticked}
-            busy={confirm.sending}
-            onDontAskChange={confirm.tick}
-            onConfirm={confirm.confirm}
-            onCancel={confirm.cancel}
-          />
-        </div>
-      )}
-      <ActionBar>
-        {confirm.available && (
-          <Button
-            ref={trigger}
-            disabled={confirm.sending || confirm.asking}
-            onClick={confirm.start}
-          >
-            {strings.confirm.action}
-          </Button>
-        )}
-        <Button ref={select} kind={confirm.available ? 'ghost' : 'primary'} onClick={selectNext}>
-          {verified ? strings.confirm.next : strings.read.selectFragment}
-        </Button>
-        <Button kind="ghost" onClick={onAsk}>
-          {strings.tabs.ask}
-        </Button>
-      </ActionBar>
-    </div>
-  )
+type ResultActionBarProps = {
+  transcription: Transcription
+  confirm: Confirming
+  mainFocusRequest: number
+  onSelect: () => void
+  onAsk: () => void
+  onCite?: () => void
 }
+
+const secondaryButtons = ({ confirm, onAsk, onCite }: ResultActionBarProps) => [
+  onCite && (
+    <Button
+      key="cite"
+      kind="ghost"
+      aria-haspopup="dialog"
+      disabled={confirm.sending}
+      onClick={() => {
+        confirm.cancel()
+        onCite()
+      }}
+    >
+      {strings.cite.title}
+    </Button>
+  ),
+  <Button key="ask" kind="ghost" onClick={onAsk}>
+    {strings.tabs.ask}
+  </Button>,
+]
+
+const ResultButtons = (props: ResultActionBarProps) => {
+  const { transcription, confirm, mainFocusRequest, onSelect } = props
+  const { trigger, select } = useFocusBackToMainAction(
+    confirm.asking || confirm.sending,
+    mainFocusRequest,
+  )
+  const confirmButton = (
+    <Button
+      key="confirm"
+      ref={trigger}
+      disabled={confirm.sending || confirm.asking}
+      onClick={confirm.start}
+    >
+      {strings.confirm.action}
+    </Button>
+  )
+  const selectButton = (
+    <Button
+      key="select"
+      ref={select}
+      kind={confirm.available ? 'ghost' : 'primary'}
+      onClick={() => {
+        confirm.cancel()
+        onSelect()
+      }}
+    >
+      {transcription.status === 'verified' ? strings.confirm.next : strings.read.selectFragment}
+    </Button>
+  )
+  const secondary = secondaryButtons(props)
+  const mainFirst = confirm.available
+    ? [confirmButton, ...secondary, selectButton]
+    : [selectButton, ...secondary]
+  return <ActionBar>{mainFirst}</ActionBar>
+}
+
+export const ResultActionBar = (props: ResultActionBarProps) => (
+  <div className="relative">
+    {props.confirm.asking && (
+      <ConfirmQuestion transcription={props.transcription} confirm={props.confirm} />
+    )}
+    <ResultButtons {...props} />
+  </div>
+)
