@@ -37,6 +37,7 @@ export default defineRailway(() => {
       RAILWAY_DEPLOYMENT_OVERLAP_SECONDS: '0',
       DATABASE_URL: db.env.DATABASE_URL,
       CLIENT_IP_HEADER: 'x-real-ip',
+      CORS_ORIGINS: 'https://app.khronist.org',
       GUEST_RECOGNITIONS_PER_DAY: '300',
       API_KEY_RECOGNITIONS_PER_DAY: '1000',
       MODEL_CALLS_PER_DAY: '4000',
