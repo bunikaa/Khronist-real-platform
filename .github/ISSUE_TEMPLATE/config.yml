@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Посібник користувача
+    url: https://github.com/code-by-accident/Khronist-real-platform/blob/main/docs/user-guide.md
+    about: Встановлення, читання, правка, цитата, пошук і типові проблеми

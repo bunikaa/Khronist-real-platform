@@ -1,0 +1,46 @@
+name: Помилка
+description: Щось працює не так, як описано в посібнику
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Дякуємо, що повідомляєте! Не додавайте пошту, коди входу й ключі API: issue бачать усі.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Де
+      options:
+        - Розширення Chrome
+        - Пошук у Commons (app.khronist.org)
+        - MCP-сервер
+        - API
+        - Інше
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Що ви робили
+      description: Кроки, щоб повторити. Для розширення — посилання на аркуш у переглядачі ARCHIUM.
+      placeholder: |
+        1. Відкрив(ла) https://archium.cdiak.archives.gov.ua/file-viewer/…
+        2. Виділив(ла) фрагмент…
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Що сталося
+      description: Текст повідомлення в панелі чи на сайті, скриншот.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Чого ви очікували
+  - type: input
+    id: browser
+    attributes:
+      label: Браузер і версія
+      placeholder: Chrome 131, Windows 11
