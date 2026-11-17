@@ -128,6 +128,7 @@ export const strings = {
     },
     offline: 'Немає зв’язку із сервером. Перевірте мережу й спробуйте ще раз',
     badResponse: 'Сервер відповів неочікувано. Спробуйте ще раз',
+    timedOut: 'Сервер не відповів вчасно. Спробуйте ще раз',
   },
   edit: {
     editing: 'ви редагуєте',
@@ -154,6 +155,25 @@ export const strings = {
   entity: {
     section: 'Сутності',
     type: (type: Entity['type']) => `${entityTypes[type]}: `,
+  },
+  explain: {
+    label: {
+      person: 'Пояснення імені',
+      place: 'Пояснення топоніма',
+      term: 'Пояснення терміна',
+      date: 'Пояснення дати',
+    } satisfies Record<Entity['type'], string>,
+    loading: 'Шукаємо в довідковому корпусі…',
+    noSources: 'У довідковому корпусі немає пояснення.',
+    unavailable: 'Пояснення зараз недоступне.',
+    lowConfidence: 'Джерела відповідають лише частково, звірте зі статтею',
+    date: 'Дата',
+    oldStyle: (date: string) => `${date}, ст. ст.`,
+    newStyle: (date: string) => `${date}, н. ст.`,
+    weekday: 'День тижня',
+    source: (licence: string, retelling: boolean) =>
+      retelling ? `переказ статті · ${licence}` : licence,
+    close: 'Закрити',
   },
   confirm: {
     action: 'Підтвердити',
@@ -271,6 +291,36 @@ export const strings = {
     editQuery: 'Змінити запит',
     unavailable: 'Сервер тимчасово недоступний. Спробуйте за хвилину',
     retry: 'Спробувати ще раз',
+  },
+  tabs: {
+    label: 'Розділи панелі',
+    read: 'Читання',
+    ask: 'Спитати',
+  },
+  chat: {
+    context: (page: string | undefined, count: number) =>
+      page ? `Контекст: ${page}, ${lines(count)} прочитано` : `Контекст: ${lines(count)} прочитано`,
+    contextSwitch: 'Відповідати з урахуванням прочитаного фрагмента',
+    intro:
+      'Запитайте про терміни, дати, місця чи прочитаний фрагмент. Хроніст відповідає лише за джерелами й показує їх під відповіддю.',
+    author: 'Хроніст',
+    waiting: 'Шукаю відповідь у джерелах…',
+    lowConfidence: 'Джерела відповідають лише частково — перевірте за ними',
+    unknown: (withRecord: boolean) =>
+      withRecord
+        ? 'У записі й довідковому корпусі немає відповіді на це запитання.'
+        : 'У довідковому корпусі немає відповіді на це запитання.',
+    sources: 'Джерела',
+    recordSource: 'з транскрипції фрагмента',
+    chunkSource: (licence: string, retelling: boolean) =>
+      retelling ? `переказ статті · ${licence}` : licence,
+    placeholder: (withRecord: boolean) =>
+      withRecord ? 'Запитати про цей аркуш…' : 'Запитати про термін, дату чи місце…',
+    question: 'Запитання',
+    send: 'Надіслати',
+    followups: 'Можна спитати далі',
+    restartNeeded: 'Не вдалося надіслати запитання з цією розмовою. Почніть нову',
+    restart: 'Почати нову розмову',
   },
   shortcutKeys,
 }

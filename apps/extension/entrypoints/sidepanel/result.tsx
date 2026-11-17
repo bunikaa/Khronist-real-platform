@@ -1,9 +1,12 @@
-import type { Transcription } from '@khronist/contracts'
+import type { Entity, Transcription } from '@khronist/contracts'
 import { EntityChip, LineWords, SectionLabel, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
+import { useMemo } from 'react'
 import { ConfirmActions, ConfirmAlert, PageStatus, VerifiedAlert } from './confirming.tsx'
 import { ConflictCompare, EditableLines, EditAlert, EditingHint } from './editing.tsx'
+import { Explanation } from './explain.tsx'
 import type { Confirming } from './useConfirm.ts'
+import { canExplain, useExplain, type Explaining, type ShownEntity } from './useExplain.ts'
 import type { LineEditing } from './useLineEditing.ts'
 
 export const modernLines = (transcription: Transcription) => {
@@ -57,28 +60,49 @@ const spaces = /\s+/g
 
 const shownText = (text: string) => text.replace(lineBreak, '').replace(spaces, ' ').trim()
 
-export const distinctEntities = (entities: Transcription['entities']) =>
-  entities
-    .toSorted((a, b) => a.start - b.start || a.end - b.end)
-    .map(({ type, text }) => ({ type, text: shownText(text) }))
-    .filter(
-      (entity, index, sorted) =>
-        sorted.findIndex((other) => other.type === entity.type && other.text === entity.text) ===
-        index,
-    )
+export const distinctEntities = (entities: Entity[]) => {
+  const shown = new Map<string, ShownEntity>()
+  for (const { type, text, normalized } of entities.toSorted(
+    (a, b) => a.start - b.start || a.end - b.end,
+  )) {
+    const chip = { type, text: shownText(text) }
+    const key = JSON.stringify([chip.type, chip.text])
+    const kept = [shown.get(key)?.normalized, normalized].find((form) => form?.trim())
+    shown.set(key, { ...chip, ...(kept !== undefined && { normalized: kept }) })
+  }
+  return [...shown.values()]
+}
 
-const Entities = ({ entities }: { entities: Transcription['entities'] }) => {
-  const shown = distinctEntities(entities)
+type EntitiesProps = {
+  entities: Transcription['entities']
+  explaining: Explaining
+  explainable: boolean
+}
+
+const Entities = ({ entities, explaining, explainable }: EntitiesProps) => {
+  const shown = useMemo(
+    () => distinctEntities(entities).map((entity) => ({ entity, askable: canExplain(entity) })),
+    [entities],
+  )
   if (shown.length === 0) return null
+  const open = explaining.opened?.entity
   return (
     <>
       <hr className="border-rule" />
       <section className="flex flex-col gap-2 p-3">
         <SectionLabel>{strings.entity.section}</SectionLabel>
         <ul className="flex flex-wrap gap-x-1 gap-y-1.5">
-          {shown.map(({ type, text }) => (
-            <li key={`${type}:${text}`} className="flex max-w-full">
-              <EntityChip type={type}>{text}</EntityChip>
+          {shown.map(({ entity, askable }) => (
+            <li key={`${entity.type}:${entity.text}`} className="flex max-w-full">
+              <EntityChip
+                type={entity.type}
+                state={
+                  open?.type === entity.type && open.text === entity.text ? 'active' : 'default'
+                }
+                onSelect={explainable && askable ? () => explaining.open(entity) : undefined}
+              >
+                {entity.text}
+              </EntityChip>
             </li>
           ))}
         </ul>
@@ -94,6 +118,7 @@ type ResultProps = {
   signedIn: boolean
   onSelect: () => void
   onSignIn: () => void
+  onAsk: () => void
 }
 
 export const Result = ({
@@ -103,9 +128,11 @@ export const Result = ({
   signedIn,
   onSelect,
   onSignIn,
+  onAsk,
 }: ResultProps) => {
   const modern = modernLines(transcription)
   const warnings = transcription.warnings ?? []
+  const explaining = useExplain(transcription.id)
   return (
     <>
       <EditAlert editing={editing} onSignIn={onSignIn} />
@@ -154,14 +181,26 @@ export const Result = ({
             <ModernText lines={modern} expansions={transcription.expansions ?? []} />
           </>
         )}
-        {!editing.unsaved && <Entities entities={transcription.entities} />}
+        {!editing.unsaved && (
+          <Entities
+            entities={transcription.entities}
+            explaining={explaining}
+            explainable={!editing.editing && !confirm.asking}
+          />
+        )}
       </div>
       <div className="relative">
         <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
           <ConflictCompare editing={editing} />
         </div>
-        <ConfirmActions transcription={transcription} confirm={confirm} onSelect={onSelect} />
+        <ConfirmActions
+          transcription={transcription}
+          confirm={confirm}
+          onSelect={onSelect}
+          onAsk={onAsk}
+        />
       </div>
+      <Explanation explaining={explaining} />
     </>
   )
 }

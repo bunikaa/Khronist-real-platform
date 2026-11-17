@@ -3,6 +3,12 @@ import { defineConfig } from 'wxt'
 import { apiOriginFor } from './api/origin.ts'
 
 export default defineConfig({
+  dev: {
+    server: {
+      port: 3001,
+      strictPort: true,
+    },
+  },
   modules: ['@wxt-dev/module-react'],
   imports: false,
   vite: () => ({
@@ -10,6 +16,7 @@ export default defineConfig({
   }),
   manifest: ({ mode }) => ({
     name: 'Хроніст',
+    minimum_chrome_version: '116',
     permissions: ['storage'],
     host_permissions: [`${apiOriginFor(mode)}/*`],
     action: {

@@ -1,4 +1,5 @@
 import { useId, type ComponentProps } from 'react'
+import { fieldFocus, fieldFrame } from './field.ts'
 
 type TextFieldProps = ComponentProps<'input'> & {
   label: string
@@ -6,8 +7,7 @@ type TextFieldProps = ComponentProps<'input'> & {
 }
 
 const stateClass = {
-  valid:
-    'border-rule focus:border-base-content focus:ring-[0.5px] focus:ring-inset focus:ring-base-content',
+  valid: fieldFocus,
   invalid: 'border-error',
 }
 
@@ -22,7 +22,8 @@ export const TextField = ({ label, invalid = false, className, ...input }: TextF
         id={id}
         aria-invalid={invalid}
         className={[
-          'h-8 w-full rounded-field border bg-base-100 px-3 text-body-13 text-base-content outline-none placeholder:text-ink-muted',
+          fieldFrame,
+          'h-8 w-full px-3 text-body-13 text-base-content outline-none placeholder:text-ink-muted',
           stateClass[invalid ? 'invalid' : 'valid'],
         ].join(' ')}
         {...input}

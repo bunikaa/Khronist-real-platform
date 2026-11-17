@@ -1,5 +1,5 @@
-import { PanelHeader, strings } from '@khronist/ui'
-import { useCallback, useEffect, useState } from 'react'
+import { PanelHeader, strings, Tab, TabList } from '@khronist/ui'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { browser } from 'wxt/browser'
 import {
   fragmentFailedMessageSchema,
@@ -7,9 +7,11 @@ import {
   type SelectionCommand,
 } from '../../messages.ts'
 import { FirstRun, Profile, SignIn } from './account.tsx'
+import { AskTab } from './ask.tsx'
 import { Result } from './result.tsx'
 import { Failed, MissingPage, Reading, ReadyToRead, Selecting } from './screens.tsx'
 import { activeTabId, useActivePage } from './useActivePage.ts'
+import { useChat } from './useChat.ts'
 import { useConfirm } from './useConfirm.ts'
 import { useFirstRun } from './useFirstRun.ts'
 import { useLineEditing } from './useLineEditing.ts'
@@ -24,6 +26,9 @@ const sendToActiveTab = async (command: SelectionCommand) => {
 
 const startSelection = () => void sendToActiveTab({ type: 'start-selection' })
 const cancelSelection = () => void sendToActiveTab({ type: 'cancel-selection' })
+
+const panelTabs = ['read', 'ask'] as const
+type PanelTab = (typeof panelTabs)[number]
 
 const useShortcut = () => {
   const [shortcut, setShortcut] = useState<string>()
@@ -50,6 +55,9 @@ export const App = () => {
   const { session, refresh } = useSession()
   const { seen: firstRunSeen, finish: finishFirstRun } = useFirstRun()
   const [accountOpen, setAccountOpen] = useState(false)
+  const [tab, setTab] = useState<PanelTab>('read')
+  const tabIds = useId()
+  const [askFocus, setAskFocus] = useState(0)
   const openAccount = useCallback(() => setAccountOpen(true), [])
   const editing = useLineEditing({
     transcription: reading.phase === 'done' ? reading.transcription : undefined,
@@ -64,8 +72,11 @@ export const App = () => {
     onConfirmed: replace,
     onForbidden: refresh,
     shown: !accountOpen && page?.selecting !== true,
+    hidden: tab !== 'read',
   })
+  const chat = useChat(reading.phase === 'done' ? reading.transcription : undefined)
   const selecting = page?.selecting === true
+  if (selecting && tab !== 'read') setTab('read')
   const readings = usePageReadings(page?.shelfmark, reading.phase === 'idle' && page?.scan === true)
   const openSheet = page?.scan ? sheetKey(page.shelfmark) : undefined
   const shownSheet = reading.phase === 'idle' ? undefined : sheetKey(reading.shelfmark)
@@ -86,6 +97,7 @@ export const App = () => {
     const showReading = () => {
       finishFirstRun()
       setAccountOpen(false)
+      setTab('read')
     }
     const onCommand = (command: string, tab?: { id?: number }) => {
       if (command !== 'open-panel') return
@@ -171,6 +183,10 @@ export const App = () => {
             signedIn={session.status === 'signed-in'}
             onSelect={startSelection}
             onSignIn={openAccount}
+            onAsk={() => {
+              setTab('ask')
+              setAskFocus((request) => request + 1)
+            }}
           />
         )
       case 'failed':
@@ -209,7 +225,47 @@ export const App = () => {
           onToggle: () => setAccountOpen(!accountOpen),
         }}
       />
-      <main className="flex min-h-0 flex-1 flex-col">{accountOpen ? account() : screen()}</main>
+      {!accountOpen && (
+        <TabList label={strings.tabs.label}>
+          {panelTabs.map((name) => (
+            <Tab
+              key={name}
+              id={`${tabIds}-${name}`}
+              controls={`${tabIds}-${name}-panel`}
+              state={tab === name ? 'active' : 'inactive'}
+              disabled={selecting && name !== 'read'}
+              onSelect={() => setTab(name)}
+            >
+              {strings.tabs[name]}
+            </Tab>
+          ))}
+        </TabList>
+      )}
+      <main className="flex min-h-0 flex-1 flex-col">
+        {accountOpen
+          ? account()
+          : panelTabs.map((name) => (
+              <div
+                key={name}
+                role="tabpanel"
+                id={`${tabIds}-${name}-panel`}
+                aria-labelledby={`${tabIds}-${name}`}
+                hidden={tab !== name}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                {name === 'read' ? (
+                  screen()
+                ) : (
+                  <AskTab
+                    chat={chat}
+                    reading={reading}
+                    shown={tab === 'ask'}
+                    focusRequest={askFocus}
+                  />
+                )}
+              </div>
+            ))}
+      </main>
     </div>
   )
 }
