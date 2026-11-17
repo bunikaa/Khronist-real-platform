@@ -16,6 +16,7 @@ export default defineConfig({
   }),
   manifest: ({ mode }) => ({
     name: 'Хроніст',
+    minimum_chrome_version: '116',
     permissions: ['storage'],
     host_permissions: [`${apiOriginFor(mode)}/*`],
     action: {

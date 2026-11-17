@@ -116,6 +116,7 @@ type ConfirmActionsProps = {
   transcription: Transcription
   confirm: Confirming
   onSelect: () => void
+  onAsk: () => void
 }
 
 const useFocusAfterConfirming = (busy: boolean) => {
@@ -131,7 +132,12 @@ const useFocusAfterConfirming = (busy: boolean) => {
   return { trigger, select }
 }
 
-export const ConfirmActions = ({ transcription, confirm, onSelect }: ConfirmActionsProps) => {
+export const ConfirmActions = ({
+  transcription,
+  confirm,
+  onSelect,
+  onAsk,
+}: ConfirmActionsProps) => {
   const { trigger, select } = useFocusAfterConfirming(confirm.asking || confirm.sending)
   const verified = transcription.status === 'verified'
   const selectNext = () => {
@@ -168,6 +174,9 @@ export const ConfirmActions = ({ transcription, confirm, onSelect }: ConfirmActi
         )}
         <Button ref={select} kind={confirm.available ? 'ghost' : 'primary'} onClick={selectNext}>
           {verified ? strings.confirm.next : strings.read.selectFragment}
+        </Button>
+        <Button kind="ghost" onClick={onAsk}>
+          {strings.tabs.ask}
         </Button>
       </ActionBar>
     </div>
