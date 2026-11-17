@@ -4,37 +4,73 @@ import { strings } from './strings.uk.ts'
 
 type Words = { text: string; uncertain: boolean }[]
 
-type LineWordsProps = {
+type MarkedLine = {
   text: string
   uncertain: boolean
   words: Words
 }
 
-const Uncertain = ({ text }: { text: string }) => (
+const markedWords = ({ text, uncertain, words }: MarkedLine): Words =>
+  words.length === 0 ? [{ text, uncertain }] : words
+
+export const hasUncertainMark = (line: MarkedLine) =>
+  markedWords(line).some((word) => word.uncertain)
+
+type UncertainProps = { text: string; hint: string; mark: string }
+
+const Uncertain = ({ text, hint, mark }: UncertainProps) => (
   <span
     className="underline decoration-warning decoration-dotted decoration-2 underline-offset-2"
-    title={strings.read.uncertainWord}
+    title={hint}
   >
     {text}
-    <span className="sr-only select-none"> ({strings.read.uncertainMark})</span>
+    <span className="sr-only select-none"> ({mark})</span>
   </span>
 )
 
-export const LineWords = ({ text, uncertain, words }: LineWordsProps) => {
-  if (words.length === 0) return uncertain ? <Uncertain text={text} /> : text
-  return words.map((word, index) => (
+export const LineWords = (line: MarkedLine) =>
+  markedWords(line).map((word, index) => (
     <Fragment key={index}>
       {index > 0 && ' '}
-      {word.uncertain ? <Uncertain text={word.text} /> : word.text}
+      {word.uncertain ? (
+        <Uncertain
+          text={word.text}
+          hint={strings.read.uncertainWord}
+          mark={strings.read.uncertainMark}
+        />
+      ) : (
+        word.text
+      )}
     </Fragment>
   ))
-}
 
 const LineNumber = ({ idx }: { idx: number }) => (
   <span className="w-5 shrink-0 font-mono text-mono-11 text-ink-muted">
     {String(idx + 1).padStart(2, '0')}
   </span>
 )
+
+const noBreakSpace = '\u00a0'
+
+type TranslatedLineProps = { idx: number; text: string; uncertain: boolean }
+
+export const TranslatedLine = ({ idx, text, uncertain }: TranslatedLineProps) => {
+  const marked = uncertain ? (
+    <Uncertain
+      text={text}
+      hint={strings.read.uncertainLine}
+      mark={strings.read.uncertainLineMark}
+    />
+  ) : (
+    text
+  )
+  return (
+    <li className="flex gap-2 px-1">
+      <LineNumber idx={idx} />
+      <span className="min-w-0 flex-1">{text.trim() === '' ? noBreakSpace : marked}</span>
+    </li>
+  )
+}
 
 type TranscriptionLineProps = {
   line: Line

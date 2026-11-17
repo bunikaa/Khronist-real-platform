@@ -21,4 +21,10 @@ export { strings } from './strings.uk.ts'
 export { Switch } from './Switch.tsx'
 export { Tab, TabList } from './Tab.tsx'
 export { TextField } from './TextField.tsx'
-export { LineWords, TranscriptionLine, TranscriptionLineInput } from './TranscriptionLine.tsx'
+export {
+  hasUncertainMark,
+  LineWords,
+  TranscriptionLine,
+  TranscriptionLineInput,
+  TranslatedLine,
+} from './TranscriptionLine.tsx'

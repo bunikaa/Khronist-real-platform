@@ -104,6 +104,13 @@ export const strings = {
     transcription: 'Транскрипція',
     transcriptionLines: (count: number) => `Транскрипція · ${lines(count)}`,
     normalized: 'Сучасною орфографією',
+    translated: 'Українською',
+    translationNote: (uncertain: boolean) =>
+      uncertain
+        ? 'Машинний переклад. Рядки з непевними словами підкреслено — звіряйте з оригіналом вище'
+        : 'Машинний переклад, звіряйте з рядками вище',
+    uncertainLine: 'В оригіналі цього рядка є непевні слова',
+    uncertainLineMark: 'непевний рядок',
     expansions: 'Розкриті скорочення',
     expansion: (from: string, to: string) => `${from} → ${to}`,
     uncertainWord: 'Модель не впевнена в цьому слові',

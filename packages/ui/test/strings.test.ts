@@ -42,6 +42,15 @@ describe('confirmed texts', () => {
   })
 })
 
+describe('translation note', () => {
+  it.each([
+    [false, 'Машинний переклад, звіряйте з рядками вище'],
+    [true, 'Машинний переклад. Рядки з непевними словами підкреслено — звіряйте з оригіналом вище'],
+  ])('warns about uncertain words: %s', (uncertain, text) => {
+    expect(strings.read.translationNote(uncertain)).toBe(text)
+  })
+})
+
 describe('explanation texts', () => {
   it.each([
     ['суспільне надбання', true, 'переказ статті · суспільне надбання'],
