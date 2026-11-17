@@ -1,7 +1,7 @@
-import { useId, type InputHTMLAttributes } from 'react'
+import { useId, type ComponentProps } from 'react'
 import { fieldFocus, fieldFrame } from './field.ts'
 
-type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
+type TextFieldProps = ComponentProps<'input'> & {
   label: string
   invalid?: boolean
 }
