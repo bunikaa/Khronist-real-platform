@@ -24,7 +24,34 @@ describe('readArchiumShelfmark', () => {
   it('follows the image shown in the viewer, not the first thumbnail', () => {
     document.querySelector('#main-image')?.setAttribute('src', '/static/files/283/2834655.jpg')
 
-    expect(readArchiumShelfmark(document, viewerUrl)?.image).toBe(1)
+    expect(readArchiumShelfmark(document, viewerUrl)).toMatchObject({
+      image: 1,
+      portalUrl: 'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834655',
+    })
+  })
+
+  it.each([
+    ['a stale image', 'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834655'],
+    ['no image', 'https://archium.cdiak.archives.gov.ua/file-viewer/131976'],
+    [
+      'a query and another anchor',
+      'https://archium.cdiak.archives.gov.ua/file-viewer/131976?x=1#tag-images',
+    ],
+    [
+      'the route with a trailing slash',
+      'https://archium.cdiak.archives.gov.ua/file-viewer/131976/#file-2834655',
+    ],
+  ])('links the image on screen when the address names %s', (_case, address) => {
+    expect(readArchiumShelfmark(document, new URL(address))?.portalUrl).toBe(viewerUrl.href)
+  })
+
+  it('reads no link when the thumbnail of the image on screen has no viewer target', () => {
+    document
+      .querySelector('[data-target-link="#file-2834611"]')
+      ?.removeAttribute('data-target-link')
+
+    expect(readArchiumShelfmark(document, viewerUrl)).toMatchObject({ image: 4 })
+    expect(readArchiumShelfmark(document, viewerUrl)?.portalUrl).toBeUndefined()
   })
 
   it('reads nothing outside the viewer or on unknown hosts', () => {
@@ -36,6 +63,12 @@ describe('readArchiumShelfmark', () => {
     ).toBeNull()
     expect(
       readArchiumShelfmark(document, new URL('https://example.org/file-viewer/131976')),
+    ).toBeNull()
+    expect(
+      readArchiumShelfmark(
+        document,
+        new URL('http://archium.cdiak.archives.gov.ua/file-viewer/131976'),
+      ),
     ).toBeNull()
   })
 

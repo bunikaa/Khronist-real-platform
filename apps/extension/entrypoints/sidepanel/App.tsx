@@ -67,6 +67,7 @@ export const App = () => {
   })
   const confirm = useConfirm({
     transcription: reading.phase === 'done' ? reading.transcription : undefined,
+    openedPage: reading.phase === 'done' ? reading.shelfmark : null,
     session,
     editing,
     onConfirmed: replace,

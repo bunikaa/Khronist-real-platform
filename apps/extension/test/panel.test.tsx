@@ -1583,6 +1583,76 @@ describe('side panel', () => {
         expect(sent).toContainEqual({ type: 'start-selection' })
       })
 
+      it('sends the portal link of the sheet the fragment was read on', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const portalUrl = 'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834611'
+        const calls = read(
+          { user: olena, canVerify: true },
+          { [verifyPath]: () => json(confirmed()) },
+        )
+        currentPage = {
+          type: 'page',
+          shelfmark: { ...shelfmark(4), portalUrl: `${portalUrl}-tab` },
+          scan: true,
+          selecting: false,
+        }
+        await render()
+        await deliver({ type: 'fragment', fragment, shelfmark: { ...shelfmark(4), portalUrl } })
+        await settle()
+
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+
+        expect(verifies(calls)).toEqual([
+          {
+            path: verifyPath,
+            authorization: `Bearer ${token}`,
+            body: { signature: 'Олена К.', portalUrl },
+          },
+        ])
+      })
+
+      it('sends the portal link of the sheet a fragment is opened from in its list', async () => {
+        await fakeStorage.session.set({ sessionToken: token })
+        const portalUrl = 'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834611'
+        const { id, regionId, box, version, status, createdAt } = two
+        const calls = read(
+          { user: olena, canVerify: true },
+          {
+            '/v1/pages/lookup': () =>
+              json({
+                page: {
+                  id: '0b6a9d3e-1c2f-4e5a-8b7c-9d0e1f2a3b4c',
+                  shelfmark: shelfmark(4),
+                  transcriptions: [{ id, regionId, box, version, status, createdAt }],
+                },
+              }),
+            [`/v1/transcriptions/${two.id}`]: () => json(two),
+            [verifyPath]: () => json(confirmed()),
+          },
+        )
+        currentPage = {
+          type: 'page',
+          shelfmark: { ...shelfmark(4), portalUrl },
+          scan: true,
+          selecting: false,
+        }
+        await render()
+        await settle()
+
+        await click(container.querySelector('main ul li button'))
+        await click(mainButton('Підтвердити'))
+        await click(dialogButton('Підтвердити'))
+
+        expect(verifies(calls)).toEqual([
+          {
+            path: verifyPath,
+            authorization: `Bearer ${token}`,
+            body: { signature: 'Олена К.', portalUrl },
+          },
+        ])
+      })
+
       it('closes the question on cancel and on Esc without confirming', async () => {
         await fakeStorage.session.set({ sessionToken: token })
         const calls = read(

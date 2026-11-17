@@ -1,10 +1,16 @@
-import { shelfmarkSchema, type Shelfmark } from '@khronist/contracts'
+import {
+  archiumHosts,
+  archiumViewerHost,
+  shelfmarkSchema,
+  type ArchiumHost,
+  type Shelfmark,
+} from '@khronist/contracts'
 
-const archives: Record<string, string> = {
+const archives: Record<ArchiumHost, string> = {
   'archium.cdiak.archives.gov.ua': 'ЦДІАК України',
 }
 
-export const archiumMatches = Object.keys(archives).map((host) => `https://${host}/*`)
+export const archiumMatches = archiumHosts.map((host) => `https://${host}/*`)
 
 const linkText = (root: ParentNode, hrefPrefix: string): string | undefined =>
   root.querySelector(`a[href^="${hrefPrefix}"]`)?.textContent?.trim()
@@ -12,31 +18,41 @@ const linkText = (root: ParentNode, hrefPrefix: string): string | undefined =>
 export const findArchiumScan = (doc: Document): HTMLImageElement | null =>
   doc.querySelector<HTMLImageElement>('img#main-image')
 
-const imageNumber = (doc: Document): number | undefined => {
+const shownThumbnail = (doc: Document): Element | null => {
   const src = findArchiumScan(doc)?.getAttribute('src')
-  if (!src) return undefined
+  if (!src) return null
   const escaped = CSS.escape(src)
-  const thumbnail = doc.querySelector(
+  return doc.querySelector(
     `#all-images img[data-observe-src="${escaped}"], #all-images img[src="${escaped}"]`,
   )
+}
+
+const imageNumber = (thumbnail: Element | null): number | undefined => {
   const page = thumbnail?.closest('a')?.querySelector('[data-page]')?.getAttribute('data-page')
   return page ? Number(page) : undefined
 }
 
+const viewerLink = (url: URL, thumbnail: Element | null): string | undefined => {
+  const target = thumbnail?.getAttribute('data-target-link')
+  if (!target || !/^#file-\d+$/.test(target)) return undefined
+  return `${url.origin}${url.pathname.replace(/\/$/, '')}${target}`
+}
+
 export const readArchiumShelfmark = (doc: Document, url: URL): Shelfmark | null => {
-  const archive = archives[url.hostname]
-  if (!archive || !url.pathname.startsWith('/file-viewer/')) return null
+  const host = archiumViewerHost(url)
+  if (!host) return null
   const details = doc.querySelector('.description-item .item-lists')
   if (!details) return null
 
+  const thumbnail = shownThumbnail(doc)
   const parsed = shelfmarkSchema.safeParse({
-    archive,
+    archive: archives[host],
     fond: linkText(details, '/fonds/'),
     opys: linkText(details, '/inventories/'),
     sprava: linkText(details, '/files/'),
-    image: imageNumber(doc),
+    image: imageNumber(thumbnail),
     portal: 'archium',
-    portalUrl: url.href,
+    portalUrl: viewerLink(url, thumbnail),
   })
   return parsed.success ? parsed.data : null
 }

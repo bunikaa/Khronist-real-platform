@@ -1,6 +1,8 @@
 import {
+  archiumViewerUrlSchema,
   transcriptionSchema,
   type PatchLinesRequest,
+  type Shelfmark,
   type Transcription,
   type VerifyRequest,
 } from '@khronist/contracts'
@@ -23,12 +25,35 @@ export const saveLines = async (
   return transcriptionSchema.parse(await response.json())
 }
 
+const sameImage = (opened: Shelfmark, page: Shelfmark) =>
+  opened.image !== undefined &&
+  opened.image === page.image &&
+  opened.archive === page.archive &&
+  opened.fond === page.fond &&
+  opened.opys === page.opys &&
+  opened.sprava === page.sprava
+
+const linkForEmptyPage = (
+  openedPage: Shelfmark | null,
+  page: Shelfmark | undefined,
+): string | undefined => {
+  if (!openedPage || !page || page.portalUrl !== undefined || !sameImage(openedPage, page)) {
+    return undefined
+  }
+  const link = archiumViewerUrlSchema.safeParse(openedPage.portalUrl)
+  return link.success ? link.data : undefined
+}
+
 export const verifyTranscription = async (
   transcription: Transcription,
   signature: string,
+  openedPage: Shelfmark | null,
   signal: AbortSignal,
 ): Promise<Transcription> => {
-  const body: VerifyRequest = signature ? { signature } : {}
+  const body: VerifyRequest = {
+    signature: signature || undefined,
+    portalUrl: linkForEmptyPage(openedPage, transcription.shelfmark),
+  }
   const response = await sendSignedIn(`/v1/transcriptions/${transcription.id}/verify`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
