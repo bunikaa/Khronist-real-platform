@@ -1347,6 +1347,122 @@ describe('side panel', () => {
         expect(container.textContent).not.toContain('Сучасною орфографією')
       })
 
+      describe('Ukrainian translation (B5)', () => {
+        const words = (text: string) =>
+          text.split(' ').map((word) => ({ text: word, uncertain: false }))
+        const normalizedLines = [
+          { text: 'Села Борщаговки', words: words('Села Борщаговки') },
+          { text: 'Коваленко и законная жена', words: words('Коваленко и законная жена') },
+        ]
+        const translatedLines = ['Села Борщагівки', 'Коваленко і законна [нрзб]']
+
+        const readWith = (extra: Partial<Transcription>) =>
+          read({
+            [`/v1/recognitions/${recognitionId}`]: () =>
+              json({ recognitionId, status: 'done', transcription: { ...edited, ...extra } }),
+          })
+
+        const sectionTitled = (title: string) =>
+          [...container.querySelectorAll('main section')].find(
+            (section) => section.querySelector('h3')?.textContent === title,
+          )
+        const translatedRows = () =>
+          [...(sectionTitled('Українською')?.querySelectorAll('ol li') ?? [])].map(
+            (row) => row.textContent,
+          )
+
+        it('shows the translation line by line with its label and a machine note', async () => {
+          readWith({
+            normalizedLines,
+            translatedLines,
+            expansions: [{ from: 'крестьянинъ', to: 'крестьянин' }],
+          })
+          await openReading()
+
+          const translation = sectionTitled('Українською')
+          expect(translation?.textContent).toContain('Машинний переклад, звіряйте з рядками вище')
+          expect(translatedRows()).toEqual(['01Села Борщагівки', '02Коваленко і законна [нрзб]'])
+          expect(translation?.querySelector('[title]')).toBeNull()
+          expect(container.textContent).not.toContain('Розкриті скорочення')
+          expect(container.textContent).not.toContain('крестьянинъ → крестьянин')
+          expect(container.textContent).not.toContain('Сучасною орфографією')
+        })
+
+        it('keeps the expansions under the modern spelling', async () => {
+          readWith({ normalizedLines, expansions: [{ from: 'крестьянинъ', to: 'крестьянин' }] })
+          await openReading()
+
+          const modern = sectionTitled('Сучасною орфографією')
+          expect(modern?.textContent).toContain('Розкриті скорочення')
+          expect(modern?.textContent).toContain('крестьянинъ → крестьянин')
+        })
+
+        it('keeps a blank translated line opposite its transcription line', async () => {
+          readWith({ translatedLines: ['', 'Коваленко і законна'] })
+          await openReading()
+
+          expect(translatedRows()).toEqual(['01\u00a0', '02Коваленко і законна'])
+        })
+
+        it('underlines the translated line whose source has uncertain words', async () => {
+          readWith({
+            translatedLines,
+            lines: [edited.lines[0]!, { ...edited.lines[1]!, uncertain: true }],
+          })
+          await openReading()
+
+          const translation = sectionTitled('Українською')
+          expect(translation?.textContent).toContain(
+            'Машинний переклад. Рядки з непевними словами підкреслено — звіряйте з оригіналом вище',
+          )
+          expect(translatedRows()).toEqual([
+            '01Села Борщагівки',
+            '02Коваленко і законна [нрзб] (непевний рядок)',
+          ])
+          expect(
+            [...(translation?.querySelectorAll('[title]') ?? [])].map((marked) => [
+              marked.getAttribute('title'),
+              marked.closest('li')?.textContent?.slice(0, 2),
+            ]),
+          ).toEqual([['В оригіналі цього рядка є непевні слова', '02']])
+        })
+
+        it.each([
+          ['absent', {}],
+          ['blank', { translatedLines: ['', ' '] }],
+        ])('keeps the modern spelling when the translation is %s', async (_, translation) => {
+          readWith({ normalizedLines, ...translation })
+          await openReading()
+
+          expect(container.textContent).not.toContain('Українською')
+          expect(container.textContent).not.toContain('Машинний переклад')
+          expect(sectionTitled('Сучасною орфографією')?.textContent).toContain(
+            'Коваленко и законная жена',
+          )
+        })
+
+        it('shows the translation even when the modern spelling did not change the lines', async () => {
+          readWith({ translatedLines })
+          await openReading()
+
+          expect(sectionTitled('Українською')?.textContent).toContain('Коваленко і законна [нрзб]')
+        })
+
+        it('hides the translation that no longer matches an unsaved edit', async () => {
+          readWith({ normalizedLines, translatedLines })
+          await openReading()
+          expect(sectionTitled('Українською')).toBeDefined()
+
+          await click(lineButton('Села Борщаговки'))
+          await write('Села Борщаговки крестьянинъ')
+          await enterToTheEnd()
+          await click(accountButton())
+
+          expect(container.textContent).not.toContain('Українською')
+          expect(container.textContent).not.toContain('Машинний переклад')
+        })
+      })
+
       it('sends a rejected edit once and waits for the sign-in', async () => {
         await fakeStorage.session.set({ sessionToken: token })
         const calls = read({

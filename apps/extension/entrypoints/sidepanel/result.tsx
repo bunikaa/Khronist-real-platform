@@ -1,5 +1,12 @@
 import type { Entity, Transcription } from '@khronist/contracts'
-import { EntityChip, LineWords, SectionLabel, strings } from '@khronist/ui'
+import {
+  EntityChip,
+  hasUncertainMark,
+  LineWords,
+  SectionLabel,
+  strings,
+  TranslatedLine,
+} from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { CitationPanel, refusedCitations } from './citing.tsx'
@@ -10,11 +17,35 @@ import type { Confirming } from './useConfirm.ts'
 import { canExplain, useExplain, type Explaining, type ShownEntity } from './useExplain.ts'
 import { savedVersionReady, type LineEditing } from './useLineEditing.ts'
 
-export const modernLines = (transcription: Transcription) => {
-  const normalized = transcription.normalizedLines
-  if (!normalized) return null
-  const changed = normalized.some((line, index) => line.text !== transcription.lines[index]?.text)
-  return changed ? normalized : null
+type ReadableText =
+  | { kind: 'translated'; lines: { idx: number; text: string; uncertain: boolean }[] }
+  | {
+      kind: 'normalized'
+      lines: NonNullable<Transcription['normalizedLines']>
+      expansions: NonNullable<Transcription['expansions']>
+    }
+
+export const readableText = ({
+  lines,
+  normalizedLines,
+  expansions,
+  translatedLines,
+}: Transcription): ReadableText | null => {
+  if (
+    translatedLines?.length === lines.length &&
+    translatedLines.some((line) => line.trim() !== '')
+  ) {
+    return {
+      kind: 'translated',
+      lines: lines.map((line, index) => ({
+        idx: line.idx,
+        text: translatedLines[index] ?? '',
+        uncertain: hasUncertainMark(line),
+      })),
+    }
+  }
+  if (!normalizedLines?.some((line, index) => line.text !== lines[index]?.text)) return null
+  return { kind: 'normalized', lines: normalizedLines, expansions: expansions ?? [] }
 }
 
 const Notes = ({ notes }: { notes: string[] }) => (
@@ -28,29 +59,42 @@ const Notes = ({ notes }: { notes: string[] }) => (
   </ul>
 )
 
-type ModernTextProps = {
-  lines: NonNullable<Transcription['normalizedLines']>
-  expansions: NonNullable<Transcription['expansions']>
-}
-
-const ModernText = ({ lines, expansions }: ModernTextProps) => (
+const ReadableTextBlock = ({ text }: { text: ReadableText }) => (
   <section className="flex flex-col gap-2 p-3">
-    <SectionLabel>{strings.read.normalized}</SectionLabel>
-    <div className="text-body-14">
-      {lines.map((line, index) => (
-        <p key={index}>
-          <LineWords text={line.text} uncertain={false} words={line.words} />
-        </p>
-      ))}
-    </div>
-    {expansions.length > 0 && (
+    {text.kind === 'translated' ? (
       <>
-        <SectionLabel>{strings.read.expansions}</SectionLabel>
-        <ul className="text-body-13">
-          {expansions.map(({ from, to }, index) => (
-            <li key={index}>{strings.read.expansion(from, to)}</li>
+        <div className="flex flex-col gap-0.5">
+          <SectionLabel>{strings.read.translated}</SectionLabel>
+          <p className="text-body-12 text-ink-muted">
+            {strings.read.translationNote(text.lines.some((line) => line.uncertain))}
+          </p>
+        </div>
+        <ol className="flex flex-col gap-1 text-body-14">
+          {text.lines.map((line) => (
+            <TranslatedLine key={line.idx} {...line} />
           ))}
-        </ul>
+        </ol>
+      </>
+    ) : (
+      <>
+        <SectionLabel>{strings.read.normalized}</SectionLabel>
+        <div className="text-body-14">
+          {text.lines.map((line, index) => (
+            <p key={index}>
+              <LineWords text={line.text} uncertain={false} words={line.words} />
+            </p>
+          ))}
+        </div>
+        {text.expansions.length > 0 && (
+          <>
+            <SectionLabel>{strings.read.expansions}</SectionLabel>
+            <ul className="text-body-13">
+              {text.expansions.map(({ from, to }, index) => (
+                <li key={index}>{strings.read.expansion(from, to)}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </>
     )}
   </section>
@@ -174,7 +218,7 @@ export const Result = ({
   onSignIn,
   onAsk,
 }: ResultProps) => {
-  const modern = modernLines(transcription)
+  const readable = readableText(transcription)
   const warnings = [...new Set(transcription.warnings)]
   const explaining = useExplain(transcription.id)
   return (
@@ -219,10 +263,10 @@ export const Result = ({
             }}
           />
         </section>
-        {modern && !editing.unsaved && (
+        {readable && !editing.unsaved && (
           <>
             <hr className="border-rule" />
-            <ModernText lines={modern} expansions={transcription.expansions ?? []} />
+            <ReadableTextBlock text={readable} />
           </>
         )}
         {!editing.unsaved && (
