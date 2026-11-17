@@ -30,6 +30,7 @@ export const transcriptionSchema = z.object({
   normalizedText: z.string(),
   normalizedLines: normalizeOutputSchema.shape.lines.optional(),
   expansions: normalizeOutputSchema.shape.expansions.optional(),
+  translatedLines: z.array(z.string()).optional(),
   entities: z.array(entitySchema),
   warnings: z.array(readingWarningSchema).optional(),
   reader: z.string(),

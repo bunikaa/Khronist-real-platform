@@ -2,7 +2,7 @@ import type { Line, Transcription } from '@khronist/contracts'
 import { describe, expect, it } from 'vitest'
 import { ApiFailure } from '../api/client.ts'
 import type { Fragment } from '../messages.ts'
-import { modernLines } from '../entrypoints/sidepanel/result.tsx'
+import { readableText } from '../entrypoints/sidepanel/result.tsx'
 import { applyEvent, failureOf, finished } from '../entrypoints/sidepanel/useReading.ts'
 
 const fragment: Fragment = {
@@ -93,7 +93,7 @@ describe('failureOf', () => {
   })
 })
 
-describe('modernLines', () => {
+describe('readableText', () => {
   const transcription: Transcription = {
     id: '5f1d7c1e-4a0b-4d3c-9a43-2c1e7b0f9a11',
     regionId: '8a2b3c4d-5e6f-4a1b-8c9d-0e1f2a3b4c5d',
@@ -108,17 +108,111 @@ describe('modernLines', () => {
   }
   const words = (text: string) => text.split(' ').map((word) => ({ text: word, uncertain: false }))
 
-  it('hides the text that the server did not normalize', () => {
-    expect(modernLines(transcription)).toBeNull()
-    const same = transcription.lines.map((line) => ({ text: line.text, words: words(line.text) }))
-    expect(modernLines({ ...transcription, normalizedLines: same })).toBeNull()
+  const same = transcription.lines.map((line) => ({ text: line.text, words: words(line.text) }))
+  const normalizedLines = [
+    { text: 'Села Борщаговки крестьянин', words: words('Села Борщаговки крестьянин') },
+    { text: 'Иоанн Петров', words: words('Иоанн Петров') },
+  ]
+  const translatedLines = ['Села Борщагівки селянин', 'Іван Петрович']
+  const expansions = [{ from: 'крестьянинъ', to: 'крестьянин' }]
+  const normalized = {
+    kind: 'normalized' as const,
+    lines: normalizedLines,
+    expansions: [] as typeof expansions,
+  }
+  const translatedAs = (texts: string[], uncertain = [false, false], idxs = [0, 1]) => ({
+    kind: 'translated' as const,
+    lines: texts.map((text, index) => ({
+      idx: idxs[index] ?? index,
+      text,
+      uncertain: uncertain[index] ?? false,
+    })),
   })
+  const translated = translatedAs(translatedLines)
+  const [first, second] = transcription.lines as [Line, Line]
 
-  it('shows the lines once the server has really modernized them', () => {
-    const normalizedLines = [
-      { text: 'Села Борщаговки крестьянин', words: words('Села Борщаговки крестьянин') },
-      { text: 'Иоанн Петров', words: words('Иоанн Петров') },
-    ]
-    expect(modernLines({ ...transcription, normalizedLines })).toBe(normalizedLines)
+  it.each<[string, Partial<Transcription>, ReturnType<typeof readableText>]>([
+    ['nothing from the server', {}, null],
+    ['an unchanged spelling', { normalizedLines: same }, null],
+    ['an empty translation', { normalizedLines: same, translatedLines: [] }, null],
+    ['a modernized spelling', { normalizedLines }, normalized],
+    [
+      'an empty translation over a modernized spelling',
+      { normalizedLines, translatedLines: [] },
+      normalized,
+    ],
+    ['a translation over a modernized spelling', { normalizedLines, translatedLines }, translated],
+    [
+      'a translation over an unchanged spelling',
+      { normalizedLines: same, translatedLines },
+      translated,
+    ],
+    ['a translation alone', { translatedLines }, translated],
+    [
+      'a translation numbered like its source lines',
+      {
+        translatedLines,
+        lines: [
+          { ...first, idx: 4 },
+          { ...second, idx: 5 },
+        ],
+      },
+      translatedAs(translatedLines, [false, false], [4, 5]),
+    ],
+    [
+      'a modernized spelling with expansions',
+      { normalizedLines, expansions },
+      { ...normalized, expansions },
+    ],
+    ['a translation with expansions', { normalizedLines, translatedLines, expansions }, translated],
+    [
+      'a translation with a blank line',
+      { translatedLines: ['Іван Петрович', ''] },
+      translatedAs(['Іван Петрович', '']),
+    ],
+    ['a shorter translation', { normalizedLines, translatedLines: ['Іван Петрович'] }, normalized],
+    [
+      'a longer translation',
+      { normalizedLines, translatedLines: [...translatedLines, 'зайве'] },
+      normalized,
+    ],
+    ['a blank translation', { normalizedLines, translatedLines: ['', '  '] }, normalized],
+    [
+      'a blank translation over an unchanged spelling',
+      { normalizedLines: same, translatedLines: ['', ' '] },
+      null,
+    ],
+    [
+      'a translation of a line read uncertainly as a whole',
+      { translatedLines, lines: [first, { ...second, uncertain: true }] },
+      translatedAs(translatedLines, [false, true]),
+    ],
+    [
+      'a translation of a line with an uncertain word',
+      {
+        translatedLines,
+        lines: [
+          first,
+          {
+            ...second,
+            words: [
+              { text: 'Іоаннъ', uncertain: false },
+              { text: 'Петровъ', uncertain: true },
+            ],
+          },
+        ],
+      },
+      translatedAs(translatedLines, [false, true]),
+    ],
+    [
+      'a translation of a line flagged as a whole whose words are all certain',
+      {
+        translatedLines,
+        lines: [first, { ...second, uncertain: true, words: words(second.text) }],
+      },
+      translated,
+    ],
+  ])('picks the text under the lines for %s', (_, extra, shown) => {
+    expect(readableText({ ...transcription, ...extra })).toEqual(shown)
   })
 })
