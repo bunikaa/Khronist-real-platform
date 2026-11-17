@@ -826,6 +826,19 @@ describe('recognitions', () => {
       await app.close()
     })
 
+    it('answers 400 rather than failing for a portal link that is not an address', async () => {
+      const { app } = await createTestApp(database)
+      for (const portalUrl of ['', 'archium.cdiak.archives.gov.ua/file-viewer/134082']) {
+        const res = await post(
+          app,
+          recognitionBody(nextPng(), { shelfmark: { ...shelfmark, image: 1, portalUrl } }),
+        )
+        expect(res.statusCode, portalUrl).toBe(400)
+        expect(res.json().error.code).toBe('bad_request')
+      }
+      await app.close()
+    })
+
     it('trims whitespace in shelfmark parts so that spellings do not split documents', async () => {
       const { app, queue } = await createTestApp(database)
       await post(
