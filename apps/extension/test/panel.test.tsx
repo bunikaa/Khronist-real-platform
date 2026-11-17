@@ -143,14 +143,14 @@ describe('side panel', () => {
   it('tells the user to open the viewer when no content script answers', async () => {
     await render()
     expect(container.textContent).toContain('Відкрийте скан на підтримуваному порталі')
-    expect(container.querySelector('main button')).toBeNull()
+    expect(container.querySelector('main [role="tabpanel"]:not([hidden]) button')).toBeNull()
   })
 
   it('offers no selection on a portal page without a scan', async () => {
     currentPage = { type: 'page', shelfmark: null, scan: false, selecting: false }
     await render()
     expect(container.textContent).toContain('Відкрийте скан на підтримуваному порталі')
-    expect(container.querySelector('main button')).toBeNull()
+    expect(container.querySelector('main [role="tabpanel"]:not([hidden]) button')).toBeNull()
   })
 
   it('offers to select a fragment when the shelfmark is not recognized', async () => {

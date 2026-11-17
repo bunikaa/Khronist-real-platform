@@ -10,6 +10,17 @@ export type RequestProblem =
   | { kind: 'signed-out' }
   | { kind: 'failed'; message: string; offline: boolean; retryable: boolean }
 
+export const transportProblemOf = (error: unknown) => {
+  const offline = error instanceof TypeError
+  const timedOut = error instanceof DOMException && error.name === 'TimeoutError'
+  const message = offline
+    ? strings.read.offline
+    : timedOut
+      ? strings.read.timedOut
+      : strings.read.badResponse
+  return { message, offline }
+}
+
 export const problemOf = async (error: unknown): Promise<RequestProblem> => {
   if (error instanceof VersionConflictFailure) return { kind: 'conflict', current: error.current }
   const unauthorized = error instanceof ApiFailure && error.code === 'unauthorized'
@@ -18,8 +29,5 @@ export const problemOf = async (error: unknown): Promise<RequestProblem> => {
     const retryable = unauthorized || retryableCodes.has(error.code)
     return { kind: 'failed', message: error.message, offline: false, retryable }
   }
-  const offline =
-    error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')
-  const message = offline ? strings.read.offline : strings.read.badResponse
-  return { kind: 'failed', message, offline, retryable: true }
+  return { kind: 'failed', ...transportProblemOf(error), retryable: true }
 }

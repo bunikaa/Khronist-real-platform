@@ -89,7 +89,7 @@ const configSchema = z
     LLM_EFFORT: z.preprocess(emptyToUndefined, modelEffort.default('medium')),
     HTR_URL: z.preprocess(emptyToUndefined, z.url().optional()),
     BETTER_AUTH_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
-    BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.httpUrl().optional()),
+    BETTER_AUTH_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^https?$/ }).optional()),
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     MAIL_FROM: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     VERIFIER_EMAILS: z.preprocess(emptyToUndefined, emailList.default([])),
