@@ -10,11 +10,12 @@ from pydantic import ValidationError
 
 from khronist_knowledge.corpus import CorpusError
 from khronist_knowledge.qa import QaError, QaItem, load_qa
-from khronist_knowledge.qa_report import Asked, ExplainReply, load_run, render, titles_to_articles
+from khronist_knowledge.qa_report import Asked, Reply, load_run, render, titles_to_articles
 
 ATTEMPTS = 6
 FALLBACK_WAIT_S = 7.0
 TIMEOUT_S = 60.0
+MODES = ("explain", "chat")
 
 
 def retry_after(error: urllib.error.HTTPError) -> float:
@@ -24,17 +25,23 @@ def retry_after(error: urllib.error.HTTPError) -> float:
         return FALLBACK_WAIT_S
 
 
-def explain(api: str, case: QaItem) -> ExplainReply | str:
+def request_body(case: QaItem) -> dict[str, object]:
+    if case.mode == "chat":
+        return {"messages": [{"role": "user", "content": case.text}]}
+    return {"kind": case.kind, "text": case.text}
+
+
+def ask_api(api: str, case: QaItem) -> Reply | str:
     request = urllib.request.Request(
-        f"{api}/v1/explain",
-        data=json.dumps({"kind": case.kind, "text": case.text}).encode("utf-8"),
+        f"{api}/v1/{case.mode}",
+        data=json.dumps(request_body(case)).encode("utf-8"),
         headers={"content-type": "application/json"},
         method="POST",
     )
     for _ in range(ATTEMPTS):
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
-                return ExplainReply.model_validate_json(response.read())
+                return Reply.model_validate_json(response.read())
         except urllib.error.HTTPError as error:
             if error.code == 429:
                 time.sleep(retry_after(error))
@@ -50,12 +57,12 @@ def explain(api: str, case: QaItem) -> ExplainReply | str:
 
 
 def ask(args: argparse.Namespace) -> None:
-    cases = [case for case in load_qa(args.qa) if case.mode == "explain"]
+    cases = [case for case in load_qa(args.qa) if case.mode == args.mode]
     api = args.api.rstrip("/")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as out:
         for case in cases:
-            result = explain(api, case)
+            result = ask_api(api, case)
             if isinstance(result, str):
                 asked = Asked(min_rank=args.min_rank, id=case.id, error=result)
             else:
@@ -68,7 +75,7 @@ def ask(args: argparse.Namespace) -> None:
 def report(args: argparse.Namespace) -> None:
     cases = load_qa(args.qa)
     runs = [load_run(path) for path in args.runs]
-    text = render(args.qa.as_posix(), cases, runs, titles_to_articles(args.entries))
+    text = render(args.qa.as_posix(), cases, runs, titles_to_articles(args.entries), args.mode)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8", newline="\n")
     print(args.out)
@@ -79,6 +86,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
 
     ask_parser = commands.add_parser("ask")
+    ask_parser.add_argument("--mode", choices=MODES, default="explain")
     ask_parser.add_argument("--min-rank", required=True)
     ask_parser.add_argument("--qa", type=Path, default=Path("eval/qa.jsonl"))
     ask_parser.add_argument("--api", default="http://127.0.0.1:3000")
@@ -86,6 +94,7 @@ def main() -> None:
     ask_parser.set_defaults(handler=ask)
 
     report_parser = commands.add_parser("report")
+    report_parser.add_argument("--mode", choices=MODES, default="explain")
     report_parser.add_argument("--runs", type=Path, nargs="+", required=True)
     report_parser.add_argument("--qa", type=Path, default=Path("eval/qa.jsonl"))
     report_parser.add_argument("--entries", type=Path, default=Path("data/entries"))
