@@ -1,4 +1,4 @@
-import type { Transcription } from '@khronist/contracts'
+import type { Shelfmark, Transcription } from '@khronist/contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeStorage, resetFakeStorage } from './fake-storage.ts'
 
@@ -267,7 +267,7 @@ describe('confirming a transcription', () => {
     await fakeStorage.session.set({ sessionToken: token })
     const fetch = stubFetch(json(verified))
 
-    expect(await verifyTranscription(transcription, 'Олена К.', signal)).toEqual(verified)
+    expect(await verifyTranscription(transcription, 'Олена К.', null, signal)).toEqual(verified)
 
     const [url, init] = fetch.mock.calls[0] ?? []
     expect(String(url)).toBe(`${apiOrigin}${verifyPath}`)
@@ -280,9 +280,66 @@ describe('confirming a transcription', () => {
   it('sends no signature when the account has no name', async () => {
     const fetch = stubFetch(json(verified))
 
-    await verifyTranscription(transcription, '', signal)
+    await verifyTranscription(transcription, '', null, signal)
 
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({})
+  })
+
+  const sheet: Shelfmark = {
+    archive: 'ЦДІАК України',
+    fond: '127',
+    opys: '1078',
+    sprava: '177',
+    image: 5,
+    portal: 'archium',
+  }
+  const viewerLink = 'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834645'
+  const viewer: Shelfmark = { ...sheet, portalUrl: viewerLink }
+  const byFolio = (shelfmark: Shelfmark): Shelfmark => ({
+    ...shelfmark,
+    image: undefined,
+    folio: '3зв',
+  })
+  const withLink = { signature: 'Олена К.', portalUrl: viewerLink }
+  const withoutLink = { signature: 'Олена К.' }
+
+  it.each<[string, Shelfmark | null, Shelfmark | undefined, object]>([
+    ['the page it was read on', viewer, sheet, withLink],
+    [
+      'a page that already has a link',
+      viewer,
+      { ...sheet, portalUrl: 'https://archium.cdiak.archives.gov.ua/file-viewer/131976' },
+      withoutLink,
+    ],
+    ['a portal page without an image number', byFolio(viewer), sheet, withoutLink],
+    ['a page without an image number', viewer, byFolio(sheet), withoutLink],
+    ['the same folio without image numbers', byFolio(viewer), byFolio(sheet), withoutLink],
+    ['another image of the file', { ...viewer, image: 6 }, sheet, withoutLink],
+    ['another file', { ...viewer, sprava: '178' }, sheet, withoutLink],
+    ['another inventory', { ...viewer, opys: '1079' }, sheet, withoutLink],
+    ['another fond', { ...viewer, fond: '128' }, sheet, withoutLink],
+    ['another archive', { ...viewer, archive: 'ЦДІАК' }, sheet, withoutLink],
+    [
+      'a link the verification would refuse',
+      { ...viewer, portalUrl: `${viewerLink.replace('#', '?page=5#')}` },
+      sheet,
+      withoutLink,
+    ],
+    [
+      'a link outside the viewer',
+      { ...viewer, portalUrl: 'https://archium.cdiak.archives.gov.ua/files/131976/' },
+      sheet,
+      withoutLink,
+    ],
+    ['a portal page without a link', sheet, sheet, withoutLink],
+    ['no portal page', null, sheet, withoutLink],
+    ['a fragment without a page', viewer, undefined, withoutLink],
+  ])('sends the portal link only for %s', async (_case, opened, page, body) => {
+    const fetch = stubFetch(json(verified))
+
+    await verifyTranscription({ ...transcription, shelfmark: page }, 'Олена К.', opened, signal)
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(body)
   })
 
   it('returns the newer version when the API reports a conflict', async () => {
@@ -290,7 +347,7 @@ describe('confirming a transcription', () => {
       json({ error: { code: 'version_conflict', message: 'Конфлікт' }, current: edited }, 409),
     )
 
-    const error = await verifyTranscription(transcription, '', signal).catch(
+    const error = await verifyTranscription(transcription, '', null, signal).catch(
       (caught: unknown) => caught,
     )
 
@@ -302,7 +359,7 @@ describe('confirming a transcription', () => {
     await fakeStorage.session.set({ sessionToken: token })
     stubFetch(failure('unauthorized', 'Потрібен вхід', 401))
 
-    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+    await expect(verifyTranscription(transcription, '', null, signal)).rejects.toMatchObject({
       code: 'unauthorized',
     })
     expect(fakeStorage.session.items.has('sessionToken')).toBe(false)
@@ -317,7 +374,7 @@ describe('confirming a transcription', () => {
     await fakeStorage.session.set({ sessionToken: token })
     stubFetch(failure(code, message, status))
 
-    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+    await expect(verifyTranscription(transcription, '', null, signal)).rejects.toMatchObject({
       code,
       message,
     })
@@ -327,7 +384,7 @@ describe('confirming a transcription', () => {
   it('rejects an answer outside the contract', async () => {
     stubFetch(json({ id: transcription.id }))
 
-    await expect(verifyTranscription(transcription, '', signal)).rejects.toMatchObject({
+    await expect(verifyTranscription(transcription, '', null, signal)).rejects.toMatchObject({
       name: 'ZodError',
     })
   })

@@ -1,4 +1,5 @@
 import {
+  maxSearchQueryLength,
   maxSignatureLength,
   type CiteRequest,
   type Entity,
@@ -44,6 +45,15 @@ const fragmentForms: Record<Intl.LDMLPluralRule, string> = {
   few: 'фрагменти',
   many: 'фрагментів',
   other: 'фрагмента',
+}
+
+const transcriptionForms: Record<Intl.LDMLPluralRule, string> = {
+  zero: 'транскрипцій',
+  one: 'транскрипцію',
+  two: 'транскрипції',
+  few: 'транскрипції',
+  many: 'транскрипцій',
+  other: 'транскрипції',
 }
 
 const entityTypes: Record<Entity['type'], string> = {
@@ -249,6 +259,52 @@ export const strings = {
       shortcutMissing: 'Не призначено',
       signOut: 'Вийти',
     },
+  },
+  web: {
+    title: 'Пошук у Commons',
+    intro:
+      'Транскрипції архівних аркушів, прочитаних у Хроністі. Чернетки моделі ще не перевірені людьми; підтверджені тексти відкриті під CC BY 4.0.',
+    query: 'Прізвище, ім’я або назва села',
+    queryPlaceholder: 'напр. Коваленко',
+    queryInvalid: `Запит — від 1 до ${maxSearchQueryLength} символів`,
+    queryNoWords:
+      'Додайте прізвище, ім’я чи назву від трьох літер: числа, римські цифри й службові слова пошук не враховує',
+    search: 'Шукати',
+    archive: 'Архів',
+    archivePlaceholder: 'напр. ЦДІАК України',
+    fond: 'Фонд',
+    fondPlaceholder: 'напр. 127',
+    yearFrom: 'Рік від',
+    yearTo: 'Рік до',
+    yearsInvalid: 'Рік — від 1000 до 2100, і «від» не пізніший за «до»',
+    verifiedOnly: 'Лише підтверджені',
+    searching: 'Шукаємо…',
+    results: 'Результати пошуку',
+    found: (count: number, more: boolean) =>
+      `${more ? 'Показано' : 'Знайдено'} ${count} ${transcriptionForms[plural.select(count)]}` +
+      (more ? ', є ще' : ''),
+    years: (from: number | undefined, to: number | undefined) =>
+      from !== undefined && to !== undefined && from !== to
+        ? `${from}–${to}`
+        : String(from ?? to ?? ''),
+    openPortal: 'Відкрити скан на порталі',
+    nothing: 'Нічого не знайдено',
+    nothingVerified:
+      'Серед підтверджених транскрипцій збігів немає. Можна шукати й у чернетках моделі, ще не перевірених людьми.',
+    includeDrafts: 'Шукати й у чернетках',
+    nothingHint: 'Спробуйте інше написання.',
+    nothingFiltered: 'Спробуйте інше написання або приберіть фільтри.',
+    more: 'Показати ще',
+    loadingMore: 'Завантажуємо…',
+    rateLimited: (seconds: number | undefined) =>
+      seconds === undefined
+        ? 'Забагато пошуків поспіль. Спробуйте за хвилину'
+        : `Забагато пошуків поспіль. Спробуйте за ${seconds} с`,
+    rejected: 'Сервер не прийняв цей запит',
+    restart: 'Почати пошук спочатку',
+    editQuery: 'Змінити запит',
+    unavailable: 'Сервер тимчасово недоступний. Спробуйте за хвилину',
+    retry: 'Спробувати ще раз',
   },
   tabs: {
     label: 'Розділи панелі',

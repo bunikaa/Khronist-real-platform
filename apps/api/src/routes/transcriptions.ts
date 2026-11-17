@@ -113,7 +113,7 @@ export const transcriptionRoutes =
             'Підтверджувати можуть лише команда й історик проєкту',
           )
         }
-        const outcome = await verifyVersion(db, request.params.id, user.id, request.body.signature)
+        const outcome = await verifyVersion(db, request.params.id, user.id, request.body)
         if (outcome.kind === 'conflict') return conflict(reply, outcome.currentId)
         return loaded(outcome.transcriptionId)
       },
