@@ -44,7 +44,7 @@
 
 ## 3. Локальна розробка
 
-`infra/docker-compose.yml`: `postgres:18` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api й extension; web — коли з'явиться), `pnpm db:migrate`. Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): читання повертає записаний фрагмент з `apps/api/src/services/htr/fixture.ts`, щоб фронтенд розроблявся без витрат. Розширення з `wxt dev` ходить на `http://localhost:3000`, зібране — на `https://api.khronist.org`.
+`infra/docker-compose.yml`: `postgres:18` на 5432 з `pg_trgm`. Команди: `pnpm dev` (Turborepo запускає api, extension і web — `http://localhost:5173`), `pnpm db:migrate`. Без ключів LLM API працює у режимі фікстур (`LLM_FIXTURES=1`): читання повертає записаний фрагмент з `apps/api/src/services/htr/fixture.ts`, щоб фронтенд розроблявся без витрат. Розширення з `wxt dev` ходить на `http://localhost:3000`, зібране — на `https://api.khronist.org`.
 
 ## 4. CI/CD (GitHub Actions)
 

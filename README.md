@@ -2,7 +2,7 @@
 
 AI-компаньйон для дослідників українських архівів: розширення Chrome читає рукописні скани на архівних порталах, пояснює терміни й дати з джерелами, а підтверджені людьми транскрипції потрапляють у відкритий шар Commons (CC BY 4.0).
 
-Зараз у репозиторії працює API: https://api.khronist.org (Railway, опис інфраструктури — `.railway/railway.ts`). Розширення Chrome читає виділені фрагменти сканів у переглядачі ARCHIUM (`archium.cdiak.archives.gov.ua`) через бічну панель. `services/knowledge` містить довідковий корпус і оцінку читання. Вебзастосунку й MCP-сервера ще немає.
+Зараз у репозиторії працює API: https://api.khronist.org (Railway, опис інфраструктури — `.railway/railway.ts`). Розширення Chrome читає виділені фрагменти сканів у переглядачі ARCHIUM (`archium.cdiak.archives.gov.ua`) через бічну панель. `services/knowledge` містить довідковий корпус і оцінку читання. Вебзастосунок `apps/web` — публічний пошук у Commons; його ще не розгорнуто, адреса буде `app.khronist.org` (Vercel). MCP-сервера ще немає.
 
 ## Що потрібно встановити
 
@@ -35,7 +35,7 @@ pnpm dev
 - `htr: "fixture"`: читання фікстурне, бо в `.env.example` стоїть `LLM_FIXTURES=1`. Будь-яке зображення дає той самий демонстраційний текст, а гроші не витрачаються.
 - `llm: "degraded"`: немає ключа API. Для роботи з фікстурами це нормально.
 
-Розширення, запущене через `pnpm --filter @khronist/extension dev`, ходить у цей локальний API, а не в прод. Для справжнього читання задайте `ANTHROPIC_API_KEY` і приберіть `LLM_FIXTURES=1`. Спершу зітріть локальну базу (`docker compose -f infra/docker-compose.yml down -v`, потім знову `up -d` і `pnpm db:migrate`), бо кеш віддає фікстурні транскрипції як справжні.
+Розширення, запущене через `pnpm --filter @khronist/extension dev`, і вебзастосунок з `pnpm dev` (`http://localhost:5173`) ходять у цей локальний API, а не в прод. Для справжнього читання задайте `ANTHROPIC_API_KEY` і приберіть `LLM_FIXTURES=1`. Спершу зітріть локальну базу (`docker compose -f infra/docker-compose.yml down -v`, потім знову `up -d` і `pnpm db:migrate`), бо кеш віддає фікстурні транскрипції як справжні.
 
 ## Команди
 
@@ -56,6 +56,7 @@ pnpm dev
 | -------------------- | --------------------------------------------------------- | ---------------------- |
 | `apps/api`           | API на Fastify 5 і Drizzle ([README](apps/api/README.md)) | Владислав              |
 | `apps/extension`     | розширення Chrome на WXT ([README](apps/extension/README.md)) | Владислав |
+| `apps/web`           | вебзастосунок: пошук у Commons ([README](apps/web/README.md)) | Владислав |
 | `packages/ui`        | тема daisyUI і компоненти з Figma ([README](packages/ui/README.md)) | Владислав |
 | `packages/contracts` | Zod-схеми й типи                                          | Владислав і ML-команда |
 | `packages/prompts`   | промпти                                                   | ML-команда             |
