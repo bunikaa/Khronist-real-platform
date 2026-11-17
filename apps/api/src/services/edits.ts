@@ -3,10 +3,11 @@ import {
   type Line,
   type PatchLinesRequest,
   type TranscriptionHistory,
+  type VerifyRequest,
 } from '@khronist/contracts'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { Database } from '../db/client.ts'
-import { edits, transcriptions, user } from '../db/schema.ts'
+import { edits, pages, regions, transcriptions, user } from '../db/schema.ts'
 import { ApiError } from '../lib/errors.ts'
 import { insertTranscriptionVersion, loadLines, warningsOf } from './transcriptions.ts'
 
@@ -36,10 +37,12 @@ const lockVersion = async (tx: Database, transcriptionId: string) => {
       status: transcriptions.status,
       reader: transcriptions.reader,
       warnings: transcriptions.warnings,
+      pageId: regions.pageId,
     })
     .from(transcriptions)
+    .innerJoin(regions, eq(regions.id, transcriptions.regionId))
     .where(eq(transcriptions.id, transcriptionId))
-    .for('update')
+    .for('update', { of: transcriptions })
   if (!version) throw transcriptionNotFound()
   const [latest] = await tx
     .select({ id: transcriptions.id })
@@ -98,11 +101,17 @@ export const editLines = (
     return { kind: 'edited', transcriptionId: editedId }
   })
 
+const linkEmptyPage = (tx: Database, pageId: string, portalUrl: string) =>
+  tx
+    .update(pages)
+    .set({ sourceUrl: portalUrl })
+    .where(and(eq(pages.id, pageId), isNull(pages.sourceUrl)))
+
 export const verifyVersion = (
   db: Database,
   transcriptionId: string,
   verifierId: string,
-  signature: string | undefined,
+  request: VerifyRequest,
 ): Promise<VerifyOutcome> =>
   db.transaction(async (tx) => {
     const { version, latestId } = await lockVersion(tx, transcriptionId)
@@ -114,9 +123,12 @@ export const verifyVersion = (
           status: 'verified',
           verifiedBy: verifierId,
           verifiedAt: new Date(),
-          verifiedSignature: signature ?? null,
+          verifiedSignature: request.signature ?? null,
         })
         .where(eq(transcriptions.id, version.id))
+    }
+    if (request.portalUrl !== undefined && version.pageId !== null) {
+      await linkEmptyPage(tx, version.pageId, request.portalUrl)
     }
     return { kind: 'verified', transcriptionId: version.id }
   })

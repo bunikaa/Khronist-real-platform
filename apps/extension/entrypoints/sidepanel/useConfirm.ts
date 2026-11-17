@@ -1,4 +1,4 @@
-import type { Transcription } from '@khronist/contracts'
+import type { Shelfmark, Transcription } from '@khronist/contracts'
 import { useCallback, useEffect, useState } from 'react'
 import { browser } from 'wxt/browser'
 import { ApiFailure } from '../../api/client.ts'
@@ -43,6 +43,7 @@ const idle = (versionId: string | undefined): ConfirmState => ({
 
 type ConfirmOptions = {
   transcription: Transcription | undefined
+  openedPage: Shelfmark | null
   session: Session
   editing: LineEditing
   onConfirmed: (transcription: Transcription) => void
@@ -52,7 +53,8 @@ type ConfirmOptions = {
 }
 
 export const useConfirm = (options: ConfirmOptions) => {
-  const { transcription, session, editing, onConfirmed, onForbidden, shown, hidden } = options
+  const { transcription, openedPage, session, editing, onConfirmed, onForbidden, shown, hidden } =
+    options
   const versionId = transcription?.id
   const [stored, setStored] = useState(() => idle(versionId))
   const state = stored.versionId === versionId ? stored : idle(versionId)
@@ -114,6 +116,7 @@ export const useConfirm = (options: ConfirmOptions) => {
     verifyTranscription(
       transcription,
       signedIn.user.name,
+      openedPage,
       AbortSignal.timeout(confirmTimeoutMs),
     ).then(
       (confirmed) => {

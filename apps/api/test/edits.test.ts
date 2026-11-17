@@ -12,7 +12,7 @@ import {
 } from '@khronist/contracts'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { edits as editRows, transcriptions } from '../src/db/schema.ts'
+import { edits as editRows, pages, transcriptions } from '../src/db/schema.ts'
 import { recordEditsPerMinute, recordReadsPerMinute } from '../src/lib/limits.ts'
 import { editedLine } from '../src/services/edits.ts'
 import { placeEntities, type EntityExtractor } from '../src/services/entities.ts'
@@ -61,11 +61,14 @@ type App = Created['app']
 const start = (options: TestAppOptions = {}) =>
   createTestApp(database, { signIn: { codes, verifierEmails: [verifier] }, ...options })
 
-const read = async ({ app, queue }: Created): Promise<Transcription> => {
+const read = async (
+  { app, queue }: Created,
+  extra: Record<string, unknown> = {},
+): Promise<Transcription> => {
   const created = await app.inject({
     method: 'POST',
     url: '/v1/recognitions',
-    payload: recognitionBody(nextPng()),
+    payload: recognitionBody(nextPng(), extra),
   })
   await queue.onIdle()
   const state = await app.inject({
@@ -608,6 +611,162 @@ describe('POST /v1/transcriptions/:id/verify', () => {
     expect(limited.statusCode).toBe(429)
     expect(limited.json().error.code).toBe('too_many_requests')
     await app.close()
+  })
+})
+
+describe('POST /v1/transcriptions/:id/verify with a portal link', () => {
+  const sheet = { archive: 'ЦДІАК України', fond: '127', opys: '1078', sprava: '2276', image: 89 }
+  const viewerLink = 'https://archium.cdiak.archives.gov.ua/file-viewer/134082#file-3246424'
+  const otherLink = 'https://archium.cdiak.archives.gov.ua/file-viewer/134082#file-3246317'
+
+  const pageLinks = async () =>
+    (await database.db.select({ link: pages.sourceUrl }).from(pages)).map(({ link }) => link)
+
+  it('stores the link on the page of the region together with the verification', async () => {
+    const created = await start()
+    const first = await read(created, { shelfmark: { ...sheet, portalUrl: otherLink } })
+    const neighbour = await read(created, { shelfmark: sheet })
+    const otherPage = await read(created, { shelfmark: { ...sheet, image: 90 } })
+    expect(first.shelfmark).toEqual(sheet)
+    const token = await signIn(created.app, codes, verifier)
+
+    const res = await verify(created.app, first.id, token, {
+      signature: 'Олена К.',
+      portalUrl: viewerLink,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const verified = transcriptionSchema.parse(res.json())
+    expect(verified).toMatchObject({
+      id: first.id,
+      status: 'verified',
+      verifiedSignature: 'Олена К.',
+      shelfmark: { ...sheet, portalUrl: viewerLink },
+    })
+    expect(await getTranscription(created.app, first.id)).toEqual(verified)
+    expect((await getTranscription(created.app, neighbour.id)).shelfmark?.portalUrl).toBe(
+      viewerLink,
+    )
+    expect((await getTranscription(created.app, otherPage.id)).shelfmark?.portalUrl).toBeUndefined()
+    expect((await pageLinks()).sort()).toEqual([viewerLink, null])
+    await created.app.close()
+  })
+
+  it('keeps the link the page already has', async () => {
+    const created = await start()
+    const first = await read(created, { shelfmark: sheet })
+    await database.db.update(pages).set({ sourceUrl: otherLink })
+    const token = await signIn(created.app, codes, verifier)
+
+    const res = await verify(created.app, first.id, token, { portalUrl: viewerLink })
+
+    expect(res.statusCode).toBe(200)
+    expect(transcriptionSchema.parse(res.json())).toMatchObject({
+      status: 'verified',
+      shelfmark: { ...sheet, portalUrl: otherLink },
+    })
+    expect(await pageLinks()).toEqual([otherLink])
+    await created.app.close()
+  })
+
+  it('fills a missing link when a verified version is verified again, once', async () => {
+    const created = await start()
+    const first = await read(created, { shelfmark: sheet })
+    const token = await signIn(created.app, codes, verifier)
+    const once = transcriptionSchema.parse(
+      (await verify(created.app, first.id, token, { signature: 'Перша' })).json(),
+    )
+    expect(once.shelfmark).toEqual(sheet)
+
+    const linked = await verify(created.app, first.id, token, {
+      signature: 'Друга',
+      portalUrl: viewerLink,
+    })
+
+    expect(linked.statusCode).toBe(200)
+    expect(transcriptionSchema.parse(linked.json())).toEqual({
+      ...once,
+      shelfmark: { ...sheet, portalUrl: viewerLink },
+    })
+    const again = await verify(created.app, first.id, token, { portalUrl: otherLink })
+    expect(transcriptionSchema.parse(again.json()).shelfmark?.portalUrl).toBe(viewerLink)
+    await created.app.close()
+  })
+
+  it('verifies a fragment without a page and keeps no link', async () => {
+    const created = await start()
+    const first = await read(created)
+    await read(created, { shelfmark: sheet })
+    const token = await signIn(created.app, codes, verifier)
+
+    const res = await verify(created.app, first.id, token, { portalUrl: viewerLink })
+
+    expect(res.statusCode).toBe(200)
+    const verified = transcriptionSchema.parse(res.json())
+    expect(verified.status).toBe('verified')
+    expect(verified.shelfmark).toBeUndefined()
+    expect(await pageLinks()).toEqual([null])
+    await created.app.close()
+  })
+
+  it('keeps no link from a refused verification', async () => {
+    const created = await start()
+    const first = await read(created, { shelfmark: sheet })
+    const editorToken = await signIn(created.app, codes, editor)
+    const token = await signIn(created.app, codes, verifier)
+    const refused = async (
+      response: Promise<{ statusCode: number; json: () => { error: { code: string } } }>,
+      status: number,
+      code: string,
+    ) => {
+      const res = await response
+      expect(res.statusCode, code).toBe(status)
+      expect(res.json().error.code).toBe(code)
+    }
+    const link = { portalUrl: viewerLink }
+
+    await refused(verify(created.app, first.id, undefined, link), 401, 'unauthorized')
+    await refused(verify(created.app, first.id, editorToken, link), 403, 'forbidden')
+    await refused(verify(created.app, unknownId, token, link), 404, 'not_found')
+    for (const payload of [
+      { ...link, signature: 'Олена\u0007' },
+      { portalUrl: '' },
+      { portalUrl: 'archium.cdiak.archives.gov.ua/file-viewer/134082' },
+      { portalUrl: 'javascript:alert(1)' },
+      { portalUrl: 'https://user:secret@archium.cdiak.archives.gov.ua/file-viewer/134082' },
+      { portalUrl: 'https://example.org/file-viewer/134082#file-3246424' },
+      { portalUrl: 'http://archium.cdiak.archives.gov.ua/file-viewer/134082' },
+      { portalUrl: 'https://archium.cdiak.archives.gov.ua/files/134082/' },
+      { portalUrl: 'https://archium.cdiak.archives.gov.ua:8443/file-viewer/134082' },
+      { portalUrl: 'https://archium.cdiak.archives.gov.ua/file-viewer/134082?x=1#file-3246424' },
+      { portalUrl: 'https://archium.cdiak.archives.gov.ua/file-viewer/134082/x' },
+      { portalUrl: 'https://archium.cdiak.archives.gov.ua/file-viewer/134082#tag-images' },
+    ]) {
+      await refused(verify(created.app, first.id, token, payload), 400, 'bad_request')
+    }
+    await patchLines(created.app, first.id, editorToken, editSecondLine)
+    await refused(verify(created.app, first.id, token, link), 409, 'version_conflict')
+
+    expect((await getTranscription(created.app, first.id)).status).toBe('draft')
+    expect(await pageLinks()).toEqual([null])
+    await created.app.close()
+  })
+
+  it('keeps no link from a verification over the limit of a minute', async () => {
+    const created = await start()
+    const first = await read(created, { shelfmark: sheet })
+    const token = await signIn(created.app, codes, verifier)
+    for (let sent = 0; sent < recordEditsPerMinute; sent += 1) {
+      expect((await verify(created.app, unknownId, token)).statusCode).toBe(404)
+    }
+
+    const limited = await verify(created.app, first.id, token, { portalUrl: viewerLink })
+
+    expect(limited.statusCode).toBe(429)
+    expect(limited.json().error.code).toBe('too_many_requests')
+    expect((await getTranscription(created.app, first.id)).status).toBe('draft')
+    expect(await pageLinks()).toEqual([null])
+    await created.app.close()
   })
 })
 
