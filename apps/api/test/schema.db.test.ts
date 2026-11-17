@@ -194,6 +194,31 @@ describe('database schema', () => {
         'transcriptions_region_version_unique',
       )
     })
+
+    it('keeps the search vector in step with the normalized text', async () => {
+      const { region } = await makeRegion()
+      const [t] = await db
+        .insert(transcriptions)
+        .values({
+          regionId: region.id,
+          rawText: 'x',
+          normalizedText: 'Села Борщаговка',
+          reader: 'test',
+        })
+        .returning({ id: transcriptions.id, tsv: transcriptions.tsv })
+      if (!t) throw new Error('transcription not inserted')
+      expect(t.tsv).toBe("'борщаговка':2 'села':1")
+      const [updated] = await db
+        .update(transcriptions)
+        .set({ normalizedText: 'Коваленко' })
+        .where(sql`${transcriptions.id} = ${t.id}`)
+        .returning({ tsv: transcriptions.tsv })
+      expect(updated?.tsv).toBe("'коваленко':1")
+      const index = await db.execute(
+        sql`select indexdef from pg_indexes where indexname = 'transcriptions_tsv_idx'`,
+      )
+      expect(index.rows).toEqual([{ indexdef: expect.stringContaining('USING gin (tsv)') }])
+    })
   })
 
   describe('recognitions', () => {

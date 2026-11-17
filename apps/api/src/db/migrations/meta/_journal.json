@@ -57,6 +57,13 @@
       "when": 1794851497761,
       "tag": "0007_synonyms_lower",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794869283995,
+      "tag": "0008_transcription_tsv",
+      "breakpoints": true
     }
   ]
 }
