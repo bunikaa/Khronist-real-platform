@@ -6,6 +6,7 @@ import {
   hintsSchema,
   lineSchema,
   readingWarningSchema,
+  archiumViewerUrlSchema,
   recognitionStatusSchema,
   shelfmarkSchema,
   signatureSchema,
@@ -115,7 +116,10 @@ export const patchLinesRequestSchema = z.object({
 })
 export type PatchLinesRequest = z.infer<typeof patchLinesRequestSchema>
 
-export const verifyRequestSchema = z.object({ signature: signatureSchema.optional() })
+export const verifyRequestSchema = z.object({
+  signature: signatureSchema.optional(),
+  portalUrl: archiumViewerUrlSchema.optional(),
+})
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>
 
 export const versionConflictSchema = errorSchema.extend({ current: transcriptionSchema })

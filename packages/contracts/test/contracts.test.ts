@@ -209,6 +209,55 @@ describe('request limits', () => {
     expect(verifyRequestSchema.safeParse({ signature: 'а‮б' }).success).toBe(true)
     expect(verifyRequestSchema.safeParse({ signature: 'а\u0007б' }).success).toBe(false)
   })
+
+  describe('the portal link of a verification', () => {
+    const viewer = 'https://archium.cdiak.archives.gov.ua/file-viewer/134082'
+    const longest = `${viewer}#file-${'1'.repeat(2048 - viewer.length - 6)}`
+
+    it.each([
+      ['an ARCHIUM viewer address', `${viewer}#file-3246424`],
+      ['a viewer address without an image', viewer],
+      [
+        'a viewer address of the demo fund',
+        'https://archium.cdiak.archives.gov.ua/file-viewer/131976#file-2834611',
+      ],
+      ['an address of exactly 2048 characters', longest],
+    ])('accepts %s', (_case, portalUrl) => {
+      expect(verifyRequestSchema.parse({ portalUrl })).toEqual({ portalUrl })
+    })
+
+    it.each([
+      ['an empty string', ''],
+      ['an address without a scheme', 'archium.cdiak.archives.gov.ua/file-viewer/134082'],
+      ['another host', 'https://example.org/file-viewer/134082'],
+      [
+        'a host that only ends like ARCHIUM',
+        'https://evil-archium.cdiak.archives.gov.ua.example.org/file-viewer/1',
+      ],
+      ['plain http', 'http://archium.cdiak.archives.gov.ua/file-viewer/134082'],
+      ['a page outside the viewer', 'https://archium.cdiak.archives.gov.ua/files/131976/'],
+      ['credentials', 'https://u:p@archium.cdiak.archives.gov.ua/file-viewer/134082'],
+      ['a port', 'https://archium.cdiak.archives.gov.ua:8443/file-viewer/134082'],
+      ['a query', `${viewer}?page=2#file-3246424`],
+      ['an empty query', `${viewer}?#file-3246424`],
+      ['a trailing slash', `${viewer}/`],
+      ['a longer path', `${viewer}/x`],
+      ['a file that is not a number', 'https://archium.cdiak.archives.gov.ua/file-viewer/abc'],
+      ['another anchor', `${viewer}#tag-images`],
+      ['an image that is not a number', `${viewer}#file-abc`],
+      ['an empty anchor', `${viewer}#`],
+      ['a control character', `${viewer}#file-1\u0007`],
+      ['a lone surrogate', `${viewer}#file-1\uD800`],
+      ['an address of 2049 characters', `${longest}1`],
+      ['another scheme', 'javascript:alert(1)'],
+    ])('rejects %s', (_case, portalUrl) => {
+      expect(verifyRequestSchema.safeParse({ portalUrl }).success).toBe(false)
+    })
+
+    it('keeps a verification without a link', () => {
+      expect(verifyRequestSchema.parse({})).toEqual({})
+    })
+  })
 })
 
 describe('admin contracts', () => {

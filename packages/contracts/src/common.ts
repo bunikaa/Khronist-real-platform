@@ -30,6 +30,14 @@ export const signatureSchema = z
     message: 'control character or lone surrogate',
   })
 
+const parsedUrl = (value: string): URL | undefined => {
+  try {
+    return new URL(value)
+  } catch {
+    return undefined
+  }
+}
+
 const portalUrlSchema = z
   .httpUrl()
   .refine((value) => withoutControlCharacters(value) && withoutLoneSurrogates(value), {
@@ -38,15 +46,28 @@ const portalUrlSchema = z
   .refine(
     (value) => {
       if (value.length > maxPortalUrlLength) return false
-      try {
-        const url = new URL(value)
-        return url.username === '' && url.password === ''
-      } catch {
-        return false
-      }
+      const url = parsedUrl(value)
+      return url !== undefined && url.username === '' && url.password === ''
     },
     { message: 'portal link must be short and without credentials' },
   )
+
+export const archiumHosts = ['archium.cdiak.archives.gov.ua'] as const
+export type ArchiumHost = (typeof archiumHosts)[number]
+
+export const archiumViewerHost = (url: URL): ArchiumHost | undefined =>
+  url.protocol === 'https:' && url.pathname.startsWith('/file-viewer/')
+    ? archiumHosts.find((host) => host === url.hostname)
+    : undefined
+
+const archiumViewerAddress = new RegExp(
+  `^https://(?:${archiumHosts.map((host) => host.replaceAll('.', '\\.')).join('|')})/file-viewer/\\d+(?:#file-\\d+)?$`,
+)
+
+export const archiumViewerUrlSchema = portalUrlSchema.refine(
+  (value) => archiumViewerAddress.test(value),
+  { message: 'portal link must open an image in a known archive viewer' },
+)
 
 export const shelfmarkBaseSchema = z.object({
   archive: shelfmarkPart,
