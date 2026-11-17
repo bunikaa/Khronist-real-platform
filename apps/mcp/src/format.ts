@@ -4,9 +4,12 @@ import {
   explainResponseSchema,
   hintsSchema,
   maxExplainTextLength,
+  maxSearchQueryLength,
   readingWarningSchema,
   shelfmarkSchema,
+  transcriptionStatusSchema,
   type ExplainResponse,
+  type SearchResponse,
   type Shelfmark,
   type Transcription,
 } from '@khronist/contracts'
@@ -60,6 +63,32 @@ export const explainOutput = z.object({
 })
 export type ExplainOutput = z.infer<typeof explainOutput>
 
+export const searchInput = {
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(maxSearchQueryLength)
+    .describe("Ім'я, прізвище, село чи слово з документа"),
+  verified_only: z.boolean().optional().describe('Лише транскрипції, підтверджені людиною'),
+  limit: z.number().int().min(1).max(50).optional().describe('Скільки результатів, типово 20'),
+}
+
+export const searchOutput = z.object({
+  items: z.array(
+    z.object({
+      transcription_id: z.string(),
+      shelfmark: z.string(),
+      year_from: z.number().int().optional(),
+      year_to: z.number().int().optional(),
+      snippet: z.string(),
+      status: transcriptionStatusSchema,
+      portal_url: z.string().optional(),
+    }),
+  ),
+})
+export type SearchOutput = z.infer<typeof searchOutput>
+
 export const shelfmarkLabel = (shelfmark: Shelfmark): string => {
   const page =
     shelfmark.folio === undefined ? `зобр. ${shelfmark.image}` : `арк. ${shelfmark.folio}`
@@ -92,9 +121,28 @@ export const toExplainOutput = (response: ExplainResponse): ExplainOutput => ({
   })),
 })
 
+export const toSearchOutput = (response: SearchResponse): SearchOutput => ({
+  items: response.items.map((item) => ({
+    transcription_id: item.transcriptionId,
+    shelfmark: shelfmarkLabel(item.shelfmark),
+    year_from: item.yearFrom,
+    year_to: item.yearTo,
+    snippet: item.snippet,
+    status: item.status,
+    portal_url: item.portalUrl,
+  })),
+})
+
 export const explainNote = (output: ExplainOutput): string | undefined => {
   if (output.answer === null) return 'Не знаю: у довідковому корпусі немає джерел для відповіді.'
   if (output.confidence === 'low')
     return 'Часткова відповідь: джерела підтверджують її не повністю.'
+  return undefined
+}
+
+export const searchNote = (output: SearchOutput): string | undefined => {
+  if (output.items.length === 0) return 'У Commons нічого не знайдено за цим запитом.'
+  if (output.items.some((item) => item.status !== 'verified'))
+    return 'Частина результатів — чернетки або спірні версії: їх не перевіряла людина.'
   return undefined
 }

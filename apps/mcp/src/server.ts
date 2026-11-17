@@ -11,6 +11,9 @@ registerTools(
     baseUrl: process.env.KHRONIST_API_URL || 'https://api.khronist.org',
     apiKey: process.env.KHRONIST_API_KEY || undefined,
   }),
+  (call) => {
+    process.stderr.write(`${JSON.stringify(call)}\n`)
+  },
 )
 
 await server.connect(new StdioServerTransport())

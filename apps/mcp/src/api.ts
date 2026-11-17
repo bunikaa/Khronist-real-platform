@@ -6,10 +6,12 @@ import {
   errorSchema,
   explainResponseSchema,
   recognitionStateSchema,
+  searchResponseSchema,
   type CreateRecognitionRequest,
   type ExplainRequest,
   type ExplainResponse,
   type Hints,
+  type SearchResponse,
   type Shelfmark,
   type Transcription,
 } from '@khronist/contracts'
@@ -26,10 +28,12 @@ export class ApiFailure extends Error {
 }
 
 export type TranscribeRequest = { imageBase64: string; shelfmark?: Shelfmark; hints?: Hints }
+export type SearchRequest = { query: string; verifiedOnly?: boolean; limit?: number }
 
 export type ApiClient = {
   transcribe: (request: TranscribeRequest) => Promise<Transcription>
   explain: (request: ExplainRequest) => Promise<ExplainResponse>
+  search: (request: SearchRequest) => Promise<SearchResponse>
 }
 
 export type ApiClientOptions = {
@@ -40,16 +44,27 @@ export type ApiClientOptions = {
   waitLimitMs?: number
 }
 
+export const defaultWaitLimitMs = 50_000
+
 export const createApiClient = (options: ApiClientOptions): ApiClient => {
   const fetchApi = options.fetch ?? fetch
   const pollIntervalMs = options.pollIntervalMs ?? 2000
-  const waitLimitMs = options.waitLimitMs ?? 240_000
+  const waitLimitMs = options.waitLimitMs ?? defaultWaitLimitMs
+
+  const reach = async (url: URL, init: RequestInit): Promise<Response> => {
+    try {
+      return await fetchApi(url, init)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      throw new ApiFailure(0, 'unreachable', `API ${url.origin} недоступний (${reason})`)
+    }
+  }
 
   const send = async <T>(path: string, schema: z.ZodType<T>, body?: unknown): Promise<T> => {
     const headers: Record<string, string> = {}
     if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`
     if (body !== undefined) headers['content-type'] = 'application/json'
-    const response = await fetchApi(new URL(path, options.baseUrl), {
+    const response = await reach(new URL(path, options.baseUrl), {
       method: body === undefined ? 'GET' : 'POST',
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -90,11 +105,21 @@ export const createApiClient = (options: ApiClientOptions): ApiClient => {
           )
         }
         if (Date.now() >= deadline) {
-          throw new ApiFailure(504, 'timeout', 'Читання не завершилося вчасно')
+          throw new ApiFailure(
+            202,
+            'still_reading',
+            'Фрагмент ще читається. Викличте transcribe ще раз з тим самим зображенням: повторний виклик не почне нового читання, а дочекається цього або візьме готовий результат',
+          )
         }
         await sleep(pollIntervalMs)
       }
     },
     explain: (request) => send('/v1/explain', explainResponseSchema, request),
+    search: ({ query, verifiedOnly, limit }) => {
+      const params = new URLSearchParams({ q: query })
+      if (verifiedOnly !== undefined) params.set('verifiedOnly', String(verifiedOnly))
+      if (limit !== undefined) params.set('limit', String(limit))
+      return send(`/v1/search?${params}`, searchResponseSchema)
+    },
   }
 }

@@ -76,7 +76,7 @@ describe('transcribe', () => {
     await expect(failure).rejects.toThrow('too_many_requests: Забагато запитів')
   })
 
-  it('stops waiting after the limit', async () => {
+  it('asks to call again when the reading takes longer than the limit', async () => {
     const { client } = fakeApi(
       [
         reply(201, { recognitionId, status: 'queued' }),
@@ -84,7 +84,20 @@ describe('transcribe', () => {
       ],
       0,
     )
-    await expect(client.transcribe({ imageBase64 })).rejects.toMatchObject({ code: 'timeout' })
+    await expect(client.transcribe({ imageBase64 })).rejects.toMatchObject({
+      code: 'still_reading',
+    })
+  })
+
+  it('names the API when it cannot be reached', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://api.example',
+      fetch: () => Promise.reject(new TypeError('fetch failed')),
+    })
+    await expect(client.transcribe({ imageBase64 })).rejects.toMatchObject({
+      code: 'unreachable',
+      message: 'unreachable: API https://api.example недоступний (fetch failed)',
+    })
   })
 })
 
@@ -99,5 +112,22 @@ describe('explain', () => {
       citations: [],
     })
     expect(calls[0]?.url).toBe('https://api.example/v1/explain')
+  })
+})
+
+describe('search', () => {
+  it('asks GET /v1/search with the query and filters', async () => {
+    const { calls, client } = fakeApi([reply(200, { items: [] })])
+    await expect(
+      client.search({ query: 'Кононенко', verifiedOnly: true, limit: 5 }),
+    ).resolves.toEqual({ items: [] })
+    const url = new URL(calls[0]?.url ?? '')
+    expect(url.pathname).toBe('/v1/search')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: 'Кононенко',
+      verifiedOnly: 'true',
+      limit: '5',
+    })
+    expect(calls[0]?.init?.method).toBe('GET')
   })
 })
