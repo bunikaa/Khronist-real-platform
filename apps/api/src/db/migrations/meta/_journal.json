@@ -64,6 +64,13 @@
       "when": 1794869283995,
       "tag": "0008_transcription_tsv",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794931121926,
+      "tag": "0009_transcription_translated_lines",
+      "breakpoints": true
     }
   ]
 }

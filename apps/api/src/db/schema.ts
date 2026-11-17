@@ -203,6 +203,7 @@ export const transcriptions = pgTable(
     normalizedText: text('normalized_text').notNull().default(''),
     normalizedLines: jsonb('normalized_lines').$type<NormalizeOutput['lines']>(),
     expansions: jsonb('expansions').$type<NormalizeOutput['expansions']>(),
+    translatedLines: jsonb('translated_lines').$type<string[]>(),
     warnings: text('warnings')
       .array()
       .notNull()
