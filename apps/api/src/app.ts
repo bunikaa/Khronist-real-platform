@@ -170,8 +170,16 @@ export const buildApp = async (deps: AppDeps) => {
     await app.register(authRoutes(signIn.auth, signIn.settings.baseURL, limits, clientKey))
   }
   if (deps.recognitions) {
-    const { db, normalizer, entities, budget, normalizeTimeoutMs, entitiesTimeoutMs } =
-      deps.recognitions
+    const {
+      db,
+      normalizer,
+      entities,
+      translator,
+      budget,
+      normalizeTimeoutMs,
+      entitiesTimeoutMs,
+      translateTimeoutMs,
+    } = deps.recognitions
     await app.register(
       recognitionRoutes(
         { ...deps.recognitions, log: app.log },
@@ -192,10 +200,12 @@ export const buildApp = async (deps: AppDeps) => {
             db,
             normalizer,
             entities,
+            translator,
             budget,
             log: app.log,
             normalizeTimeoutMs,
             entitiesTimeoutMs,
+            translateTimeoutMs,
           }),
         },
       ),

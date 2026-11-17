@@ -107,6 +107,7 @@ describe('recognition races and faults', () => {
           lines,
           warnings: [],
           normalized: null,
+          translatedLines: null,
           entities: [],
         })
       },

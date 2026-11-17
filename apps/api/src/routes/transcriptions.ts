@@ -15,6 +15,7 @@ import type { Renormalizer } from '../jobs/renormalize.ts'
 import { ApiError } from '../lib/errors.ts'
 import { maxEditBodyBytes, recordEditsPerMinute, recordReadsPerMinute } from '../lib/limits.ts'
 import { editLines, loadHistory, transcriptionNotFound, verifyVersion } from '../services/edits.ts'
+import type { LlmLog } from '../services/llm/index.ts'
 import { loadTranscription } from '../services/transcriptions.ts'
 
 type EditingDeps = {
@@ -27,8 +28,8 @@ export const transcriptionRoutes =
   (db: Database, editing: EditingDeps | undefined): FastifyPluginAsyncZod =>
   async (app) => {
     const perMinute = (max: number) => app.rateLimit({ max, timeWindow: '1 minute' })
-    const loaded = async (transcriptionId: string) => {
-      const transcription = await loadTranscription(db, transcriptionId)
+    const loaded = async (transcriptionId: string, log: LlmLog) => {
+      const transcription = await loadTranscription(db, transcriptionId, log)
       if (!transcription) throw transcriptionNotFound()
       return transcription
     }
@@ -39,7 +40,7 @@ export const transcriptionRoutes =
         onRequest: perMinute(recordReadsPerMinute),
         schema: { params: idParamsSchema, response: { 200: transcriptionSchema } },
       },
-      async (request) => loaded(request.params.id),
+      async (request) => loaded(request.params.id, request.log),
     )
 
     app.get(
@@ -64,7 +65,7 @@ export const transcriptionRoutes =
           code: 'version_conflict',
           message: 'Транскрипцію вже змінили, ось поточна версія',
         },
-        current: await loaded(currentId),
+        current: await loaded(currentId, reply.log),
       })
 
     app.decorateRequest('sessionUser', null)
@@ -90,7 +91,7 @@ export const transcriptionRoutes =
         )
         if (outcome.kind === 'conflict') return conflict(reply, outcome.currentId)
         if (outcome.kind === 'edited') renormalizer.schedule(outcome.transcriptionId)
-        return loaded(outcome.transcriptionId)
+        return loaded(outcome.transcriptionId, request.log)
       },
     )
 
@@ -115,7 +116,7 @@ export const transcriptionRoutes =
         }
         const outcome = await verifyVersion(db, request.params.id, user.id, request.body)
         if (outcome.kind === 'conflict') return conflict(reply, outcome.currentId)
-        return loaded(outcome.transcriptionId)
+        return loaded(outcome.transcriptionId, request.log)
       },
     )
   }

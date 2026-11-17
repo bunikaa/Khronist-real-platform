@@ -14,6 +14,7 @@ import { selectChatResponder } from './services/chat.ts'
 import { selectEntityExtractor } from './services/entities.ts'
 import { selectExplainer } from './services/explain.ts'
 import { selectNormalizer } from './services/normalize.ts'
+import { selectTranslator } from './services/translate.ts'
 
 const closeMarginMs = 10_000
 const statementTimeoutMs = 15_000
@@ -37,6 +38,7 @@ const budget = createCallBudget(db, config.MODEL_CALLS_PER_DAY)
 const reader = selectHtrReader(config, budget)
 const normalizer = selectNormalizer(config, budget)
 const entities = selectEntityExtractor(config, budget)
+const translator = selectTranslator(config, budget)
 const explain = selectExplainer(config, db, budget)
 const chat = selectChatResponder(config, db, budget)
 const hub = createEventHub()
@@ -63,6 +65,7 @@ const app = await buildApp({
     reader,
     normalizer,
     entities,
+    translator,
     budget,
     hub,
     queue,

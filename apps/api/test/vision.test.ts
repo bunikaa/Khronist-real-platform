@@ -371,6 +371,16 @@ describe('vision reader', () => {
     await expect(readReply([line])).rejects.toBeInstanceOf(LlmOutputError)
   })
 
+  it.each([
+    ['a NUL character', 'Іва\u0000н'],
+    ['a lone surrogate', 'Іван\ud800'],
+  ])('rejects a word with %s, which the database cannot store', async (_, word) => {
+    const words = [word, 'Коваленко'].map((text) => ({ text, uncertain: false }))
+    await expect(readReply([{ text: `${word} Коваленко`, words }])).rejects.toBeInstanceOf(
+      LlmOutputError,
+    )
+  })
+
   it('accepts a line that differs from its words only in spacing', async () => {
     const words = [
       { text: 'Іван', uncertain: false },

@@ -1,4 +1,4 @@
-Читай `docs/plan/04-ml-htr.md`, `docs/plan/05-knowledge-rag.md` і розділи 4, 8–11 `docs/plan/07-contracts.md`.
+Читай `docs/plan/04-ml-htr.md`, `docs/plan/05-knowledge-rag.md` і розділи 4, 8–12 `docs/plan/07-contracts.md`.
 - Промпт = тека з `system.md`, `user.md`, `schema.json`, `README.md` і `examples.jsonl` (у `htr_vision` прикладів поки немає); зміна промпту без оновлення прикладів не приймається.
 - `schema.json` дорівнює Zod-схемі з `packages/contracts`; це перевіряє тест пакета.
 - Промпти забороняють відповідати без наданих джерел; у прикладах обов'язково є випадки «не знаю». `htr_vision` зберігає орфографію оригіналу й позначає непевні слова.

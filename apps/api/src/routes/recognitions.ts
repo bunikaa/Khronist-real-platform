@@ -142,7 +142,7 @@ export const recognitionRoutes =
         schema: { params: idParamsSchema, response: { 200: recognitionStateSchema } },
       },
       async (request) => {
-        const state = await getRecognitionState(deps.db, request.params.id)
+        const state = await getRecognitionState(deps.db, request.params.id, request.log)
         if (!state) throw new ApiError(404, 'not_found', 'Розпізнавання не знайдено')
         return state
       },
@@ -201,7 +201,7 @@ export const recognitionRoutes =
           if (deps.hub.hasHistory(id)) return
           const current = await findRecognition(deps.db, id)
           if (current && (current.status === 'done' || current.status === 'failed')) {
-            for (const event of await replayEvents(deps.db, current)) send(event)
+            for (const event of await replayEvents(deps.db, current, request.log)) send(event)
           }
         }
         const heartbeat = setInterval(() => {
@@ -233,7 +233,7 @@ export const recognitionRoutes =
           const hasHistory = deps.hub.hasHistory(id)
           const finished = record.status === 'done' || record.status === 'failed'
           if (finished && !hasHistory) {
-            for (const event of await replayEvents(deps.db, record)) send(event)
+            for (const event of await replayEvents(deps.db, record, request.log)) send(event)
             return
           }
           if (!hasHistory) send({ event: 'progress', data: { status: record.status } })

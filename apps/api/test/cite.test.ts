@@ -85,6 +85,7 @@ const newVersion = (regionId: string, text: string) =>
     ],
     warnings: [],
     normalized: null,
+    translatedLines: null,
     entities: [],
   })
 

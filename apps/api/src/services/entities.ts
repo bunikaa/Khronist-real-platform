@@ -7,6 +7,7 @@ import {
 import { loadPrompt, renderPrompt } from '@khronist/prompts'
 import type { Config } from '../config.ts'
 import { entitiesPrimaryLimitMs } from '../lib/limits.ts'
+import { hiddenCharacters } from '../lib/text.ts'
 import { dateExtra } from './calendar.ts'
 import { hintValues, isRussianOrUnmarked } from './hints.ts'
 import type { CallBudget, LlmCallLog, LlmProvider } from './llm/index.ts'
@@ -44,7 +45,6 @@ const foldedUnits = (text: string) => {
 
 const maxEntities = 200
 const maxNormalizedLength = 200
-const hiddenCharacters = /[\p{Cc}\p{Cf}]/u
 
 const cleanNormalized = (value: string): string | undefined => {
   const trimmed = value.trim()

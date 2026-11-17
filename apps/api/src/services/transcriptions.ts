@@ -7,7 +7,7 @@ import type {
   Transcription,
   Word,
 } from '@khronist/contracts'
-import { readingWarningSchema } from '@khronist/contracts'
+import { readingWarningSchema, translationFitsLines } from '@khronist/contracts'
 import { asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
@@ -22,6 +22,7 @@ import {
   transcriptions,
   user,
 } from '../db/schema.ts'
+import type { LlmLog } from './llm/index.ts'
 
 const extraSchema = z.record(z.string(), z.unknown())
 
@@ -33,6 +34,7 @@ export type NewVersion = {
   lines: Line[]
   warnings: ReadingWarning[]
   normalized: NormalizeOutput | null
+  translatedLines: string[] | null
   entities: Entity[]
   authorId?: string
 }
@@ -99,6 +101,7 @@ export const insertTranscriptionVersion = async (
       normalizedText: normalizedTextOf(lines, normalized),
       normalizedLines: normalized?.lines ?? null,
       expansions: normalized?.expansions ?? null,
+      translatedLines: version.translatedLines,
       warnings,
       reader,
       authorId: version.authorId ?? null,
@@ -182,9 +185,21 @@ export const loadLines = async (db: Database, transcriptionId: string): Promise<
 
 const { tsv: _searchVector, ...storedFields } = getTableColumns(transcriptions)
 
+const translationFitting = (
+  stored: unknown,
+  lines: Line[],
+  { log, transcriptionId }: { log: LlmLog; transcriptionId: string },
+): string[] | undefined => {
+  if (stored === null) return undefined
+  if (translationFitsLines(lines, stored)) return stored
+  log.warn({ transcriptionId }, 'the stored translation does not fit the lines, leaving it out')
+  return undefined
+}
+
 const readTranscription = async (
   db: Database,
   transcriptionId: string,
+  log: LlmLog,
 ): Promise<Transcription | undefined> => {
   const [t] = await db
     .select(storedFields)
@@ -220,6 +235,7 @@ const readTranscription = async (
     return row ? { name: row.name } : undefined
   }
   const author = await nameOf(t.authorId)
+  const translatedLines = translationFitting(t.translatedLines, lines, { log, transcriptionId })
   const verifiedBy = await nameOf(t.verifiedBy)
 
   return {
@@ -233,6 +249,7 @@ const readTranscription = async (
     normalizedText: t.normalizedText,
     ...(t.normalizedLines && { normalizedLines: t.normalizedLines }),
     ...(t.expansions && { expansions: t.expansions }),
+    ...(translatedLines && { translatedLines }),
     entities: entityRows.map((entity) => {
       const extra = extraSchema.safeParse(entity.extra)
       return {
@@ -258,8 +275,9 @@ const readTranscription = async (
 export const loadTranscription = (
   db: Database,
   transcriptionId: string,
+  log: LlmLog,
 ): Promise<Transcription | undefined> =>
-  db.transaction((snapshot) => readTranscription(snapshot, transcriptionId), {
+  db.transaction((snapshot) => readTranscription(snapshot, transcriptionId, log), {
     isolationLevel: 'repeatable read',
     accessMode: 'read only',
   })

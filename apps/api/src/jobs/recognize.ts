@@ -17,13 +17,17 @@ import {
   normalizeTimeoutMs,
   readTimeoutMs,
   staleAfterMs,
+  translateTimeoutMs,
 } from '../lib/limits.ts'
 import { runWithTimeout } from '../lib/timeout.ts'
 import type { HtrReader } from '../services/htr/index.ts'
-import { assertEntitiesFit, type EntityExtractor } from '../services/entities.ts'
+import type { EntityExtractor } from '../services/entities.ts'
 import { assertNormalized, type Normalizer } from '../services/normalize.ts'
 import { insertTranscriptionVersion, normalizedTextOf } from '../services/transcriptions.ts'
+import type { Translator } from '../services/translate.ts'
+import { findEntities, findTranslation } from './enrichment.ts'
 import type { EventHub } from './events.ts'
+import type { JobLogger } from './logger.ts'
 
 const failureMessages: Record<RecognitionFailureCode, string> = {
   read_failed: 'Не вдалося прочитати фрагмент',
@@ -48,25 +52,18 @@ export const failureOf = (row: StoredFailure) => {
   return { code, message: row.errorMessage ?? failureMessages[code] }
 }
 
-type LogFn = (details: object, message: string) => void
-
-export type JobLogger = {
-  info: LogFn
-  warn: LogFn
-  error: LogFn
-  child: (bindings: Record<string, string>) => JobLogger
-}
-
 export type JobDeps = {
   db: Database
   reader: HtrReader
   normalizer: Normalizer
   entities: EntityExtractor
+  translator: Translator
   hub: EventHub
   log: JobLogger
   readTimeoutMs?: number | undefined
   normalizeTimeoutMs?: number | undefined
   entitiesTimeoutMs?: number | undefined
+  translateTimeoutMs?: number | undefined
 }
 
 export type RecognitionJob = {
@@ -109,31 +106,6 @@ const ensureActive = async (db: Database, id: string) => {
     .limit(1)
   if (!row) throw new JobCancelledError()
 }
-
-type EntitySearch = {
-  normalizedText: string
-  hints?: Hints | undefined
-  log: JobLogger
-  timeoutMs: number
-  stopped?: AbortSignal | undefined
-}
-
-export const findEntities = (
-  extractor: EntityExtractor,
-  { normalizedText, hints, log, timeoutMs, stopped }: EntitySearch,
-): Promise<Entity[]> =>
-  runWithTimeout(
-    (signal) => extractor.extract({ normalizedText, hints, signal, log }),
-    timeoutMs,
-    'entities',
-    stopped,
-  )
-    .then((found) => assertEntitiesFit(normalizedText, found))
-    .catch((error: unknown) => {
-      if (stopped?.aborted) throw error
-      log.warn({ err: error }, 'entities failed, keeping the text without them')
-      return []
-    })
 
 const setStatus = async (db: Database, id: string, status: 'reading' | 'normalizing') => {
   const rows = await db
@@ -220,6 +192,7 @@ type ReadingToSave = {
   lines: Line[]
   warnings: Awaited<ReturnType<HtrReader['read']>>['warnings']
   normalized: NormalizeOutput | null
+  translatedLines: string[] | null
   entities: Entity[]
 }
 
@@ -300,15 +273,23 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
       })
     const normalizedText = normalizedTextOf(lines, normalized)
     await ensureActive(db, recognitionId)
-    const entities = stopped?.aborted
-      ? []
-      : await findEntities(deps.entities, {
-          normalizedText,
-          hints,
-          log,
-          timeoutMs: deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
-          stopped,
-        }).catch(() => [])
+    const [entities, translatedLines] = await Promise.all([
+      findEntities(deps.entities, {
+        normalizedText,
+        hints,
+        log,
+        timeoutMs: deps.entitiesTimeoutMs ?? entitiesTimeoutMs,
+        stopped,
+      }),
+      findTranslation(deps.translator, {
+        normalized,
+        hints,
+        log,
+        timeoutMs: deps.translateTimeoutMs ?? translateTimeoutMs,
+        stopped,
+      }),
+    ])
+    if (stopped?.aborted) throw stopped.reason
 
     stage = 'save'
     transcriptionId = await saveTranscription(db, recognitionId, {
@@ -316,9 +297,14 @@ export const runRecognition = async (deps: JobDeps, job: RecognitionJob): Promis
       lines,
       warnings: read.warnings,
       normalized,
+      translatedLines,
       entities,
     })
   } catch (error) {
+    if (stopped?.aborted) {
+      log.warn({ err: error, stage }, 'recognition stopped by the server, the shutdown closes it')
+      return
+    }
     const code = error instanceof NoTextError ? 'no_text' : failureCodeFor[stage]
     const closedElsewhere =
       error instanceof JobCancelledError ||

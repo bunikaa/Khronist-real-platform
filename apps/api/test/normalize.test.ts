@@ -272,6 +272,21 @@ describe('normalizationProblem', () => {
       /changes more than the spelling/,
     )
   })
+
+  it.each([
+    ['a NUL character', 'Свящ\u0000'],
+    ['a lone surrogate', 'Священник\ud800'],
+  ])('refuses an expansion with %s, which the database cannot store', (_case, to) => {
+    const read = lineOf([
+      { text: 'Свящ.', uncertain: false },
+      { text: 'Іоаннъ', uncertain: false },
+    ])
+    const expanded = {
+      ...outputOf([to, 'Иоанн'], read),
+      expansions: [{ from: 'Свящ.', to }],
+    }
+    expect(normalizationProblem([read], expanded)).toMatch(/NUL character or a lone surrogate/)
+  })
 })
 
 describe('selectNormalizer', () => {
