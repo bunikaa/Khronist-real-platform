@@ -51,3 +51,36 @@ describe('distinctEntities', () => {
     expect(distinctEntities(entities)).toEqual(expected)
   })
 })
+
+describe('distinctEntities with base forms', () => {
+  const date = (start: number, normalized?: string): Entity => ({
+    ...entity('date', '12 генваря 1884', start),
+    ...(normalized !== undefined && { normalized }),
+  })
+  const dateChip = (normalized?: string) => ({
+    ...chip('date', '12 генваря 1884'),
+    ...(normalized !== undefined && { normalized }),
+  })
+
+  it.each<[string, Entity[], ReturnType<typeof dateChip>[]]>([
+    ['the base form of a single entity', [date(0, '12 января 1884')], [dateChip('12 января 1884')]],
+    ['no base form when none was given', [date(0), date(40)], [dateChip()]],
+    [
+      'the base form of a later repeat when the first has none',
+      [date(0), date(40, '12 января 1884')],
+      [dateChip('12 января 1884')],
+    ],
+    [
+      'the base form of a later repeat when the first one is blank',
+      [date(0, '  '), date(40, '12 января 1884')],
+      [dateChip('12 января 1884')],
+    ],
+    [
+      'the first base form when both have one',
+      [date(0, '12 января 1884'), date(40, '12-го января 1884')],
+      [dateChip('12 января 1884')],
+    ],
+  ])('keeps %s', (_case, entities, expected) => {
+    expect(distinctEntities(entities)).toEqual(expected)
+  })
+})

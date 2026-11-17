@@ -40,4 +40,23 @@ describe('EntityChip', () => {
     expect(active).toContain('border-primary')
     expect(active).toContain('bg-accent-soft')
   })
+
+  it('becomes a button that opens a sheet only when it can be selected', () => {
+    const closed = renderToStaticMarkup(
+      <EntityChip type="term" onSelect={() => undefined}>
+        крестьянинъ
+      </EntityChip>,
+    )
+    const open = renderToStaticMarkup(
+      <EntityChip type="term" state="active" onSelect={() => undefined}>
+        крестьянинъ
+      </EntityChip>,
+    )
+
+    expect(closed).toMatch(/^<button type="button" title="крестьянинъ" aria-haspopup="dialog"/)
+    expect(closed).toContain('aria-expanded="false"')
+    expect(open).toContain('aria-expanded="true"')
+    expect(open).toContain('border-primary')
+    expect(textOf(closed)).toBe('Термін: крестьянинъ')
+  })
 })

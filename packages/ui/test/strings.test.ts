@@ -41,3 +41,13 @@ describe('confirmed texts', () => {
     expect(strings.read.alreadyRead(count, verified)).toBe(text)
   })
 })
+
+describe('explanation texts', () => {
+  it.each([
+    ['суспільне надбання', true, 'переказ статті · суспільне надбання'],
+    ['CC BY-SA 4.0', true, 'переказ статті · CC BY-SA 4.0'],
+    ['CC BY-SA 4.0', false, 'CC BY-SA 4.0'],
+  ])('signs a source under %s, retold: %s', (licence, retelling, text) => {
+    expect(strings.explain.source(licence, retelling)).toBe(text)
+  })
+})
