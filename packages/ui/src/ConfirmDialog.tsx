@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { Button } from './Button.tsx'
+import { Checkbox } from './Checkbox.tsx'
 
 type ConfirmDialogProps = {
   title: string
@@ -41,16 +42,12 @@ export const ConfirmDialog = ({
       <p id={bodyId} className="text-body-13 text-ink-muted">
         {body}
       </p>
-      <label className="flex cursor-pointer items-center gap-2 text-body-13">
-        <input
-          type="checkbox"
-          className="checkbox checkbox-primary size-4 rounded-[3px] border-rule checked:border-primary"
-          checked={dontAsk}
-          disabled={busy}
-          onChange={(event) => onDontAskChange(event.target.checked)}
-        />
-        {dontAskLabel}
-      </label>
+      <Checkbox
+        label={dontAskLabel}
+        checked={dontAsk}
+        disabled={busy}
+        onChange={(event) => onDontAskChange(event.target.checked)}
+      />
       <div className="flex gap-2">
         <Button autoFocus disabled={busy} onClick={onConfirm}>
           {confirmLabel}
