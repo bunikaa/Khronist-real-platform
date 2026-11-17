@@ -1,22 +1,27 @@
 type SourceRefProps = {
-  index: number
+  number: number
   title: string
   href?: string
-  note?: string
+  note: string
 }
 
-export const SourceRef = ({ index, title, href, note }: SourceRefProps) => (
-  <div className="flex items-baseline gap-2">
-    <span className="shrink-0 font-mono text-mono-11 text-primary">{`[${index}]`}</span>
-    <span className="flex min-w-0 flex-col text-body-12 break-words text-ink-muted">
+export const SourceRef = ({ number, title, href, note }: SourceRefProps) => (
+  <li className="flex gap-2">
+    <span className="mt-px w-5 shrink-0 font-mono text-mono-11 text-primary">{`[${number}]`}</span>
+    <span className="flex min-w-0 flex-col break-words">
       {href ? (
-        <a href={href} target="_blank" rel="noreferrer" className="hover:underline">
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-body-12 text-ink-muted underline-offset-2 hover:underline"
+        >
           {title}
         </a>
       ) : (
-        <span>{title}</span>
+        <span className="text-body-12 text-ink-muted">{title}</span>
       )}
-      {note && <span>{note}</span>}
+      <span className="font-mono text-mono-10 text-ink-muted">{note}</span>
     </span>
-  </div>
+  </li>
 )

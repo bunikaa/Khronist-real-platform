@@ -10,7 +10,7 @@ vi.mock('wxt/browser', async () => {
 const { ApiFailure, VersionConflictFailure } = await import('../api/client.ts')
 const { apiOrigin } = await import('../api/origin.ts')
 const { saveLines, verifyTranscription } = await import('../api/transcriptions.ts')
-const { problemOf } = await import('../entrypoints/sidepanel/failures.ts')
+const { problemOf, transportProblemOf } = await import('../entrypoints/sidepanel/failures.ts')
 const { answerOf } = await import('../entrypoints/sidepanel/useLineEditing.ts')
 
 const token = 'session-token.signature'
@@ -175,6 +175,27 @@ describe('what the panel makes of a failed save', () => {
   const offline = 'Немає зв’язку із сервером. Перевірте мережу й спробуйте ще раз'
   const badResponse = 'Сервер відповів неочікувано. Спробуйте ще раз'
   const timedOut = 'Сервер не відповів вчасно. Спробуйте ще раз'
+
+  it.each([
+    ['a lost network', new TypeError('Failed to fetch'), { message: offline, offline: true }],
+    [
+      'a timeout',
+      new DOMException('signal timed out', 'TimeoutError'),
+      { message: timedOut, offline: false },
+    ],
+    [
+      'an abort',
+      new DOMException('aborted', 'AbortError'),
+      { message: badResponse, offline: false },
+    ],
+    [
+      'a broken answer',
+      new SyntaxError('Unexpected token'),
+      { message: badResponse, offline: false },
+    ],
+  ])('names the transport problem of %s', (_case, error, problem) => {
+    expect(transportProblemOf(error)).toEqual(problem)
+  })
 
   it.each([
     ['a lost network', new TypeError('Failed to fetch'), offline, true, true],

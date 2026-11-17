@@ -48,10 +48,11 @@ type ConfirmOptions = {
   onConfirmed: (transcription: Transcription) => void
   onForbidden: () => void
   shown: boolean
+  hidden: boolean
 }
 
 export const useConfirm = (options: ConfirmOptions) => {
-  const { transcription, session, editing, onConfirmed, onForbidden, shown } = options
+  const { transcription, session, editing, onConfirmed, onForbidden, shown, hidden } = options
   const versionId = transcription?.id
   const [stored, setStored] = useState(() => idle(versionId))
   const state = stored.versionId === versionId ? stored : idle(versionId)
@@ -97,13 +98,13 @@ export const useConfirm = (options: ConfirmOptions) => {
   }, [session])
 
   useEffect(() => {
-    if (!asking || state.sending) return
+    if (!asking || hidden || state.sending) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setStored((current) => ({ ...current, asking: false }))
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [asking, state.sending])
+  }, [asking, hidden, state.sending])
 
   const send = () => {
     if (!transcription || !signedIn || !available || state.sending) return

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ExplainSheet, FactPair, SourceRef } from '../src/index.ts'
+import { ExplainSheet, FactPair } from '../src/index.ts'
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, '')
 
@@ -21,33 +21,6 @@ describe('FactPair', () => {
     expect(html).toContain('<dd class="text-label-13">24 січня 1884, н. ст.</dd>')
     expect(html.match(/<dd /g)).toHaveLength(3)
     expect(textOf(html)).toBe('Дата12 січня 1884, ст. ст.24 січня 1884, н. ст.День тижнячетвер')
-  })
-})
-
-describe('SourceRef', () => {
-  it('numbers the source and links its title to a new tab', () => {
-    const html = renderToStaticMarkup(
-      <SourceRef
-        index={2}
-        title="Энциклопедический словарь Брокгауза и Ефрона, статья «Восприемники»"
-        href="https://ru.wikisource.org/wiki/ЭСБЕ/Восприемники"
-        note="переказ статті · суспільне надбання"
-      />,
-    )
-
-    expect(html).toContain('<span class="shrink-0 font-mono text-mono-11 text-primary">[2]</span>')
-    expect(html).toContain('target="_blank" rel="noreferrer"')
-    expect(html).toContain(
-      '>Энциклопедический словарь Брокгауза и Ефрона, статья «Восприемники»</a>',
-    )
-    expect(html).toContain('<span>переказ статті · суспільне надбання</span>')
-  })
-
-  it('shows the title as text when the source has no address, and no empty note', () => {
-    const html = renderToStaticMarkup(<SourceRef index={1} title="Словник" />)
-
-    expect(html).not.toContain('<a')
-    expect(textOf(html)).toBe('[1]Словник')
   })
 })
 

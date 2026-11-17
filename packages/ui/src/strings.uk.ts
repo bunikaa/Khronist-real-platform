@@ -236,5 +236,35 @@ export const strings = {
       signOut: 'Вийти',
     },
   },
+  tabs: {
+    label: 'Розділи панелі',
+    read: 'Читання',
+    ask: 'Спитати',
+  },
+  chat: {
+    context: (page: string | undefined, count: number) =>
+      page ? `Контекст: ${page}, ${lines(count)} прочитано` : `Контекст: ${lines(count)} прочитано`,
+    contextSwitch: 'Відповідати з урахуванням прочитаного фрагмента',
+    intro:
+      'Запитайте про терміни, дати, місця чи прочитаний фрагмент. Хроніст відповідає лише за джерелами й показує їх під відповіддю.',
+    author: 'Хроніст',
+    waiting: 'Шукаю відповідь у джерелах…',
+    lowConfidence: 'Джерела відповідають лише частково — перевірте за ними',
+    unknown: (withRecord: boolean) =>
+      withRecord
+        ? 'У записі й довідковому корпусі немає відповіді на це запитання.'
+        : 'У довідковому корпусі немає відповіді на це запитання.',
+    sources: 'Джерела',
+    recordSource: 'з транскрипції фрагмента',
+    chunkSource: (licence: string, retelling: boolean) =>
+      retelling ? `переказ статті · ${licence}` : licence,
+    placeholder: (withRecord: boolean) =>
+      withRecord ? 'Запитати про цей аркуш…' : 'Запитати про термін, дату чи місце…',
+    question: 'Запитання',
+    send: 'Надіслати',
+    followups: 'Можна спитати далі',
+    restartNeeded: 'Не вдалося надіслати запитання з цією розмовою. Почніть нову',
+    restart: 'Почати нову розмову',
+  },
   shortcutKeys,
 }

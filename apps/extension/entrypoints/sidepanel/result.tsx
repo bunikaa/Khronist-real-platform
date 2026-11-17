@@ -118,6 +118,7 @@ type ResultProps = {
   signedIn: boolean
   onSelect: () => void
   onSignIn: () => void
+  onAsk: () => void
 }
 
 export const Result = ({
@@ -127,6 +128,7 @@ export const Result = ({
   signedIn,
   onSelect,
   onSignIn,
+  onAsk,
 }: ResultProps) => {
   const modern = modernLines(transcription)
   const warnings = transcription.warnings ?? []
@@ -191,7 +193,12 @@ export const Result = ({
         <div className="absolute inset-x-3 bottom-full z-10 -mb-[5px]">
           <ConflictCompare editing={editing} />
         </div>
-        <ConfirmActions transcription={transcription} confirm={confirm} onSelect={onSelect} />
+        <ConfirmActions
+          transcription={transcription}
+          confirm={confirm}
+          onSelect={onSelect}
+          onAsk={onAsk}
+        />
       </div>
       <Explanation explaining={explaining} />
     </>

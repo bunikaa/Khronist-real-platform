@@ -48,14 +48,13 @@ const DateFacts = ({ date }: { date: NonNullable<ExplainResponse['date']> }) => 
 const Sources = ({ citations }: { citations: Citation[] }) => (
   <ol className="flex flex-col gap-1">
     {distinctSources(citations).map(({ sourceId, title, url, licence, retelling }, index) => (
-      <li key={sourceId}>
-        <SourceRef
-          index={index + 1}
-          title={title}
-          href={url}
-          note={strings.explain.source(licence, retelling)}
-        />
-      </li>
+      <SourceRef
+        key={sourceId}
+        number={index + 1}
+        title={title}
+        href={url}
+        note={strings.explain.source(licence, retelling)}
+      />
     ))}
   </ol>
 )
