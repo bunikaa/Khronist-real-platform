@@ -292,6 +292,8 @@ describe('shelfmark limits', () => {
     expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'ftp://example.org/' }).success).toBe(
       false,
     )
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: '' }).success).toBe(false)
+    expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'example.org/x' }).success).toBe(false)
     expect(shelfmarkSchema.safeParse({ ...base, portalUrl: 'https://example.org/x' }).success).toBe(
       true,
     )

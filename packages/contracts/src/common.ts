@@ -38,8 +38,12 @@ const portalUrlSchema = z
   .refine(
     (value) => {
       if (value.length > maxPortalUrlLength) return false
-      const url = new URL(value)
-      return url.username === '' && url.password === ''
+      try {
+        const url = new URL(value)
+        return url.username === '' && url.password === ''
+      } catch {
+        return false
+      }
     },
     { message: 'portal link must be short and without credentials' },
   )
