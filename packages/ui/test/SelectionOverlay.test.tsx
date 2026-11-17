@@ -21,14 +21,16 @@ describe('isLargeEnough', () => {
 })
 
 describe('ActionBar', () => {
-  it('lays the actions out in a 48 px bar with a rule on top', () => {
+  it('lays the actions out in a 48 px bar with a rule on top, wrapping on a narrow panel', () => {
     const html = renderToStaticMarkup(
       <ActionBar>
         <Button>Виділити фрагмент</Button>
       </ActionBar>,
     )
 
-    expect(html).toContain('h-12')
+    expect(html).toContain('min-h-12')
+    expect(html).toContain('flex-wrap')
+    expect(html).toContain('py-2')
     expect(html).toContain('border-t border-rule')
     expect(html).toContain('>Виділити фрагмент</button>')
   })

@@ -131,7 +131,7 @@ export const Result = ({
   onAsk,
 }: ResultProps) => {
   const modern = modernLines(transcription)
-  const warnings = transcription.warnings ?? []
+  const warnings = [...new Set(transcription.warnings)]
   const explaining = useExplain(transcription.id)
   return (
     <>

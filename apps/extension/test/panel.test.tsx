@@ -226,6 +226,29 @@ describe('side panel', () => {
     expect(container.textContent).toContain('Виділення обрізає текст праворуч')
   })
 
+  it('shows a warning the model repeated once', async () => {
+    currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: false }
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({}))
+        .mockResolvedValueOnce(
+          json({ recognitionId, status: 'cached', transcriptionId: transcription.id }, 201),
+        )
+        .mockResolvedValueOnce(
+          json({
+            recognitionId,
+            status: 'done',
+            transcription: { ...transcription, warnings: ['faint_ink', 'faint_ink'] },
+          }),
+        ),
+    )
+    await render()
+    await deliver({ type: 'fragment', fragment, shelfmark: shelfmark(4) })
+    expect(container.textContent?.split('Бліде чорнило')).toHaveLength(2)
+  })
+
   it('cancels the selection on Esc pressed inside the panel', async () => {
     currentPage = { type: 'page', shelfmark: shelfmark(4), scan: true, selecting: true }
     await render()
