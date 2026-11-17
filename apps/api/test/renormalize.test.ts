@@ -4,6 +4,7 @@ import { entities, transcriptions } from '../src/db/schema.ts'
 import { createRenormalizer, renormalizeVersion } from '../src/jobs/renormalize.ts'
 import { noEntities, placeEntities, type EntityExtractor } from '../src/services/entities.ts'
 import type { Normalizer } from '../src/services/normalize.ts'
+import { noTranslation } from '../src/services/translate.ts'
 import { insertTranscriptionVersion, loadLines } from '../src/services/transcriptions.ts'
 import type { CallBudget } from '../src/services/llm/index.ts'
 import {
@@ -71,6 +72,7 @@ const editVersion = async (
     lines: edited,
     warnings: [],
     normalized: null,
+    translatedLines: null,
     entities: found,
   })
 }
@@ -91,6 +93,7 @@ const deps = (normalizer: Normalizer, extractor: EntityExtractor = noEntities) =
   db: database.db,
   normalizer,
   entities: extractor,
+  translator: noTranslation,
   budget: unlimitedBudget,
   log: silentLog,
 })

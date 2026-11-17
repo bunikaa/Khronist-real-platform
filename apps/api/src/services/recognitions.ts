@@ -24,15 +24,16 @@ import {
   failureOf,
   markFailed,
   runRecognition,
-  type JobLogger,
 } from '../jobs/recognize.ts'
+import type { JobLogger } from '../jobs/logger.ts'
 import { ApiError, isUniqueViolation } from '../lib/errors.ts'
 import { decodePng } from '../lib/image.ts'
 import { activeRecognitionsPerClient, maxBacklog } from '../lib/limits.ts'
 import type { HtrReader } from './htr/index.ts'
-import type { CallBudget } from './llm/index.ts'
+import type { CallBudget, LlmLog } from './llm/index.ts'
 import type { EntityExtractor } from './entities.ts'
 import type { Normalizer } from './normalize.ts'
+import type { Translator } from './translate.ts'
 import { documentMatch, pageIdentity } from './pages.ts'
 import { loadTranscription } from './transcriptions.ts'
 
@@ -41,6 +42,7 @@ export type RecognitionDeps = {
   reader: HtrReader | undefined
   normalizer: Normalizer
   entities: EntityExtractor
+  translator: Translator
   budget: CallBudget
   hub: EventHub
   queue: JobQueue
@@ -48,6 +50,7 @@ export type RecognitionDeps = {
   readTimeoutMs?: number | undefined
   normalizeTimeoutMs?: number | undefined
   entitiesTimeoutMs?: number | undefined
+  translateTimeoutMs?: number | undefined
   heartbeatMs?: number | undefined
   maxBacklog?: number | undefined
   staleAfterMs?: number | undefined
@@ -370,11 +373,12 @@ export const findRecognition = async (db: Database, id: string) => {
 export const getRecognitionState = async (
   db: Database,
   id: string,
+  log: LlmLog,
 ): Promise<RecognitionState | undefined> => {
   const row = await findRecognition(db, id)
   if (!row) return undefined
   const transcription = row.transcriptionId
-    ? await loadTranscription(db, row.transcriptionId)
+    ? await loadTranscription(db, row.transcriptionId, log)
     : undefined
   return {
     recognitionId: row.id,
@@ -389,10 +393,11 @@ type RecognitionRow = NonNullable<Awaited<ReturnType<typeof findRecognition>>>
 export const replayEvents = async (
   db: Database,
   row: RecognitionRow,
+  log: LlmLog,
 ): Promise<RecognitionEvent[]> => {
   if (row.status === 'failed') return [{ event: 'failed', data: failureOf(row) }]
   const transcription = row.transcriptionId
-    ? await loadTranscription(db, row.transcriptionId)
+    ? await loadTranscription(db, row.transcriptionId, log)
     : undefined
   if (!transcription) return [failureEvent('save_failed')]
   return [

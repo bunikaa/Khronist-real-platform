@@ -95,6 +95,7 @@ const addVersion = (regionId: string, text: string, found: Entity[] = []) =>
     lines: linesOf(text),
     warnings: [],
     normalized: null,
+    translatedLines: null,
     entities: found,
   })
 
