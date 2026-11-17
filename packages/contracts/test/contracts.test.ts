@@ -13,9 +13,73 @@ import {
   searchQuerySchema,
   sessionResponseSchema,
   shelfmarkSchema,
+  transcriptionSchema,
+  translationFitsLines,
   verifyRequestSchema,
   visionToLines,
 } from '../src/index.ts'
+
+describe('transcriptionSchema', () => {
+  const transcription = {
+    id: '019a0000-0000-7000-8000-000000000001',
+    regionId: '019a0000-0000-7000-8000-000000000002',
+    box: { x: 0, y: 0, w: 1, h: 1 },
+    version: 1,
+    status: 'draft',
+    lines: [
+      {
+        idx: 0,
+        text: 'Села Борщаговки',
+        box: { x: 0, y: 0, w: 1, h: 0.5 },
+        boxSource: 'model',
+        uncertain: false,
+        words: [
+          { text: 'Села', uncertain: false },
+          { text: 'Борщаговки', uncertain: false },
+        ],
+      },
+    ],
+    normalizedText: 'Села Борщаговки',
+    entities: [],
+    reader: 'claude-test',
+    createdAt: '2026-11-17T10:00:00.000Z',
+  }
+
+  it.each([
+    ['without a translation', {}, true],
+    ['with a translation', { translatedLines: ['Села Борщагівки'] }, true],
+    ['with a translated line at the line length', { translatedLines: ['а'.repeat(500)] }, true],
+    ['with a translated line over the line length', { translatedLines: ['а'.repeat(501)] }, false],
+    ['with fewer translated lines than lines', { translatedLines: [] }, false],
+    ['with more translated lines than lines', { translatedLines: ['Села', 'Борщагівки'] }, false],
+    ['with a translation as one string', { translatedLines: 'Села Борщагівки' }, false],
+    ['with a translated line that is not a string', { translatedLines: [null] }, false],
+    [
+      'with a line break in a translated line',
+      { translatedLines: ['Села\u2028Борщагівки'] },
+      false,
+    ],
+    ['with a NUL in a translated line', { translatedLines: ['Села\u0000'] }, false],
+  ])('parses a transcription %s', (_case, extra, valid) => {
+    expect(transcriptionSchema.safeParse({ ...transcription, ...extra }).success).toBe(valid)
+  })
+})
+
+describe('translationFitsLines', () => {
+  it.each<[string, unknown, boolean]>([
+    ['one storable line per line', ['а', 'б'], true],
+    ['blank lines', ['', ' '], true],
+    ['a missing line', ['а'], false],
+    ['a string as long as the lines', 'аб', false],
+    ['an item that is not a string', ['а', 1], false],
+    ['null', null, false],
+    ['a line over the line length', ['а', 'б'.repeat(501)], false],
+    ['a carriage return', ['а\r', 'б'], false],
+    ['a lone surrogate', ['а', 'б\ud800'], false],
+  ])('%s', (_case, translated, fits) => {
+    expect(translationFitsLines(['x', 'y'], translated)).toBe(fits)
+  })
+})
 
 describe('visionToLines', () => {
   it('splits the selected area into equal estimated strips', () => {
@@ -186,9 +250,12 @@ describe('request limits', () => {
     expect(
       patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0), line(0)] }).success,
     ).toBe(false)
-    expect(
-      patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0, 'а\nб')] }).success,
-    ).toBe(false)
+    for (const broken of ['а\nб', 'а\rб', 'а\u2028б', 'а\u2029б', 'а\u0000б']) {
+      expect(
+        patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0, broken)] }).success,
+        JSON.stringify(broken),
+      ).toBe(false)
+    }
     expect(
       patchLinesRequestSchema.safeParse({ baseVersion: 1, lines: [line(0, 'x'.repeat(501))] })
         .success,

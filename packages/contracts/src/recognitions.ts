@@ -19,7 +19,23 @@ export const yearSchema = z.number().int().min(1000).max(2100)
 
 const personNameSchema = z.object({ name: z.string() })
 
-export const transcriptionSchema = z.object({
+export const maxLineLength = 500
+
+export const lineTextSchema = z
+  .string()
+  .max(maxLineLength)
+  .refine((text) => !/[\r\n\u2028\u2029]/.test(text), { message: 'a line has no line breaks' })
+  .refine(storableText, { message: 'NUL character or lone surrogate' })
+
+export const translationFitsLines = (
+  lines: readonly unknown[],
+  translatedLines: unknown,
+): translatedLines is string[] =>
+  Array.isArray(translatedLines) &&
+  translatedLines.length === lines.length &&
+  translatedLines.every((line) => lineTextSchema.safeParse(line).success)
+
+const transcriptionFieldsSchema = z.object({
   id: z.uuid(),
   regionId: z.uuid(),
   shelfmark: shelfmarkSchema.optional(),
@@ -30,6 +46,7 @@ export const transcriptionSchema = z.object({
   normalizedText: z.string(),
   normalizedLines: normalizeOutputSchema.shape.lines.optional(),
   expansions: normalizeOutputSchema.shape.expansions.optional(),
+  translatedLines: z.array(z.string()).optional(),
   entities: z.array(entitySchema),
   warnings: z.array(readingWarningSchema).optional(),
   reader: z.string(),
@@ -39,6 +56,12 @@ export const transcriptionSchema = z.object({
   verifiedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
 })
+
+export const transcriptionSchema = transcriptionFieldsSchema.refine(
+  ({ lines, translatedLines }) =>
+    translatedLines === undefined || translationFitsLines(lines, translatedLines),
+  { message: 'one storable translated line per line', path: ['translatedLines'] },
+)
 export type Transcription = z.infer<typeof transcriptionSchema>
 
 export const createRecognitionRequestSchema = z.object({
@@ -93,7 +116,6 @@ export const recognitionEventSchema = z.discriminatedUnion('event', [
 export type RecognitionEvent = z.infer<typeof recognitionEventSchema>
 
 export const maxPatchedLines = 200
-export const maxLineLength = 500
 
 export const patchLinesRequestSchema = z.object({
   baseVersion: z.number().int().min(1),
@@ -101,11 +123,7 @@ export const patchLinesRequestSchema = z.object({
     .array(
       z.object({
         idx: z.number().int().min(0),
-        text: z
-          .string()
-          .max(maxLineLength)
-          .refine((text) => !/[\r\n]/.test(text), { message: 'a line has no line breaks' })
-          .refine(storableText, { message: 'NUL character or lone surrogate' }),
+        text: lineTextSchema,
       }),
     )
     .min(1)
