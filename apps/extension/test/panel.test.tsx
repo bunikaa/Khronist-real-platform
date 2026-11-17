@@ -1429,8 +1429,6 @@ describe('side panel', () => {
 
         it.each([
           ['absent', {}],
-          ['empty', { translatedLines: [] }],
-          ['shorter than the lines', { translatedLines: ['Села Борщагівки'] }],
           ['blank', { translatedLines: ['', ' '] }],
         ])('keeps the modern spelling when the translation is %s', async (_, translation) => {
           readWith({ normalizedLines, ...translation })

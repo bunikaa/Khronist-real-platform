@@ -1,5 +1,6 @@
 import {
   normalizeOutputSchema,
+  storableText,
   type Hints,
   type Line,
   type NormalizeOutput,
@@ -93,6 +94,9 @@ export const normalizationProblem = (
 ): string | undefined => {
   if (output.lines.length !== lines.length) {
     return `normalization returned ${output.lines.length} of ${lines.length} lines`
+  }
+  if (output.lines.some((line) => !storableText(line.text))) {
+    return 'the normalization holds a NUL character or a lone surrogate'
   }
   const expanded = new Set<string>()
   for (const expansion of output.expansions) {

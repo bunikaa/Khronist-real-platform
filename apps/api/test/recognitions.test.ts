@@ -17,6 +17,7 @@ import type { HtrReader } from '../src/services/htr/index.ts'
 import { createLlmEntityExtractor, noEntities } from '../src/services/entities.ts'
 import { parseOutput, type LlmProvider } from '../src/services/llm/index.ts'
 import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
+import { noTranslation } from '../src/services/translate.ts'
 import {
   createRecordingReader,
   createTestApp,
@@ -388,6 +389,7 @@ describe('recognitions', () => {
       reader: createFixtureReader(),
       normalizer: passthroughNormalizer,
       entities: noEntities,
+      translator: noTranslation,
       hub: createEventHub(),
       log: silentLog,
     })
@@ -746,6 +748,7 @@ describe('recognitions', () => {
           reader: createFixtureReader(),
           normalizer: passthroughNormalizer,
           entities: noEntities,
+          translator: noTranslation,
           hub,
           log: silentLog,
         },

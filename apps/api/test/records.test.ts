@@ -99,6 +99,7 @@ describe('GET /v1/pages/lookup', () => {
       lines: first.lines,
       warnings: [],
       normalized: null,
+      translatedLines: null,
       entities: [],
     })
 

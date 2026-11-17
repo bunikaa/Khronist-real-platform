@@ -23,7 +23,7 @@ export const citeRoutes =
       async (request) => {
         const { transcriptionId, format, withTranscription } = request.body
         const versionId = await preferredVersionId(db, transcriptionId)
-        const transcription = versionId && (await loadTranscription(db, versionId))
+        const transcription = versionId && (await loadTranscription(db, versionId, request.log))
         if (!transcription) throw transcriptionNotFound()
         if (!transcription.shelfmark) throw withoutShelfmark()
         const { shelfmark } = transcription

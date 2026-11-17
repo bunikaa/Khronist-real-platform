@@ -1,6 +1,7 @@
 import {
   htrVisionOutputSchema,
   readingWarningSchema,
+  storableText,
   visionToLines,
   type ReadingWarning,
 } from '@khronist/contracts'
@@ -33,6 +34,9 @@ const visionOutput = htrVisionOutputSchema
       ),
     { message: 'the words of a line must add up to its text' },
   )
+  .refine(({ lines }) => lines.every((line) => storableText(line.text)), {
+    message: 'a line holds a NUL character or a lone surrogate',
+  })
 
 const knownWarnings = (warnings: string[]): ReadingWarning[] => [
   ...new Set(

@@ -86,6 +86,7 @@ export const editLines = (
       }),
       warnings: warningsOf(version.warnings),
       normalized: null,
+      translatedLines: null,
       entities: [],
       authorId,
     })

@@ -1,0 +1,1 @@
+ALTER TABLE "transcriptions" ADD COLUMN "translated_lines" jsonb;

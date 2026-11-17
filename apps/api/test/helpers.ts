@@ -9,7 +9,7 @@ import { migrationsFolder } from '../src/db/migrate.ts'
 import * as schema from '../src/db/schema.ts'
 import { createEventHub } from '../src/jobs/events.ts'
 import { createJobQueue } from '../src/jobs/queue.ts'
-import type { JobLogger } from '../src/jobs/recognize.ts'
+import type { JobLogger } from '../src/jobs/logger.ts'
 import { pngEnd } from '../src/lib/image.ts'
 import { createFixtureReader } from '../src/services/htr/fixture.ts'
 import type { HtrReader, ReadInput } from '../src/services/htr/index.ts'
@@ -23,6 +23,7 @@ import type { ChatResponder } from '../src/services/chat.ts'
 import { noEntities, type EntityExtractor } from '../src/services/entities.ts'
 import type { Explainer } from '../src/services/explain.ts'
 import { passthroughNormalizer, type Normalizer } from '../src/services/normalize.ts'
+import { noTranslation, type Translator } from '../src/services/translate.ts'
 
 export const createTestDatabase = async () => {
   const client = new PGlite({ extensions: { pg_trgm } })
@@ -160,6 +161,7 @@ export type TestAppOptions = {
   reader?: HtrReader | undefined
   normalizer?: Normalizer
   entities?: EntityExtractor
+  translator?: Translator
   explain?: Explainer
   guestExplainsPerDay?: number
   chat?: ChatResponder
@@ -169,6 +171,7 @@ export type TestAppOptions = {
   readTimeoutMs?: number
   normalizeTimeoutMs?: number
   entitiesTimeoutMs?: number
+  translateTimeoutMs?: number
   maxBacklog?: number
   staleAfterMs?: number
   maxStreamMs?: number
@@ -220,6 +223,7 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
       reader,
       normalizer: options.normalizer ?? passthroughNormalizer,
       entities: options.entities ?? noEntities,
+      translator: options.translator ?? noTranslation,
       budget: options.budget ?? unlimitedBudget,
       hub,
       queue,
@@ -227,6 +231,7 @@ export const createTestApp = async (database: TestDatabase, options: TestAppOpti
       readTimeoutMs: options.readTimeoutMs,
       normalizeTimeoutMs: options.normalizeTimeoutMs,
       entitiesTimeoutMs: options.entitiesTimeoutMs,
+      translateTimeoutMs: options.translateTimeoutMs,
       maxBacklog: options.maxBacklog,
       staleAfterMs: options.staleAfterMs,
       maxStreamMs: options.maxStreamMs,
