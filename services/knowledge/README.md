@@ -42,6 +42,30 @@ uv run python eval/run_htr_eval.py --reference eval/gold/lines.jsonl \
 
 Тест перевіряє, що статті з `relevant` існують, а текст запитання без відповіді не збігається з жодним терміном чи варіантом корпусу: якщо корпус дожене таке запитання, тест упаде. Запитання про дати — лише в чаті, бо календарних статей у корпусі немає, а дати в «Пояснити» API перераховує кодом. Чат — без запису аркуша.
 
+### Оцінка «Пояснити»
+
+`eval/run_qa.py` ставить запитання `mode: explain` локальному API (`POST /v1/explain`) і рахує, скільки відповідей без джерела, скільки правильних «не знаю» і які цитати не з `relevant`. Логіка підрахунку — `src/khronist_knowledge/qa_report.py`, тест — `tests/test_qa_report.py`. Запитання чату скрипт поки не ставить.
+
+Поріг `RETRIEVAL_MIN_RANK` — змінна API, тому для кожного значення API запускається заново. Node не перекриває змінні, задані в оболонці, значеннями з `.env`, тож у PowerShell (з кореня репозиторію):
+
+```powershell
+$env:ADMIN_API_KEY='local-qa'; $env:LLM_FIXTURES='0'; $env:RETRIEVAL_MIN_RANK='0.05'; pnpm --filter @khronist/api dev
+```
+
+В іншому вікні (з `services/knowledge`) — корпус у локальний API і прогін. Адресу API задавати в оболонці: у кореневому `.env` `KHRONIST_API_URL` може вказувати на прод.
+
+```powershell
+$env:KHRONIST_API_URL='http://127.0.0.1:3000'; $env:ADMIN_API_KEY='local-qa'; $env:PYTHONIOENCODING='utf-8'
+uv run python scripts/ingest.py
+uv run python eval/run_qa.py ask --min-rank 0.05 --out eval/.cache/qa/0.05.jsonl
+uv run python eval/run_qa.py report --runs eval/.cache/qa/0.05.jsonl ... --out eval/results/<дата>-qa.md
+```
+
+- `--min-rank` — лише підпис прогону у звіті: скрипт не знає, з яким порогом запущено API, тож значення має збігатися з `RETRIEVAL_MIN_RANK`.
+- `LLM_FIXTURES=0` обов'язковий: із заготовками відповідей модель не викликається. Один прогін — 18 викликів моделі; ліміт гостя на «Пояснити» — 10 запитів на хвилину, тож скрипт чекає за `retry-after`, і прогін триває 2–3 хвилини.
+- Цитата належить статті, якщо назва її джерела збігається з `source_title` статті; джерело кількох статей зараховується, якщо релевантна хоч одна з них. Відповідь правильна, лише коли релевантні всі цитати.
+- Частки у звіті округлено вниз.
+
 ## Пакетне читання демо-фонду
 
 `scripts/batch_recognize.py` читає зображення демо-фонду з `docs/demo-fund/pages.json` через API (`POST /v1/recognitions` з ключем API, `source: batch`), щоб публічний пошук і Commons мали прочитані аркуші до демо (`docs/plan/04-ml-htr.md`, крок 6).

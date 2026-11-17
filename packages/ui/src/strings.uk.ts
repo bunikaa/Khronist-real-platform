@@ -146,6 +146,25 @@ export const strings = {
     section: 'Сутності',
     type: (type: Entity['type']) => `${entityTypes[type]}: `,
   },
+  explain: {
+    label: {
+      person: 'Пояснення імені',
+      place: 'Пояснення топоніма',
+      term: 'Пояснення терміна',
+      date: 'Пояснення дати',
+    } satisfies Record<Entity['type'], string>,
+    loading: 'Шукаємо в довідковому корпусі…',
+    noSources: 'У довідковому корпусі немає пояснення.',
+    unavailable: 'Пояснення зараз недоступне.',
+    lowConfidence: 'Джерела відповідають лише частково, звірте зі статтею',
+    date: 'Дата',
+    oldStyle: (date: string) => `${date}, ст. ст.`,
+    newStyle: (date: string) => `${date}, н. ст.`,
+    weekday: 'День тижня',
+    source: (licence: string, retelling: boolean) =>
+      retelling ? `переказ статті · ${licence}` : licence,
+    close: 'Закрити',
+  },
   confirm: {
     action: 'Підтвердити',
     question: (count: number) =>
