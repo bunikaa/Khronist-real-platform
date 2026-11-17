@@ -1,7 +1,8 @@
 import type { Citation, ExplainResponse } from '@khronist/contracts'
 import { ExplainSheet, FactPair, SourceRef, StatusBar, strings } from '@khronist/ui'
 import { CircleAlert } from 'lucide-react'
-import type { Explaining, ExplainProblem } from './useExplain.ts'
+import { failureAlertOf, type RequestFailure } from './failures.ts'
+import type { Explaining } from './useExplain.ts'
 
 export const distinctSources = (citations: Citation[]) => {
   const seen = new Set<string>()
@@ -67,16 +68,11 @@ const Answer = ({ response }: { response: ExplainResponse }) => (
   </>
 )
 
-type ProblemProps = { problem: ExplainProblem; onRetry: () => void; onClose: () => void }
+type ProblemProps = { problem: RequestFailure; onRetry: () => void; onClose: () => void }
 
 const Problem = ({ problem, onRetry, onClose }: ProblemProps) => (
   <div className="-mx-3">
-    <StatusBar
-      type={problem.offline ? 'error' : 'warning'}
-      message={problem.message}
-      action={problem.retryable ? strings.read.retry : strings.account.dismiss}
-      onAction={problem.retryable ? onRetry : onClose}
-    />
+    <StatusBar {...failureAlertOf(problem, { onRetry, onDismiss: onClose })} />
   </div>
 )
 

@@ -7,16 +7,14 @@ import {
 import { useCallback, useRef, useState } from 'react'
 import { ApiFailure } from '../../api/client.ts'
 import { explain } from '../../api/explain.ts'
-import { transportProblemOf } from './failures.ts'
+import { transportProblemOf, type RequestFailure } from './failures.ts'
 
 export type ShownEntity = { type: Entity['type']; text: string; normalized?: string }
-
-export type ExplainProblem = { message: string; offline: boolean; retryable: boolean }
 
 type ExplanationState =
   | { status: 'loading' }
   | { status: 'answered'; response: ExplainResponse }
-  | { status: 'failed'; problem: ExplainProblem }
+  | { status: 'failed'; problem: RequestFailure }
 
 type Opened = {
   transcriptionId: string
@@ -51,7 +49,7 @@ export const explainRequestFor = (
 export const canExplain = (entity: ShownEntity) =>
   explainRequestSchema.shape.text.safeParse(askedText(entity)).success
 
-export const explainProblemOf = (error: unknown): ExplainProblem => {
+export const explainProblemOf = (error: unknown): RequestFailure => {
   if (error instanceof ApiFailure) {
     return { message: error.message, offline: false, retryable: !finalCodes.has(error.code) }
   }

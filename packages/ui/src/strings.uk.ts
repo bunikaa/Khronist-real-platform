@@ -1,6 +1,7 @@
 import {
   maxSearchQueryLength,
   maxSignatureLength,
+  type CiteRequest,
   type Entity,
   type ReadingWarning,
   type Shelfmark,
@@ -174,6 +175,19 @@ export const strings = {
     source: (licence: string, retelling: boolean) =>
       retelling ? `переказ статті · ${licence}` : licence,
     close: 'Закрити',
+  },
+  cite: {
+    title: 'Цитата',
+    format: 'Формат цитати',
+    formats: { dstu: 'ДСТУ', markdown: 'Markdown', text: 'Текст' } satisfies Record<
+      CiteRequest['format'],
+      string
+    >,
+    withTranscription: 'З транскрипцією',
+    loading: 'Складаємо цитату…',
+    copy: 'Скопіювати',
+    copied: 'Скопійовано',
+    copyFailed: 'Не вдалося скопіювати. Виділіть текст цитати й скопіюйте вручну',
   },
   confirm: {
     action: 'Підтвердити',

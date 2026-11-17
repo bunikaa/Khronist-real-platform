@@ -18,6 +18,7 @@ import {
   type MouseEvent,
 } from 'react'
 import type { LineChange } from '../../api/transcriptions.ts'
+import { failureAlertOf } from './failures.ts'
 import { cleanLineText } from './lineEditing.ts'
 import type { LineEditing } from './useLineEditing.ts'
 
@@ -147,10 +148,11 @@ export const EditAlert = ({ editing, onSignIn }: EditAlertProps) => {
   if (problem?.kind === 'failed')
     return (
       <StatusBar
-        type={problem.offline ? 'error' : 'warning'}
-        message={problem.message}
-        action={problem.retryable ? strings.read.retry : strings.edit.discard}
-        onAction={problem.retryable ? editing.retry : editing.discard}
+        {...failureAlertOf(problem, {
+          onRetry: editing.retry,
+          onDismiss: editing.discard,
+          dismissLabel: strings.edit.discard,
+        })}
       />
     )
   if (editing.waitingForSignIn)

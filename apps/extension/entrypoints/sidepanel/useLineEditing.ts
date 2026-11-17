@@ -195,3 +195,9 @@ const editActions = (
 }
 
 export type LineEditing = ReturnType<typeof useLineEditing>
+
+export const editsSettled = (editing: LineEditing) =>
+  !editing.editing && !editing.unsaved && !editing.problem
+
+export const savedVersionReady = (transcription: Transcription | undefined, editing: LineEditing) =>
+  transcription?.shelfmark !== undefined && editsSettled(editing)
