@@ -21,21 +21,32 @@ export const searchQuerySchema = z.object({
 })
 export type SearchQuery = z.infer<typeof searchQuerySchema>
 
+const recordItemSchema = z.object({
+  transcriptionId: z.uuid(),
+  shelfmark: shelfmarkSchema,
+  yearFrom: yearSchema.optional(),
+  yearTo: yearSchema.optional(),
+  snippet: z.string(),
+  status: transcriptionStatusSchema,
+  portalUrl: z.httpUrl().optional(),
+})
+
 export const searchResponseSchema = z.object({
-  items: z.array(
-    z.object({
-      transcriptionId: z.uuid(),
-      shelfmark: shelfmarkSchema,
-      yearFrom: yearSchema.optional(),
-      yearTo: yearSchema.optional(),
-      snippet: z.string(),
-      status: transcriptionStatusSchema,
-      portalUrl: z.httpUrl().optional(),
-    }),
-  ),
+  items: z.array(recordItemSchema),
   nextCursor: z.string().optional(),
 })
 export type SearchResponse = z.infer<typeof searchResponseSchema>
+
+export const recentQuerySchema = searchQuerySchema.pick({ limit: true, cursor: true })
+export type RecentQuery = z.infer<typeof recentQuerySchema>
+
+export const recentResponseSchema = z.object({
+  items: z.array(
+    recordItemSchema.extend({ status: z.literal('verified'), verifiedAt: z.iso.datetime() }),
+  ),
+  nextCursor: z.string().optional(),
+})
+export type RecentResponse = z.infer<typeof recentResponseSchema>
 
 export const transcriptionSummarySchema = z.object({
   id: z.uuid(),

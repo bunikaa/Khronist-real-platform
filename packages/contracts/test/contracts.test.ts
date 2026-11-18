@@ -10,6 +10,8 @@ import {
   isGroundedQuote,
   pageLookupQuerySchema,
   patchLinesRequestSchema,
+  recentQuerySchema,
+  recentResponseSchema,
   searchQuerySchema,
   sessionResponseSchema,
   shelfmarkSchema,
@@ -157,6 +159,53 @@ describe('searchQuerySchema', () => {
     const parsed = searchQuerySchema.parse({ q: 'Коваленко', verifiedOnly: 'false' })
     expect(parsed.verifiedOnly).toBe(false)
     expect(parsed.limit).toBe(20)
+  })
+})
+
+describe('recentQuerySchema', () => {
+  it.each([
+    [{}, 20],
+    [{ limit: '1' }, 1],
+    [{ limit: '50' }, 50],
+  ])('reads %o as limit %i', (query, limit) => {
+    expect(recentQuerySchema.parse(query).limit).toBe(limit)
+  })
+
+  it.each([{ limit: '0' }, { limit: '51' }, { limit: '2.5' }, { limit: 'many' }])(
+    'rejects %o',
+    (query) => {
+      expect(recentQuerySchema.safeParse(query).success).toBe(false)
+    },
+  )
+})
+
+describe('recentResponseSchema', () => {
+  const item = {
+    transcriptionId: '019a0000-0000-7000-8000-000000000001',
+    shelfmark: {
+      archive: 'ЦДІАК України, м. Київ',
+      fond: '127',
+      opys: '1078',
+      sprava: '1954',
+      image: 10,
+    },
+    yearFrom: 1884,
+    yearTo: 1884,
+    snippet: 'Прокопий',
+    status: 'verified',
+    verifiedAt: '2026-11-18T12:00:00.000Z',
+  }
+
+  it('accepts a verified record with its verification time', () => {
+    expect(recentResponseSchema.safeParse({ items: [item], nextCursor: 'abc' }).success).toBe(true)
+  })
+
+  it.each([
+    { ...item, status: 'draft' },
+    { ...item, verifiedAt: undefined },
+    { ...item, verifiedAt: '18.11.2026' },
+  ])('rejects an item that is not a verified record: %o', (bad) => {
+    expect(recentResponseSchema.safeParse({ items: [bad] }).success).toBe(false)
   })
 })
 
