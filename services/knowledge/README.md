@@ -1,6 +1,6 @@
 # services/knowledge
 
-Довідковий корпус, словник варіантів написання й оцінка читання та пояснень. Зона ML-команди (`docs/plan/04-ml-htr.md`, `docs/plan/05-knowledge-rag.md`).
+Довідковий корпус, словник варіантів написання й оцінка читання та пояснень. Зона ML-команди.
 
 ## Запуск
 
@@ -22,7 +22,7 @@ uv run python eval/run_htr_eval.py --reference eval/gold/lines.jsonl \
   --readings <readings.jsonl> ... --out eval/results/<дата>-htr.md
 ```
 
-Шляхи для `read-fragments` — абсолютні або від `apps/api`. `read-fragments` не дописує в наявний файл: для кожного прогону — новий `--out`. Протокол метрик — `docs/decisions.md`, 14 листопада. Еталонів два, обидва на тих самих фрагментах: `eval/gold/lines.jsonl` — читання історика-консультанта (CER), `eval/reference/lines.jsonl` — читання `claude-opus-5-5` (з `--reference-reader claude-opus-5-5`, розбіжність). Походження — у `README.md` теки кожного; звіт називає той еталон, який передано в `--reference`.
+Шляхи для `read-fragments` — абсолютні або від `apps/api`. `read-fragments` не дописує в наявний файл: для кожного прогону — новий `--out`. Еталонів два, обидва на тих самих фрагментах: `eval/gold/lines.jsonl` — читання історика-консультанта (CER), `eval/reference/lines.jsonl` — читання `claude-opus-5-5` (з `--reference-reader claude-opus-5-5`, розбіжність). Походження — у `README.md` теки кожного; звіт називає той еталон, який передано в `--reference`.
 
 - `--reference-reader` — модель, яка прочитала еталон, якщо це не людина. Тоді звіт називає метрики розбіжністю з читанням цієї моделі, а не CER. Для золотого набору від людини параметр не передається.
 - `run_htr_eval.py` перевіряє кожен рядок читань, падає на повторному читанні того самого фрагмента тією самою моделлю, а фрагмент еталона без читання рахує невдалим.
@@ -31,7 +31,7 @@ uv run python eval/run_htr_eval.py --reference eval/gold/lines.jsonl \
 
 ## Набір запитань для «Пояснити» й чату
 
-`eval/qa.jsonl` — 30 запитань для перевірки, що «Пояснити» й чат відповідають лише з корпусу й чесно кажуть «не знаю» (`docs/plan/05-knowledge-rag.md`, розділ 7): 20 з відповіддю в корпусі, 10 без неї. Один рядок — один JSON-об'єкт; формат перевіряє `src/khronist_knowledge/qa.py`, тест — `tests/test_qa.py`.
+`eval/qa.jsonl` — 30 запитань для перевірки, що «Пояснити» й чат відповідають лише з корпусу й чесно кажуть «не знаю»: 20 з відповіддю в корпусі, 10 без неї. Один рядок — один JSON-об'єкт; формат перевіряє `src/khronist_knowledge/qa.py`, тест — `tests/test_qa.py`.
 
 - `id` — `q01`…`q30`, без повторів.
 - `mode` — `explain` (`POST /v1/explain`) або `chat` (`POST /v1/chat`).
@@ -72,7 +72,7 @@ uv run python eval/run_qa.py report --mode chat --runs eval/.cache/qa/chat-0.05.
 
 ## Пакетне читання демо-фонду
 
-`scripts/batch_recognize.py` читає зображення демо-фонду з `docs/demo-fund/pages.json` через API (`POST /v1/recognitions` з ключем API, `source: batch`), щоб публічний пошук і Commons мали прочитані аркуші до демо (`docs/plan/04-ml-htr.md`, крок 6).
+`scripts/batch_recognize.py` читає зображення демо-фонду з `docs/demo-fund/pages.json` через API (`POST /v1/recognitions` з ключем API, `source: batch`), щоб публічний пошук і Commons мали прочитані аркуші до демо.
 
 - Кожне зображення — розворот метричної книги на одному друкованому бланку. Читаються дві графи бланка, де стоять імена й села: батьки (x від 0,24 до 0,52) і восприемники (x від 0,50 до 0,72); кожна від 0,25 до 0,95 висоти (друковану шапку пропущено) ділиться на 3 смуги, тобто 6 фрагментів на зображення. Межі граф узято з фрагментів оцінки читання (`eval/reference/fragments.jsonl`), вони майже однакові в усіх п'яти справах. Координати — у частках розміру зображення (`src/khronist_knowledge/batch.py`, `column_strips`). Ліміти API (7 МіБ PNG, 8000 px на сторону) перевіряються ще до надсилання.
 - Шифр: `archive` — «ЦДІАК України», як надсилає розширення (а не «ЦДІАК України, м. Київ» з `pages.json`), `fond`, `opys`, `sprava`, `image`, `portal: archium`, `portalUrl` — адреса переглядача; `document` — роки справи з `years`.
@@ -92,7 +92,7 @@ uv run --env-file ../../.env python scripts/batch_recognize.py --start 1 --limit
 
 ## Корпус
 
-Одна стаття — один файл `data/entries/*.md`: YAML-шапка між рядками `---`, далі текст. Формат — `docs/plan/07-contracts.md`, розділ 5; перевіряє його `src/khronist_knowledge/corpus.py`, а тест `test_corpus_entries_are_valid` проганяє всі статті теки й перевіряє, що прочитано кожен файл.
+Одна стаття — один файл `data/entries/*.md`: YAML-шапка між рядками `---`, далі текст. Формат перевіряє `src/khronist_knowledge/corpus.py`, а тест `test_corpus_entries_are_valid` проганяє всі статті теки й перевіряє, що прочитано кожен файл.
 
 ```yaml
 ---
@@ -147,7 +147,7 @@ SPARQL. Зміни до наявних статей і відповідних з
 
 ## Інгестія
 
-`scripts/ingest.py` надсилає корпус і словник в API через `/v1/admin/*` (`docs/plan/07-contracts.md`, розділ 2): джерела статей — у `sources`, усі чанки корпусу одним запитом — у `chunks`, `variants` статей і `data/synonyms.yaml` — у `synonyms`.
+`scripts/ingest.py` надсилає корпус і словник в API через `/v1/admin/*` (схеми — `packages/contracts/src/admin.ts`): джерела статей — у `sources`, усі чанки корпусу одним запитом — у `chunks`, `variants` статей і `data/synonyms.yaml` — у `synonyms`.
 
 ```sh
 uv run python scripts/ingest.py
