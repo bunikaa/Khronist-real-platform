@@ -1,0 +1,20 @@
+name: Ідея
+description: Чого бракує для роботи з архівними сканами
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Яку задачу ви розв'язуєте
+      description: Що ви досліджуєте й де зараз незручно.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Що допомогло б
+  - type: input
+    id: portal
+    attributes:
+      label: Портал чи архів
+      description: Якщо ідея про інший портал — адреса переглядача сканів.
