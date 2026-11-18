@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App.tsx'
-import { json, searchItem, searchPage } from './fixtures.ts'
+import { json, recentItem, searchItem, searchPage } from './fixtures.ts'
 
 const highlighted = vi.hoisted(() => ({ count: 0 }))
 
@@ -22,10 +22,29 @@ const text = strings.web
 let container: HTMLDivElement
 let root: Root
 const requested: URL[] = []
+const recentRequested: URL[] = []
 let replies: Array<Response | Promise<Response>> = []
+let recentReplies: Array<Response | Promise<Response>> = []
 
 const reply = (...responses: Array<Response | Promise<Response>>) => {
   replies.push(...responses)
+}
+
+const replyRecent = (...responses: Array<Response | Promise<Response>>) => {
+  recentReplies.push(...responses)
+}
+
+const nothingVerified = () => json(200, { items: [] })
+
+const answer = (url: URL) => {
+  if (url.pathname === '/v1/transcriptions/recent') {
+    recentRequested.push(url)
+    return recentReplies.shift() ?? nothingVerified()
+  }
+  requested.push(url)
+  const next = replies.shift()
+  if (!next) throw new TypeError('Failed to fetch')
+  return next
 }
 
 const deferred = () => {
@@ -96,15 +115,12 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   window.history.replaceState(null, '', '/')
   requested.length = 0
+  recentRequested.length = 0
   replies = []
+  recentReplies = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string) => {
-      requested.push(new URL(input))
-      const next = replies.shift()
-      if (!next) throw new TypeError('Failed to fetch')
-      return next
-    }),
+    vi.fn(async (input: string) => answer(new URL(input))),
   )
   container = document.createElement('div')
   document.body.append(container)
@@ -118,13 +134,14 @@ afterEach(() => {
 })
 
 describe('W5 search', () => {
-  it('starts with the form and no results, asking nothing', async () => {
+  it('starts with the form and no results, asking only for the recent records', async () => {
     await render()
     expect(container.querySelector('h1')?.textContent).toBe(text.title)
     expect(field(text.verifiedOnly).checked).toBe(true)
     expect(container.querySelector('ul')).toBeNull()
     expect(announced()).toBe('')
     expect(requested).toHaveLength(0)
+    expect(recentRequested).toHaveLength(1)
   })
 
   it('searches only verified transcriptions by default and shows each result', async () => {
@@ -525,5 +542,105 @@ describe('W5 failures', () => {
     expect(requestOf(1)).toEqual({ q: 'Коваленко', verifiedOnly: 'true' })
     expect(field(text.query).value).toBe('Коваленко')
     expect(field(text.query).getAttribute('aria-invalid')).toBe('false')
+  })
+})
+
+describe('W5 recent records', () => {
+  const recentSection = () => container.querySelector('section[aria-labelledby="recent-title"]')
+
+  it('shows the latest verified records under the form before any search', async () => {
+    replyRecent(json(200, { items: [recentItem(4), recentItem(5)] }))
+    await render()
+    expect(recentRequested[0]?.toString()).toBe('https://api.khronist.org/v1/transcriptions/recent')
+    expect(recentSection()?.querySelector('h2')?.textContent).toBe(text.recent)
+    expect(items()).toHaveLength(2)
+    expect(items()[0]?.textContent).toContain('Запис 4. Иван Феодотов Коваленко')
+    expect(items()[0]?.textContent).toContain(strings.confirm.verified)
+    expect(requested).toHaveLength(0)
+  })
+
+  it('shows nothing of the block until the records arrive', async () => {
+    const pending = deferred()
+    replyRecent(pending.promise)
+    await render()
+    expect(recentSection()).toBeNull()
+    await settle(() => pending.resolve(json(200, { items: [recentItem(4)] })))
+    expect(recentSection()?.querySelector('h2')?.textContent).toBe(text.recent)
+  })
+
+  it('shows the recent records when the query in the address is not valid', async () => {
+    window.history.replaceState(null, '', '/?q=Коваленко&yearFrom=давно')
+    replyRecent(json(200, { items: [recentItem(4)] }))
+    await render()
+    expect(requested).toHaveLength(0)
+    expect(recentSection()).not.toBeNull()
+  })
+
+  it('offers to load the records again, not to restart a search, when the cursor is rejected', async () => {
+    replyRecent(json(200, { items: [recentItem(4)], nextCursor: 'stale' }))
+    replyRecent(json(400, { error: { code: 'bad_request', message: '' } }))
+    replyRecent(json(200, { items: [recentItem(4)] }))
+    await render()
+    await click(button(text.more))
+    expect(findButton(text.restart)).toBeUndefined()
+    await click(button(text.retry))
+    expect(recentRequested).toHaveLength(3)
+    expect(recentRequested[2]?.searchParams.has('cursor')).toBe(false)
+  })
+
+  it('keeps the block and the focus in it while a retry loads', async () => {
+    const pending = deferred()
+    replyRecent(json(503, { error: { code: 'unavailable', message: '' } }), pending.promise)
+    await render()
+    const retry = button(text.retry)
+    retry.focus()
+    await click(retry)
+    expect(recentSection()?.textContent).toContain(text.loadingMore)
+    expect(document.activeElement).toBe(recentSection())
+    await settle(() => pending.resolve(json(200, { items: [recentItem(4)] })))
+    expect(items()).toHaveLength(1)
+  })
+
+  it('shows no block at all while nothing is verified', async () => {
+    await render()
+    expect(recentSection()).toBeNull()
+    expect(container.textContent).not.toContain(text.recent)
+  })
+
+  it('gives way to the results once the reader searches', async () => {
+    replyRecent(json(200, { items: [recentItem(4)] }))
+    reply(json(200, { items: [searchItem(8)] }))
+    await render()
+    await searchFor('Коваленко')
+    expect(recentSection()).toBeNull()
+    expect(items()).toHaveLength(1)
+  })
+
+  it('does not ask for the recent records when the page opens with a query', async () => {
+    window.history.replaceState(null, '', '/?q=Коваленко')
+    reply(json(200, searchPage))
+    await render()
+    expect(recentRequested).toHaveLength(0)
+    expect(recentSection()).toBeNull()
+  })
+
+  it('loads the next records with the cursor', async () => {
+    replyRecent(json(200, { items: [recentItem(4)], nextCursor: 'next-page' }))
+    replyRecent(json(200, { items: [recentItem(5)] }))
+    await render()
+    await click(button(text.more))
+    expect(recentRequested[1]?.searchParams.get('cursor')).toBe('next-page')
+    expect(items()).toHaveLength(2)
+    expect(findButton(text.more)).toBeUndefined()
+  })
+
+  it('says what went wrong and asks again on retry', async () => {
+    replyRecent(json(503, { error: { code: 'unavailable', message: '' } }))
+    replyRecent(json(200, { items: [recentItem(4)] }))
+    await render()
+    expect(recentSection()?.textContent).toContain(text.unavailable)
+    await click(button(text.retry))
+    expect(recentRequested).toHaveLength(2)
+    expect(items()).toHaveLength(1)
   })
 })

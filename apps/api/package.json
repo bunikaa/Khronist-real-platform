@@ -9,6 +9,7 @@
     "smoke": "node scripts/smoke.ts",
     "read-fragments": "node --env-file-if-exists=../../.env scripts/read-fragments.ts",
     "api-key:create": "node --env-file-if-exists=../../.env scripts/create-api-key.ts",
+    "readings:import": "node --env-file-if-exists=../../.env scripts/import-readings.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",

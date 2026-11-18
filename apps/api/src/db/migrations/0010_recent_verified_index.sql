@@ -1,0 +1,1 @@
+CREATE INDEX "transcriptions_recent_verified_idx" ON "transcriptions" USING btree ("verified_at" DESC NULLS FIRST,"id") WHERE "transcriptions"."status" = 'verified';

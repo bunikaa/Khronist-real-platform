@@ -18,7 +18,7 @@ import { alias, union } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 import type { Database } from '../db/client.ts'
 import { documents, entities, pages, regions, transcriptions } from '../db/schema.ts'
-import { ApiError } from '../lib/errors.ts'
+import { cursorCodec } from '../lib/cursor.ts'
 import {
   anyConceptQuery,
   conceptRank,
@@ -31,16 +31,10 @@ import { shelfmarkOf } from './transcriptions.ts'
 const cursorSchema = z.object({ rank: z.number(), id: z.uuid() })
 type Cursor = z.infer<typeof cursorSchema>
 
-export const encodeCursor = (cursor: Cursor): string =>
-  Buffer.from(JSON.stringify(cursor)).toString('base64url')
-
-export const decodeCursor = (value: string): Cursor => {
-  try {
-    return cursorSchema.parse(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')))
-  } catch {
-    throw new ApiError(400, 'bad_request', 'Некоректний курсор пошуку')
-  }
-}
+export const { encode: encodeCursor, decode: decodeCursor } = cursorCodec(
+  cursorSchema,
+  'Некоректний курсор пошуку',
+)
 
 const plainSnippet = 'StartSel="", StopSel=""'
 const better = alias(transcriptions, 'better')

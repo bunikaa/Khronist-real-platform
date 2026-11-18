@@ -27,6 +27,7 @@ import { citeRoutes } from './routes/cite.ts'
 import { explainRoutes } from './routes/explain.ts'
 import { healthRoutes, type HealthDeps } from './routes/health.ts'
 import { pageRoutes } from './routes/pages.ts'
+import { recentRoutes } from './routes/recent.ts'
 import { recognitionRoutes } from './routes/recognitions.ts'
 import { searchRoutes } from './routes/search.ts'
 import { transcriptionRoutes } from './routes/transcriptions.ts'
@@ -213,6 +214,7 @@ export const buildApp = async (deps: AppDeps) => {
     await app.register(pageRoutes(db))
     await app.register(citeRoutes(db))
     await app.register(searchRoutes(db))
+    await app.register(recentRoutes(db))
   }
   if (deps.explain) await app.register(explainRoutes(deps.explain, deps.guestExplainsPerDay))
   if (deps.chat) await app.register(chatRoutes(deps.chat, deps.guestChatsPerDay))
