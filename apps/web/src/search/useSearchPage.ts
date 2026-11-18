@@ -41,9 +41,15 @@ export const useSearchPage = () => {
     if (last) run(last)
   }
 
+  const [searchesOnOpen] = useState(
+    () => initial.q.trim() !== '' && 'params' in parseSearchForm(initial),
+  )
+
   useEffect(() => {
     if (initial.q.trim()) submit(initial)
   }, [])
 
-  return { form, invalid, state, setForm, submit, setVerifiedOnly, showMore, restart }
+  const showsRecent = state.phase === 'idle' && !searchesOnOpen
+
+  return { form, invalid, state, showsRecent, setForm, submit, setVerifiedOnly, showMore, restart }
 }

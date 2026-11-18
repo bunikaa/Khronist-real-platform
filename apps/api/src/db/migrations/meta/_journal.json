@@ -71,6 +71,13 @@
       "when": 1794931121926,
       "tag": "0009_transcription_translated_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795027547257,
+      "tag": "0010_recent_verified_index",
+      "breakpoints": true
     }
   ]
 }

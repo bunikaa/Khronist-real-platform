@@ -69,7 +69,7 @@ const wholePage: Box = { x: 0, y: 0, w: 1, h: 1 }
 
 type PageMetadata = Pick<CreateRecognitionRequest, 'document'>
 
-const findOrCreatePage = async (
+export const findOrCreatePage = async (
   db: Database,
   shelfmark: Shelfmark,
   metadata: PageMetadata | undefined,

@@ -1,6 +1,7 @@
 import { PanelHeader, strings } from '@khronist/ui'
 import { useRef } from 'react'
 import { announcementOf } from './search/messages.ts'
+import { RecentFeed } from './search/RecentFeed.tsx'
 import { SearchForm } from './search/SearchForm.tsx'
 import { SearchResults } from './search/SearchResults.tsx'
 import { useSearchPage } from './search/useSearchPage.ts'
@@ -34,6 +35,7 @@ export const App = () => {
           onShowMore={() => void page.showMore()}
           onIncludeDrafts={() => page.setVerifiedOnly(false)}
         />
+        {page.showsRecent && <RecentFeed />}
       </main>
     </div>
   )

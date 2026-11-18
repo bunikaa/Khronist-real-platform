@@ -52,7 +52,13 @@ const Outcome = ({
         onIncludeDrafts={onIncludeDrafts}
       />
     )
-  return <ResultList state={state} onShowMore={onShowMore} onRestart={onRestart} />
+  return (
+    <ResultList
+      state={state}
+      onShowMore={onShowMore}
+      whenRejected={{ action: text.restart, onAction: onRestart }}
+    />
+  )
 }
 
 export const SearchResults = (props: SearchResultsProps) => {

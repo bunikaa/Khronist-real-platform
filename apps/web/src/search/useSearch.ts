@@ -1,6 +1,6 @@
 import type { SearchResponse } from '@khronist/contracts'
 import { useEffect, useRef, useState } from 'react'
-import { fetchSearchPage, searchUrl, type SearchProblem } from '../api/search.ts'
+import { loadSearchPage, type PageLoader, type SearchProblem } from '../api/search.ts'
 import { hasFilters } from './query.ts'
 
 export type SearchItem = SearchResponse['items'][number]
@@ -39,7 +39,7 @@ const withNewItems = (shown: SearchItem[], page: SearchItem[]) => {
   return [...shown, ...page.filter((item) => !ids.has(item.transcriptionId))]
 }
 
-export const useSearch = () => {
+export const useSearch = (loadPage: PageLoader = loadSearchPage) => {
   const [state, setState] = useState<SearchState>({ phase: 'idle' })
   const current = useRef<CurrentSearch | undefined>(undefined)
 
@@ -50,7 +50,7 @@ export const useSearch = () => {
     const controller = new AbortController()
     current.current = { params, controller }
     setState({ phase: 'searching' })
-    const outcome = await fetchSearchPage(searchUrl(params), controller.signal)
+    const outcome = await loadPage(params, undefined, controller.signal)
     if (controller.signal.aborted) return
     setState(
       outcome.ok ? foundState(params, outcome.page) : { phase: 'failed', problem: outcome.problem },
@@ -62,7 +62,7 @@ export const useSearch = () => {
     if (state.more.phase === 'loading') return
     const { params, controller } = current.current
     setState({ ...state, more: { phase: 'loading' } })
-    const outcome = await fetchSearchPage(searchUrl(params, state.nextCursor), controller.signal)
+    const outcome = await loadPage(params, state.nextCursor, controller.signal)
     if (controller.signal.aborted) return
     setState((previous) => {
       if (previous.phase !== 'found') return previous

@@ -8,7 +8,7 @@ import { significantWords } from './words.ts'
 type ResultListProps = {
   state: Extract<SearchState, { phase: 'found' }>
   onShowMore: () => void
-  onRestart: () => void
+  whenRejected: { action: string; onAction: () => void }
 }
 
 const useFocusAfterMore = (count: number, morePhase: string) => {
@@ -29,7 +29,7 @@ const useFocusAfterMore = (count: number, morePhase: string) => {
   return { list, moreButton }
 }
 
-export const ResultList = ({ state, onShowMore, onRestart }: ResultListProps) => {
+export const ResultList = ({ state, onShowMore, whenRejected }: ResultListProps) => {
   const { items, more, nextCursor } = state
   const { list, moreButton } = useFocusAfterMore(items.length, more.phase)
   const words = useMemo(() => significantWords(state.query), [state.query])
@@ -42,11 +42,7 @@ export const ResultList = ({ state, onShowMore, onRestart }: ResultListProps) =>
         ))}
       </ul>
       {more.phase === 'failed' && (
-        <ProblemBar
-          problem={more.problem}
-          onRetry={onShowMore}
-          whenRejected={{ action: strings.web.restart, onAction: onRestart }}
-        />
+        <ProblemBar problem={more.problem} onRetry={onShowMore} whenRejected={whenRejected} />
       )}
       {nextCursor !== undefined && more.phase !== 'failed' && (
         <Button

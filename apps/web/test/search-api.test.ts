@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchSearchPage, searchUrl } from '../src/api/search.ts'
-import { json, searchPage } from './fixtures.ts'
+import { loadRecentPage, loadSearchPage, recentUrl, searchUrl } from '../src/api/search.ts'
+import { json, recentPage, searchPage } from './fixtures.ts'
 
 const respond = (response: Response | Error) =>
   vi.stubGlobal(
@@ -12,7 +12,7 @@ const respond = (response: Response | Error) =>
   )
 
 const outcome = () =>
-  fetchSearchPage(searchUrl(new URLSearchParams('q=x')), new AbortController().signal)
+  loadSearchPage(new URLSearchParams('q=x'), undefined, new AbortController().signal)
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -31,7 +31,7 @@ describe('searchUrl', () => {
   })
 })
 
-describe('fetchSearchPage', () => {
+describe('loadSearchPage', () => {
   it('returns a page that matches the contract', async () => {
     respond(json(200, searchPage))
     expect(await outcome()).toEqual({ ok: true, page: searchPage })
@@ -73,5 +73,51 @@ describe('fetchSearchPage', () => {
   it('reports a network failure as offline', async () => {
     respond(new TypeError('Failed to fetch'))
     expect(await outcome()).toEqual({ ok: false, problem: { kind: 'offline' } })
+  })
+})
+
+describe('recentUrl', () => {
+  it('asks the production API for the first page and adds the cursor of the next one', () => {
+    expect(recentUrl()).toBe('https://api.khronist.org/v1/transcriptions/recent')
+    expect(recentUrl('eyJhdCI6MX0')).toBe(
+      'https://api.khronist.org/v1/transcriptions/recent?cursor=eyJhdCI6MX0',
+    )
+  })
+})
+
+describe('loadRecentPage', () => {
+  const recent = (cursor?: string) =>
+    loadRecentPage(new URLSearchParams('q=ignored'), cursor, new AbortController().signal)
+
+  it('asks for the page of the cursor, whatever the search params', async () => {
+    respond(json(200, recentPage))
+    await recent('abc')
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(recentUrl('abc'))
+  })
+
+  it('returns a page that matches the contract', async () => {
+    respond(json(200, recentPage))
+    expect(await recent()).toEqual({ ok: true, page: recentPage })
+  })
+
+  it.each([
+    ['a draft', { items: [{ ...recentPage.items[0], status: 'draft' }] }],
+    [
+      'an item without the time of verification',
+      { items: [{ ...recentPage.items[0], verifiedAt: undefined }] },
+    ],
+  ])('treats %s as a bad response', async (_name, body) => {
+    respond(json(200, body))
+    expect(await recent()).toEqual({ ok: false, problem: { kind: 'bad_response' } })
+  })
+
+  it('maps a rate limit to a problem', async () => {
+    respond(
+      json(429, { error: { code: 'too_many_requests', message: 'x' } }, { 'retry-after': '7' }),
+    )
+    expect(await recent()).toEqual({
+      ok: false,
+      problem: { kind: 'rate_limited', retryAfterSeconds: 7 },
+    })
   })
 })

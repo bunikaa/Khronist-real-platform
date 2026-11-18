@@ -1,16 +1,17 @@
-import {
-  maxSearchQueryLength,
-  searchResponseSchema,
-  type Entity,
-  type Line,
-} from '@khronist/contracts'
+import { maxSearchQueryLength, searchResponseSchema, type Entity } from '@khronist/contracts'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { documents, pages, regions, synonyms, transcriptions } from '../src/db/schema.ts'
 import { searchesPerMinute } from '../src/lib/limits.ts'
 import { decodeCursor, encodeCursor } from '../src/services/search.ts'
 import { insertTranscriptionVersion } from '../src/services/transcriptions.ts'
-import { createTestApp, createTestDatabase, resetDatabase, type TestDatabase } from './helpers.ts'
+import {
+  createTestApp,
+  createTestDatabase,
+  linesOf,
+  resetDatabase,
+  type TestDatabase,
+} from './helpers.ts'
 
 let database: TestDatabase
 let app: Awaited<ReturnType<typeof createTestApp>>['app']
@@ -77,16 +78,6 @@ const addRegion = async (sheet: Sheet | null = {}) => {
   )
   return region.id
 }
-
-const linesOf = (text: string): Line[] =>
-  text.split('\n').map((line, idx, all) => ({
-    idx,
-    text: line,
-    box: { x: 0, y: idx / all.length, w: 1, h: 1 / all.length },
-    boxSource: 'estimated',
-    uncertain: false,
-    words: line.split(' ').map((word) => ({ text: word, uncertain: false })),
-  }))
 
 const addVersion = (regionId: string, text: string, found: Entity[] = []) =>
   insertTranscriptionVersion(database.db, {

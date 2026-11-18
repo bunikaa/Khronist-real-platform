@@ -1,6 +1,6 @@
 # 07 · Контракти між частинами
 
-Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id`, `GET /v1/transcriptions/:id/history`, `PATCH /v1/transcriptions/:id/lines` і `POST /v1/transcriptions/:id/verify` (обидва лише тоді, коли налаштовано вхід), `GET /v1/pages/lookup` і `/v1/admin/*` (з `ADMIN_API_KEY`); решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
+Єдине джерело правди на межах: бекенд ↔ клієнти, бекенд ↔ HTR-сервіс (трек B), бекенд ↔ інгестія корпусу, MCP ↔ бекенд. Реалізуються як Zod-схеми в `packages/contracts` (TypeScript) і Pydantic-моделі в `services/*` (Python, зараз — `services/knowledge/src/khronist_knowledge/corpus.py`). Зараз в API працюють `/health`, вхід `/api/auth/*`, `/v1/recognitions*`, `GET /v1/transcriptions/:id`, `GET /v1/transcriptions/:id/history`, `PATCH /v1/transcriptions/:id/lines` і `POST /v1/transcriptions/:id/verify` (обидва лише тоді, коли налаштовано вхід), `GET /v1/pages/lookup`, `GET /v1/search`, `GET /v1/transcriptions/recent`, `POST /v1/cite`, `POST /v1/explain`, `POST /v1/chat` і `/v1/admin/*` (з `ADMIN_API_KEY`); решта маршрутів — контракт для задач V-xx, і колонки та змінні для них з'являються разом із ними. Зміна контракту — спочатку PR у цей документ і в `packages/contracts`, потім код.
 
 Спільні правила: JSON, UTF-8; ідентифікатори — UUID; час — ISO 8601 UTC; координати — частки 0…1 від ширини й висоти зображення (`x`, `y` — лівий верхній кут); помилки — `{ "error": { "code": "snake_case", "message": "людською мовою українською" } }`. Будь-який запит під час зупинки сервера отримує `503 { error: { code: 'shutting_down' } }` із `retry-after`. Кожна відповідь несе `x-request-id` (з `x-railway-request-id`, якщо його поставив Railway).
 
@@ -87,12 +87,15 @@ POST /v1/chat
 ```
 GET  /v1/search?q=&archive=&fond=&yearFrom=&yearTo=&verifiedOnly=&limit=&cursor=      // q до 200 символів
   200: { items: [{ transcriptionId, shelfmark, yearFrom?, yearTo?, snippet, status, portalUrl? }], nextCursor? }
+GET  /v1/transcriptions/recent?limit=&cursor=      // limit 1–50, типово 20
+  200: { items: [{ transcriptionId, shelfmark, yearFrom?, yearTo?, snippet, status: 'verified', portalUrl?, verifiedAt }], nextCursor? } · 400 bad_request · 429 too_many_requests
 POST /v1/cite
   body: { transcriptionId; format: 'dstu' | 'markdown' | 'text'; withTranscription: boolean }  → 200: { text }
 GET  /v1/notes · POST /v1/notes · DELETE /v1/notes/:id      (should; вхід обов'язковий)
 ```
 
 - Пошук повертає лише регіони з шифром (без сторінки регіон у пошук не потрапляє) і одну версію на регіон: останню підтверджену, а якщо підтвердженої немає — останню. З `verifiedOnly` — лише підтверджені. `cite` бере ту саму версію, що й пошук.
+- `transcriptions/recent` — стрічка «Нещодавно підтверджені» на вебсторінці Commons до першого пошуку: лише підтверджені версії з шифром, одна на регіон (остання підтверджена, як у пошуку), від найновішого `verifiedAt`; за однакового часу — за `transcriptionId`. `snippet` — початок `normalizedText` до 200 символів, пробіли й переноси згорнуто в один пробіл. Чернетки в стрічку не потрапляють. Некоректний курсор чи `limit` — `400 bad_request`. Ліміт гостя за IP — як у пошуку, 60 запитів на хвилину, понад — `429 too_many_requests` з `retry-after`.
 - Роки — колонки `documents.year_from` / `documents.year_to`, які заповнює пакетна обробка з `docs/demo-fund/pages.json` (поле `document` у `POST /v1/recognitions` з ключем API, V-14); міграція `0005_document_years`. Фільтр `yearFrom`/`yearTo` — перетин інтервалів; справа без років під фільтр не потрапляє.
 
 ### Вхід і ключі

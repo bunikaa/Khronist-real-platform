@@ -221,6 +221,9 @@ export const transcriptions = pgTable(
   (t) => [
     unique('transcriptions_region_version_unique').on(t.regionId, t.version),
     index('transcriptions_tsv_idx').using('gin', t.tsv),
+    index('transcriptions_recent_verified_idx')
+      .on(t.verifiedAt.desc().nullsFirst(), t.id)
+      .where(sql`${t.status} = 'verified'`),
     check('transcriptions_version_positive', sql`${t.version} >= 1`),
     check(
       'transcriptions_verified_has_time',

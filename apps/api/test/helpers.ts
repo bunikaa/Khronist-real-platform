@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
+import type { Line } from '@khronist/contracts'
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { createHash } from 'node:crypto'
 import { sql } from 'drizzle-orm'
@@ -33,6 +34,16 @@ export const createTestDatabase = async () => {
 }
 
 export type TestDatabase = Awaited<ReturnType<typeof createTestDatabase>>
+
+export const linesOf = (text: string): Line[] =>
+  text.split('\n').map((line, idx, all) => ({
+    idx,
+    text: line,
+    box: { x: 0, y: idx / all.length, w: 1, h: 1 / all.length },
+    boxSource: 'estimated',
+    uncertain: false,
+    words: line.split(' ').map((word) => ({ text: word, uncertain: false })),
+  }))
 
 export const resetDatabase = async ({ db }: TestDatabase) => {
   const tables = await db.execute<{ tablename: string }>(
